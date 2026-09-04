@@ -63,6 +63,126 @@ Réponse :
 }
 ```
 
+## Authentification & Utilisateurs (Phase 4)
+
+Authentification par paires de jetons JWT (access + refresh avec rotation), sessions en base, enregistrement des actions dans les logs d'audit.
+
+### Rôles
+
+| Rôle | Droits |
+|---|---|
+| `SUPER_ADMIN` | Toutes les opérations, gestion des utilisateurs et des rôles |
+| `ADMIN` | Accès limité (pas de gestion des rôles/utilisateurs) |
+| `ANALYSTE_SIG` | Accès SIG |
+| `CLIENT` | Accès client |
+
+Tous les endpoints ci-dessous sont préfixés par `/api/v1`.
+
+### POST /auth/register
+
+Crée le **premier** `SUPER_ADMIN`. Cette route ne fonctionne que si la table `users` est vide.
+
+```bash
+curl -X POST http://localhost:5000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"firstName":"Admin","lastName":"Principal","email":"super.admin@madarisk.mg","password":"Tr3sFort!2026"}'
+```
+
+Réponse `201` : objet utilisateur **sans** `passwordHash`.
+
+### POST /auth/login
+
+```bash
+curl -X POST http://localhost:5000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@madarisk.local","password":"VotreMotDePasse"}'
+```
+
+Réponse `200` :
+```json
+{
+  "success": true,
+  "data": {
+    "accessToken": "eyJhbGciOi...",
+    "refreshToken": "eyJhbGciOi...",
+    "user": { "id": "...", "email": "admin@madarisk.local", "role": "SUPER_ADMIN", "isActive": true }
+  }
+}
+```
+
+### POST /auth/refresh
+
+Rafraîchit la session (rotation du refresh token). Ancien token révoqué.
+
+```bash
+curl -X POST http://localhost:5000/api/v1/auth/refresh \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"eyJhbGciOi..."}'
+```
+
+### POST /auth/logout
+
+Révoque la session. Le refresh token devient inutilisable.
+
+```bash
+curl -X POST http://localhost:5000/api/v1/auth/logout \
+  -H "Content-Type: application/json" \
+  -d '{"refreshToken":"eyJhbGciOi..."}'
+```
+
+### GET /auth/me
+
+Profil de l'utilisateur connecté. Nécessite un access token.
+
+```bash
+curl http://localhost:5000/api/v1/auth/me \
+  -H "Authorization: Bearer VOTRE_ACCESS_TOKEN"
+```
+
+### Gestion des utilisateurs (nécessite un bearer token)
+
+| Méthode | Route | Rôle requis | Description |
+|---|---|---|---|
+| `GET` | `/users` | `SUPER_ADMIN` | Liste paginée (query : `page`, `limit`, `role`, `isActive`, `search`) |
+| `POST` | `/users` | `SUPER_ADMIN` | Créer un utilisateur (rôle ne peut pas être `SUPER_ADMIN`) |
+| `GET` | `/users/:id` | `SUPER_ADMIN` ou propriétaire | Détail d'un utilisateur |
+| `PATCH` | `/users/:id` | `SUPER_ADMIN` ou propriétaire | Modifier prénom/nom/email ; `role` seulement par `SUPER_ADMIN` |
+| `PATCH` | `/users/:id/status` | `SUPER_ADMIN` | Activer/désactiver (`{"isActive": true}`) |
+| `PATCH` | `/users/me/password` | connecté | Changer son mot de passe |
+
+Créer un utilisateur :
+
+```bash
+curl -X POST http://localhost:5000/api/v1/users \
+  -H "Authorization: Bearer VOTRE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"firstName":"Jean","lastName":"Rakoto","email":"jean.rakoto@madarisk.mg","password":"MotDepasse123!","role":"ANALYSTE_SIG"}'
+```
+
+Changer son mot de passe :
+
+```bash
+curl -X PATCH http://localhost:5000/api/v1/users/me/password \
+  -H "Authorization: Bearer VOTRE_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"oldPassword":"AncienMdp!1","newPassword":"NouveauMdp!2"}'
+```
+
+### Règles de sécurité
+
+- `passwordHash` n'est jamais renvoyé par l'API.
+- Mots de passe hachés avec bcrypt (coût 12).
+- Le dernier `SUPER_ADMIN` actif ne peut être ni désactivé ni rétrogradé.
+- Limitation de débit sur `login` (10/15 min) et `refresh` (30/15 min).
+- Toutes les actions sensibles sont consignées dans `audit_logs`.
+
+### Exemple Postman
+
+1. Ajouter une collection avec l'URL de base `http://localhost:5000/api/v1`.
+2. Variable d'environnement `access_token` remplie après `login`.
+3. Définir l'en-tête `Authorization: Bearer {{access_token}}` au niveau de la collection.
+4. Variable `refresh_token` pour `refresh`/`logout`.
+
 ## Stack technique
 
 - **Runtime** : Node.js 20

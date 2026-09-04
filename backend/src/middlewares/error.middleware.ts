@@ -9,7 +9,7 @@ export function errorHandler(err: Error, _req: Request, res: Response, _next: Ne
     if (!err.isOperational) {
       logger.error({ err }, 'Erreur non opérationnelle');
     }
-    res.status(err.statusCode).json(errorResponse(err.message));
+    res.status(err.statusCode).json(errorResponse(err.message, err.details));
     return;
   }
 
