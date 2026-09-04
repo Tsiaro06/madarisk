@@ -1,0 +1,293 @@
+openapi: 3.0.3
+info:
+  title: MadaRisk Map - API Backend
+  description: |
+    Plateforme SIG de surveillance et d'anticipation des catastrophes naturelles à Madagascar.
+
+    La plupart des endpoints nécessitent un jeton d'accès JWT.
+    Utilisez `POST /api/v1/auth/login` puis renseignez le jeton dans le bouton **Authorize**.
+  version: 1.0.0
+servers:
+  - url: http://localhost:5000/api/v1
+    description: Serveur local de développement
+tags:
+  - name: Health
+    description: État de l'API
+  - name: Auth
+    description: Authentification (JWT + sessions)
+  - name: Utilisateurs
+    description: Gestion des utilisateurs
+  - name: Territoires
+    description: Districts et communes (Phase 5)
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: État de santé de l'API
+      responses:
+        '200':
+          description: API opérationnelle
+
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Créer le premier SUPER_ADMIN
+      description: Fonctionne uniquement si la table `users` est vide.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [firstName, lastName, email, password]
+              properties:
+                firstName: { type: string }
+                lastName: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '201':
+          description: Utilisateur créé
+        '409':
+          description: Base non vide / email existant
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Connexion
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Jetons access + refresh
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Rafraîchir les jetons (rotation)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Nouveaux jetons
+
+  /auth/logout:
+    post:
+      tags: [Auth]
+      summary: Déconnexion (révoque la session)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '204': { description: Session révoquée }
+
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Profil de l'utilisateur connecté
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profil utilisateur
+
+  /territories/districts:
+    get:
+      tags: [Territoires]
+      summary: Liste paginée des districts
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: search, in: query, required: false, schema: { type: string } }
+        - { name: adminCode, in: query, required: false, schema: { type: string } }
+        - { name: includeGeometry, in: query, required: false, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Liste paginée des districts
+
+  /territories/districts/{id}:
+    get:
+      tags: [Territoires]
+      summary: Détail d'un district
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Détail du district
+        '404':
+          description: District introuvable
+
+  /territories/communes:
+    get:
+      tags: [Territoires]
+      summary: Liste paginée des communes
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: districtCode, in: query, required: false, schema: { type: string } }
+        - { name: search, in: query, required: false, schema: { type: string } }
+        - { name: adminCode, in: query, required: false, schema: { type: string } }
+        - { name: riskLevel, in: query, required: false, schema: { type: string, enum: [FAIBLE, MODERE, ELEVE, EXTREME] } }
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: includeGeometry, in: query, required: false, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: Liste paginée des communes
+
+  /territories/communes/{id}:
+    get:
+      tags: [Territoires]
+      summary: Détail d'une commune (météo, risque, événements)
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Détail de la commune
+        '404':
+          description: Commune introuvable
+
+  /territories/search:
+    get:
+      tags: [Territoires]
+      summary: Recherche de districts et de communes
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, default: 20, maximum: 20 } }
+      responses:
+        '200':
+          description: Résultats de recherche
+        '400':
+          description: Requête trop courte (< 2 caractères)
+
+  /territories/map/districts:
+    get:
+      tags: [Territoires]
+      summary: FeatureCollection GeoJSON des districts (Leaflet)
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: riskLevel, in: query, required: false, schema: { type: string, enum: [FAIBLE, MODERE, ELEVE, EXTREME] } }
+        - { name: includeStats, in: query, required: false, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: FeatureCollection compatible Leaflet
+
+  /territories/map/communes:
+    get:
+      tags: [Territoires]
+      summary: FeatureCollection GeoJSON des communes (Leaflet)
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: districtCode, in: query, required: false, schema: { type: string } }
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: riskLevel, in: query, required: false, schema: { type: string, enum: [FAIBLE, MODERE, ELEVE, EXTREME] } }
+        - { name: phase, in: query, required: false, schema: { type: string, enum: [AVANT, PENDANT, APRES, RETABLISSEMENT] } }
+        - { name: includeRisk, in: query, required: false, schema: { type: boolean, default: true } }
+        - { name: includeGeometry, in: query, required: false, schema: { type: boolean, default: false } }
+      responses:
+        '200':
+          description: FeatureCollection compatible Leaflet
+
+  /users:
+    get:
+      tags: [Utilisateurs]
+      summary: Liste paginée des utilisateurs
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Liste paginée des utilisateurs
+    post:
+      tags: [Utilisateurs]
+      summary: Créer un utilisateur
+      security:
+        - bearerAuth: []
+      responses:
+        '201':
+          description: Utilisateur créé
+
+  /users/{id}:
+    get:
+      tags: [Utilisateurs]
+      summary: Détail d'un utilisateur
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Détail de l'utilisateur
+    patch:
+      tags: [Utilisateurs]
+      summary: Modifier un utilisateur
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Utilisateur modifié
+
+  /users/{id}/status:
+    patch:
+      tags: [Utilisateurs]
+      summary: Activer / désactiver un utilisateur
+      security:
+        - bearerAuth: []
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Statut mis à jour
+
+  /users/me/password:
+    patch:
+      tags: [Utilisateurs]
+      summary: Changer son propre mot de passe
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Mot de passe modifié
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

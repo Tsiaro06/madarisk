@@ -1,8 +1,11 @@
+import path from 'path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import pinoHttp from 'pino-http';
+import swaggerUi from 'swagger-ui-express';
+import YAML from 'yamljs';
 import { env } from './config/env';
 import { logger } from './config/logger';
 import { successResponse } from './utils/api-response';
@@ -37,6 +40,12 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use(pinoHttp({ logger }));
+
+const swaggerSpec = YAML.load(path.join(__dirname, 'docs', 'openapi.yaml')) as Record<
+  string,
+  unknown
+>;
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { customSiteTitle: 'MadaRisk Map - API Docs' }));
 
 app.get('/health', (_req, res) => {
   res.status(200).json(
