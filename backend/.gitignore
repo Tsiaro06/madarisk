@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+uploads/imports/*
+uploads/reports/*
+!uploads/imports/.gitkeep
+!uploads/reports/.gitkeep
+*.log
+coverage/
