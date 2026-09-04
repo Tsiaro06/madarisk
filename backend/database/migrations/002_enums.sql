@@ -1,0 +1,82 @@
+-- Migration 002: Enums
+-- Crée tous les types enum nécessaires si absents.
+
+DO $$ BEGIN
+  CREATE TYPE user_role AS ENUM ('SUPER_ADMIN', 'ADMIN', 'OPERATOR', 'VIEWER');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE organization_type AS ENUM ('GOVERNMENT', 'NGO', 'ACADEMIC', 'INTERNATIONAL', 'OTHER');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE territory_type AS ENUM ('DISTRICT', 'COMMUNE', 'REGION');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE import_status AS ENUM ('PENDING', 'PROCESSING', 'COMPLETED', 'FAILED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE matching_status AS ENUM ('PENDING', 'MATCHED', 'UNMATCHED', 'DISPUTED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE matching_method AS ENUM ('EXACT', 'FUZZY', 'MANUAL', 'GEO', 'ADMIN_CODE');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE event_type AS ENUM ('CYCLONE', 'FLOOD', 'DROUGHT', 'EARTHQUAKE', 'LANDSLIDE', 'FIRE', 'EPIDEMIC', 'OTHER');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE event_status AS ENUM ('WATCH', 'WARNING', 'ALERT', 'EMERGENCY', 'RECOVERY');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE severity_level AS ENUM ('LOW', 'MODERATE', 'HIGH', 'CRITICAL');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE track_type AS ENUM ('FORECAST', 'OBSERVED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE risk_phase AS ENUM ('PREVENTION', 'PREPAREDNESS', 'RESPONSE', 'RECOVERY');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE risk_level AS ENUM ('LOW', 'MODERATE', 'HIGH', 'CRITICAL');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE alert_status AS ENUM ('DRAFT', 'SENT', 'ACKNOWLEDGED', 'RESOLVED');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE alert_type AS ENUM ('WEATHER', 'FLOOD', 'SEISMIC', 'HEALTH', 'INFRASTRUCTURE', 'EVACUATION', 'OTHER');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE report_format AS ENUM ('CSV', 'PDF', 'GEOJSON');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  CREATE TYPE ai_message_role AS ENUM ('USER', 'ASSISTANT', 'SYSTEM', 'TOOL');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
