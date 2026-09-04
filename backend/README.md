@@ -26,6 +26,8 @@ npm install
 | `npm start` | Démarrer en production |
 | `npm run lint` | Vérifier le code avec ESLint |
 | `npm run lint:fix` | Corriger automatiquement |
+| `npm run typecheck` | Vérifier les types des sources (`tsc --noEmit`) |
+| `npm run typecheck:test` | Vérifier les types des sources + tests |
 | `npm run format` | Formater avec Prettier |
 | `npm run format:check` | Vérifier le formatage |
 | `npm test` | Exécuter les tests |

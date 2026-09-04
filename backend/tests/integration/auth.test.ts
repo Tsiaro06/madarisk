@@ -59,7 +59,7 @@ describe('Service: creation du premier SUPER_ADMIN', () => {
     );
 
     expect(result.user.role).toBe('SUPER_ADMIN');
-    expect(result.user.passwordHash).toBeUndefined();
+    expect('passwordHash' in result.user).toBe(false);
     expect(createSpy).toHaveBeenCalledTimes(1);
 
     countSpy.mockRestore();
