@@ -37,11 +37,7 @@ router.patch(
   asyncHandler(usersController.changePassword),
 );
 
-router.get(
-  '/:id',
-  validate({ params: userIdParamsSchema }),
-  asyncHandler(usersController.getById),
-);
+router.get('/:id', validate({ params: userIdParamsSchema }), asyncHandler(usersController.getById));
 
 router.patch(
   '/:id',

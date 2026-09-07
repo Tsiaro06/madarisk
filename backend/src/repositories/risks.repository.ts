@@ -93,9 +93,7 @@ export interface AssessmentInsertData {
 }
 
 function mapAssessment(row: AssessmentRow): RiskAssessment {
-  const explanation: string[] = Array.isArray(row.explanation)
-    ? (row.explanation as string[])
-    : [];
+  const explanation: string[] = Array.isArray(row.explanation) ? (row.explanation as string[]) : [];
   const factors: RiskFactors = {
     rainScore: parseFloat(row.rain_score),
     windScore: parseFloat(row.wind_score),
@@ -416,10 +414,7 @@ export const risksRepository = {
     return result.rows.map(mapAssessment);
   },
 
-  async latestForCommune(
-    communeId: string,
-    eventId?: string,
-  ): Promise<RiskAssessment | null> {
+  async latestForCommune(communeId: string, eventId?: string): Promise<RiskAssessment | null> {
     const conditions = ['ra.commune_id = $1'];
     const values: unknown[] = [communeId];
     if (eventId) {
@@ -506,8 +501,7 @@ export const risksRepository = {
       values.push(query.riskLevel);
     }
 
-    const baseWhere =
-      conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const baseWhere = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const result = await db.query<{
       communeId: string;
@@ -583,8 +577,7 @@ export const risksRepository = {
       values.push(query.phase);
     }
 
-    const baseWhere =
-      conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+    const baseWhere = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const result = await db.query<RiskMapRow>(
       `WITH latest AS (

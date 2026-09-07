@@ -3,11 +3,7 @@ export type ImportFileType = 'GEOJSON' | 'JSON' | 'CSV';
 export type ImportStatus = 'BROUILLON' | 'EN_COURS' | 'TERMINE' | 'ECHEC';
 export type MatchingStatus = 'EN_ATTENTE' | 'VALIDE' | 'REJETE' | 'AMBIGU';
 export type MatchingMethod =
-  | 'CODE_ADMINISTRATIF'
-  | 'NOM_NORMALISE'
-  | 'ALIAS'
-  | 'FUZZY_MATCHING'
-  | 'MANUEL';
+  'CODE_ADMINISTRATIF' | 'NOM_NORMALISE' | 'ALIAS' | 'FUZZY_MATCHING' | 'MANUEL';
 
 export interface ImportErrorEntry {
   row: number;

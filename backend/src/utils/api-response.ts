@@ -50,11 +50,7 @@ export function errorResponse(
   return response;
 }
 
-export function paginate(
-  page: number,
-  limit: number,
-  total: number,
-): PaginationMeta {
+export function paginate(page: number, limit: number, total: number): PaginationMeta {
   return {
     page,
     limit,

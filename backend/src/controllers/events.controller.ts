@@ -36,7 +36,7 @@ export const eventsController = {
   getById: async (req: Request, res: Response): Promise<void> => {
     const { id } = req.validatedParams as EventIdParams;
     const event = await eventsService.getById(id);
-    res.status(200).json(successResponse(event, 'Détail de l\'événement'));
+    res.status(200).json(successResponse(event, "Détail de l'événement"));
   },
 
   update: async (req: Request, res: Response): Promise<void> => {
@@ -52,7 +52,7 @@ export const eventsController = {
     const { id } = req.validatedParams as EventIdParams;
     const body = req.validatedBody as UpdateEventStatusInput;
     const event = await eventsService.changeStatus(id, body, req.user, req);
-    res.status(200).json(successResponse(event, 'Statut de l\'événement mis à jour'));
+    res.status(200).json(successResponse(event, "Statut de l'événement mis à jour"));
   },
 
   remove: async (req: Request, res: Response): Promise<void> => {
@@ -88,13 +88,13 @@ export const eventsController = {
     const { id } = req.validatedParams as EventIdParams;
     const body = req.validatedBody as CalculateAreaInput;
     const area = await eventsService.calculateArea(id, body, req.user, req);
-    res.status(201).json(successResponse(area, 'Zone d\'influence calculée'));
+    res.status(201).json(successResponse(area, "Zone d'influence calculée"));
   },
 
   getAreas: async (req: Request, res: Response): Promise<void> => {
     const { id } = req.validatedParams as EventIdParams;
     const geojson = await eventsService.getAreas(id);
-    res.status(200).json(successResponse(geojson, 'Zones d\'influence GeoJSON'));
+    res.status(200).json(successResponse(geojson, "Zones d'influence GeoJSON"));
   },
 
   calculateExposure: async (req: Request, res: Response): Promise<void> => {

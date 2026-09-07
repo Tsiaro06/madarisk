@@ -19,20 +19,15 @@ import {
 } from '../validators/territories.validator';
 import { AppError } from '../utils/app-error';
 
-const RISK_LEVEL_PRESENTATION: Record<
-  TerritoryRiskLevel,
-  { displayLevel: string; color: string }
-> = {
-  FAIBLE: { displayLevel: 'faible', color: '#4caf50' },
-  MODERE: { displayLevel: 'modéré', color: '#ff9800' },
-  ELEVE: { displayLevel: 'élevé', color: '#f44336' },
-  EXTREME: { displayLevel: 'extrême', color: '#9c27b0' },
-};
+const RISK_LEVEL_PRESENTATION: Record<TerritoryRiskLevel, { displayLevel: string; color: string }> =
+  {
+    FAIBLE: { displayLevel: 'faible', color: '#4caf50' },
+    MODERE: { displayLevel: 'modéré', color: '#ff9800' },
+    ELEVE: { displayLevel: 'élevé', color: '#f44336' },
+    EXTREME: { displayLevel: 'extrême', color: '#9c27b0' },
+  };
 
-function enrichRiskFeature(
-  feature: TerritoryFeature,
-  includeRisk: boolean,
-): TerritoryFeature {
+function enrichRiskFeature(feature: TerritoryFeature, includeRisk: boolean): TerritoryFeature {
   const properties = feature.properties;
   if (!includeRisk) {
     return {
@@ -65,9 +60,7 @@ function enrichRiskFeature(
 }
 
 export const territoriesService = {
-  async listDistricts(
-    query: ListDistrictsQuery,
-  ): Promise<PaginatedResult<DistrictListItem>> {
+  async listDistricts(query: ListDistrictsQuery): Promise<PaginatedResult<DistrictListItem>> {
     return territoriesRepository.listDistricts({
       page: query.page,
       limit: query.limit,
@@ -85,9 +78,7 @@ export const territoriesService = {
     return district;
   },
 
-  async listCommunes(
-    query: ListCommunesQuery,
-  ): Promise<PaginatedResult<CommuneListItem>> {
+  async listCommunes(query: ListCommunesQuery): Promise<PaginatedResult<CommuneListItem>> {
     return territoriesRepository.listCommunes({
       page: query.page,
       limit: query.limit,

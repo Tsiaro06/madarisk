@@ -15,7 +15,11 @@ const router = Router();
 
 router.use(authenticate);
 
-router.get('/map-layer', validate({ query: weatherMapQuerySchema }), asyncHandler(weatherController.mapLayer));
+router.get(
+  '/map-layer',
+  validate({ query: weatherMapQuerySchema }),
+  asyncHandler(weatherController.mapLayer),
+);
 
 router.post(
   '/refresh/communes',

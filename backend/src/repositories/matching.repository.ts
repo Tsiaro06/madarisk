@@ -1,9 +1,5 @@
 import { db } from '../config/database';
-import {
-  ImportsTerritoryType,
-  MatchingMethod,
-  MatchingStatus,
-} from '../types/imports.types';
+import { ImportsTerritoryType, MatchingMethod, MatchingStatus } from '../types/imports.types';
 import { ListMatchingQuery } from '../validators/matching.validator';
 
 interface CountRow {
@@ -89,9 +85,7 @@ export const matchingRepository = {
         admin_code: string | null;
         name: string;
         normalized_name: string;
-      }>(
-        `SELECT id, admin_code, name, normalized_name FROM districts`,
-      );
+      }>(`SELECT id, admin_code, name, normalized_name FROM districts`);
       return result.rows.map((r) => ({
         id: r.id,
         adminCode: r.admin_code,
@@ -199,7 +193,9 @@ export const matchingRepository = {
     const placeholders: string[] = [];
     let idx = 1;
     for (const row of rows) {
-      placeholders.push(`($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`);
+      placeholders.push(
+        `($${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++}, $${idx++})`,
+      );
       values.push(
         row.sourceRecordId,
         row.targetType,
@@ -222,9 +218,7 @@ export const matchingRepository = {
     return result.rowCount ?? 0;
   },
 
-  async list(
-    query: ListMatchingQuery,
-  ): Promise<{ items: MatchingRow[]; total: number }> {
+  async list(query: ListMatchingQuery): Promise<{ items: MatchingRow[]; total: number }> {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let idx = 1;

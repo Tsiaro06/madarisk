@@ -11,13 +11,7 @@ const eventTypeEnum = z.enum([
   'AUTRE',
 ]);
 
-const eventStatusEnum = z.enum([
-  'BROUILLON',
-  'PREVISION',
-  'ACTIF',
-  'SUIVI',
-  'CLOTURE',
-]);
+const eventStatusEnum = z.enum(['BROUILLON', 'PREVISION', 'ACTIF', 'SUIVI', 'CLOTURE']);
 
 const severityLevelEnum = z.enum(['FAIBLE', 'MODEREE', 'ELEVEE', 'EXTREME']);
 
@@ -27,38 +21,43 @@ const riskPhaseEnum = z.enum(['AVANT', 'PENDANT', 'APRES', 'RETABLISSEMENT']);
 
 const riskLevelEnum = z.enum(['FAIBLE', 'MODERE', 'ELEVE', 'EXTREME']);
 
-export const createEventSchema = z.object({
-  eventCode: z
-    .string()
-    .trim()
-    .min(1, 'eventCode requis')
-    .max(100, 'eventCode trop long')
-    .regex(/^[A-Za-z0-9._-]+$/, 'eventCode ne peut contenir que des lettres, chiffres, points, tirets ou underscores'),
-  name: z.string().trim().min(1, 'name requis').max(200, 'name trop long'),
-  type: eventTypeEnum,
-  status: eventStatusEnum.optional(),
-  severity: severityLevelEnum.optional(),
-  description: z.string().trim().optional().nullable(),
-  sourceName: z.string().trim().max(150).optional().nullable(),
-  sourceUrl: z
-    .union([z.string().url('sourceUrl doit être une URL valide'), z.literal('')])
-    .transform((v) => (v === '' ? null : v))
-    .optional()
-    .nullable(),
-  startedAt: z
-    .union([z.coerce.date(), z.literal('')])
-    .transform((v) => (v === '' ? null : v instanceof Date ? v.toISOString() : v))
-    .optional()
-    .nullable(),
-  expectedEndAt: z
-    .union([z.coerce.date(), z.literal('')])
-    .transform((v) => (v === '' ? null : v instanceof Date ? v.toISOString() : v))
-    .optional()
-    .nullable(),
-}).refine(
-  (data) => !data.startedAt || !data.expectedEndAt || data.expectedEndAt >= data.startedAt,
-  { message: 'expectedEndAt doit être postérieur ou égal à startedAt', path: ['expectedEndAt'] },
-);
+export const createEventSchema = z
+  .object({
+    eventCode: z
+      .string()
+      .trim()
+      .min(1, 'eventCode requis')
+      .max(100, 'eventCode trop long')
+      .regex(
+        /^[A-Za-z0-9._-]+$/,
+        'eventCode ne peut contenir que des lettres, chiffres, points, tirets ou underscores',
+      ),
+    name: z.string().trim().min(1, 'name requis').max(200, 'name trop long'),
+    type: eventTypeEnum,
+    status: eventStatusEnum.optional(),
+    severity: severityLevelEnum.optional(),
+    description: z.string().trim().optional().nullable(),
+    sourceName: z.string().trim().max(150).optional().nullable(),
+    sourceUrl: z
+      .union([z.string().url('sourceUrl doit être une URL valide'), z.literal('')])
+      .transform((v) => (v === '' ? null : v))
+      .optional()
+      .nullable(),
+    startedAt: z
+      .union([z.coerce.date(), z.literal('')])
+      .transform((v) => (v === '' ? null : v instanceof Date ? v.toISOString() : v))
+      .optional()
+      .nullable(),
+    expectedEndAt: z
+      .union([z.coerce.date(), z.literal('')])
+      .transform((v) => (v === '' ? null : v instanceof Date ? v.toISOString() : v))
+      .optional()
+      .nullable(),
+  })
+  .refine(
+    (data) => !data.startedAt || !data.expectedEndAt || data.expectedEndAt >= data.startedAt,
+    { message: 'expectedEndAt doit être postérieur ou égal à startedAt', path: ['expectedEndAt'] },
+  );
 
 export const updateEventSchema = z
   .object({
@@ -104,7 +103,7 @@ export const listEventsQuerySchema = z.object({
 });
 
 export const eventIdParamsSchema = z.object({
-  id: z.string().uuid('Identifiant d\'événement invalide'),
+  id: z.string().uuid("Identifiant d'événement invalide"),
 });
 
 export const createTrackSchema = z.object({
@@ -115,8 +114,14 @@ export const createTrackSchema = z.object({
     .optional()
     .nullable(),
   trackType: trackTypeEnum.default('OBSERVEE'),
-  latitude: z.coerce.number().min(-90, 'latitude entre -90 et 90').max(90, 'latitude entre -90 et 90'),
-  longitude: z.coerce.number().min(-180, 'longitude entre -180 et 180').max(180, 'longitude entre -180 et 180'),
+  latitude: z.coerce
+    .number()
+    .min(-90, 'latitude entre -90 et 90')
+    .max(90, 'latitude entre -90 et 90'),
+  longitude: z.coerce
+    .number()
+    .min(-180, 'longitude entre -180 et 180')
+    .max(180, 'longitude entre -180 et 180'),
   windSpeedKmh: z.coerce.number().min(0).optional().nullable(),
   gustSpeedKmh: z.coerce.number().min(0).optional().nullable(),
   pressureHpa: z.coerce.number().min(0).optional().nullable(),

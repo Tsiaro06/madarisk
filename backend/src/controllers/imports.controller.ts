@@ -40,7 +40,7 @@ export const importsController = {
   getById: async (req: Request, res: Response): Promise<void> => {
     const id = req.params.id as string;
     const detail = await importsService.getById(id);
-    res.status(200).json(successResponse(detail, 'Détail de l\'import'));
+    res.status(200).json(successResponse(detail, "Détail de l'import"));
   },
 
   getErrors: async (req: Request, res: Response): Promise<void> => {
@@ -48,6 +48,6 @@ export const importsController = {
     const query = req.validatedQuery as ListImportErrorsQuery;
     const result = await importsService.getErrors(id, query.page, query.limit);
     const meta = paginate(result.page, result.limit, result.total);
-    res.status(200).json(successResponse(result.items, 'Erreurs de l\'import', meta));
+    res.status(200).json(successResponse(result.items, "Erreurs de l'import", meta));
   },
 };

@@ -27,7 +27,7 @@ export const usersService = {
 
     const requestedRole = input.role ?? 'CLIENT';
     if (requestedRole === 'SUPER_ADMIN') {
-      throw AppError.forbidden('La création d\'un SUPER_ADMIN par un autre compte est interdite');
+      throw AppError.forbidden("La création d'un SUPER_ADMIN par un autre compte est interdite");
     }
 
     const existing = await usersRepository.findByEmail(input.email);

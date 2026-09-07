@@ -11,8 +11,6 @@ export const systemController = {
     }
 
     const report = await systemService.getDatabaseStatus();
-    res.status(200).json(
-      successResponse(report, 'Diagnostic base de données'),
-    );
+    res.status(200).json(successResponse(report, 'Diagnostic base de données'));
   },
 };

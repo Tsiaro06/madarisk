@@ -1,11 +1,7 @@
 import axios, { AxiosError, AxiosInstance } from 'axios';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
-import {
-  WeatherCurrent,
-  WeatherForecast,
-  WeatherProvider,
-} from '../types/weather.types';
+import { WeatherCurrent, WeatherForecast, WeatherProvider } from '../types/weather.types';
 import { AppError } from '../utils/app-error';
 
 interface OpenMeteoCurrentResponse {
@@ -125,10 +121,7 @@ export class OpenMeteoProvider implements WeatherProvider {
         lastError = err;
         const status = axios.isAxiosError(err) ? err.response?.status : undefined;
         const retriable = status === undefined || status === 429 || status >= 500;
-        logger.debug(
-          { attempt: attempt + 1, status },
-          'Tentative Open-Meteo échouée',
-        );
+        logger.debug({ attempt: attempt + 1, status }, 'Tentative Open-Meteo échouée');
         if (!retriable || attempt >= this.maxRetries) break;
         await sleep(300 * (attempt + 1));
       }
@@ -163,10 +156,7 @@ export class OpenMeteoProvider implements WeatherProvider {
     const current = data.current;
     const rainfall24hMm = data.daily?.precipitation_sum?.[0] ?? null;
 
-    logger.debug(
-      { latitude, longitude, rainfall24hMm },
-      'Données météo actuelles récupérées',
-    );
+    logger.debug({ latitude, longitude, rainfall24hMm }, 'Données météo actuelles récupérées');
 
     return { ...this.mapCurrent(current), rainfall24hMm };
   }

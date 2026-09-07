@@ -11,10 +11,7 @@ export const createUserSchema = z.object({
   firstName: z.string().min(1, 'Le prénom est requis').max(100),
   lastName: z.string().min(1, 'Le nom est requis').max(100),
   email: emailSchema,
-  password: z
-    .string()
-    .min(8, 'Le mot de passe doit contenir au moins 8 caractères')
-    .max(128),
+  password: z.string().min(8, 'Le mot de passe doit contenir au moins 8 caractères').max(128),
   role: roleEnum.optional(),
   organizationId: z.string().uuid('Organisation invalide').nullable().optional(),
 });
@@ -31,7 +28,7 @@ export const updateUserStatusSchema = z.object({
 });
 
 export const changePasswordSchema = z.object({
-  oldPassword: z.string().min(1, 'L\'ancien mot de passe est requis'),
+  oldPassword: z.string().min(1, "L'ancien mot de passe est requis"),
   newPassword: z
     .string()
     .min(8, 'Le mot de passe doit contenir au moins 8 caractères')

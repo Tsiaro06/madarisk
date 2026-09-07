@@ -1,11 +1,5 @@
 import { db } from '../config/database';
-import {
-  User,
-  UserWithPassword,
-  SanitizedUser,
-  Session,
-  UserRole,
-} from '../types/auth.types';
+import { User, UserWithPassword, SanitizedUser, Session, UserRole } from '../types/auth.types';
 
 interface UserRow {
   id: string;
@@ -67,19 +61,15 @@ export const usersRepository = {
   },
 
   async findByEmail(email: string): Promise<UserWithPassword | null> {
-    const result = await db.query<UserRow>(
-      `SELECT ${USER_SELECT} FROM users WHERE email = $1`,
-      [email],
-    );
+    const result = await db.query<UserRow>(`SELECT ${USER_SELECT} FROM users WHERE email = $1`, [
+      email,
+    ]);
     if (!result.rows[0]) return null;
     return mapUser(result.rows[0]);
   },
 
   async findById(id: string): Promise<UserWithPassword | null> {
-    const result = await db.query<UserRow>(
-      `SELECT ${USER_SELECT} FROM users WHERE id = $1`,
-      [id],
-    );
+    const result = await db.query<UserRow>(`SELECT ${USER_SELECT} FROM users WHERE id = $1`, [id]);
     if (!result.rows[0]) return null;
     return mapUser(result.rows[0]);
   },
@@ -108,12 +98,15 @@ export const usersRepository = {
     return mapUser(result.rows[0]);
   },
 
-  async update(id: string, data: {
-    firstName?: string;
-    lastName?: string;
-    email?: string;
-    role?: UserRole;
-  }): Promise<UserWithPassword | null> {
+  async update(
+    id: string,
+    data: {
+      firstName?: string;
+      lastName?: string;
+      email?: string;
+      role?: UserRole;
+    },
+  ): Promise<UserWithPassword | null> {
     const sets: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
@@ -193,7 +186,9 @@ export const usersRepository = {
       values.push(params.isActive);
     }
     if (params.search) {
-      conditions.push(`(first_name ILIKE $${idx} OR last_name ILIKE $${idx} OR email ILIKE $${idx})`);
+      conditions.push(
+        `(first_name ILIKE $${idx} OR last_name ILIKE $${idx} OR email ILIKE $${idx})`,
+      );
       values.push(`%${params.search}%`);
       idx++;
     }

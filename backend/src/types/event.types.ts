@@ -21,12 +21,7 @@ export const EVENT_TYPES: EventType[] = [
   'AUTRE',
 ];
 
-export type EventStatus =
-  | 'BROUILLON'
-  | 'PREVISION'
-  | 'ACTIF'
-  | 'SUIVI'
-  | 'CLOTURE';
+export type EventStatus = 'BROUILLON' | 'PREVISION' | 'ACTIF' | 'SUIVI' | 'CLOTURE';
 
 export const EVENT_STATUSES: EventStatus[] = [
   'BROUILLON',
@@ -38,12 +33,7 @@ export const EVENT_STATUSES: EventStatus[] = [
 
 export type SeverityLevel = 'FAIBLE' | 'MODEREE' | 'ELEVEE' | 'EXTREME';
 
-export const SEVERITY_LEVELS: SeverityLevel[] = [
-  'FAIBLE',
-  'MODEREE',
-  'ELEVEE',
-  'EXTREME',
-];
+export const SEVERITY_LEVELS: SeverityLevel[] = ['FAIBLE', 'MODEREE', 'ELEVEE', 'EXTREME'];
 
 export type TrackType = 'OBSERVEE' | 'PREVUE';
 
@@ -51,12 +41,7 @@ export const TRACK_TYPES: TrackType[] = ['OBSERVEE', 'PREVUE'];
 
 export type RiskPhase = 'AVANT' | 'PENDANT' | 'APRES' | 'RETABLISSEMENT';
 
-export const RISK_PHASES: RiskPhase[] = [
-  'AVANT',
-  'PENDANT',
-  'APRES',
-  'RETABLISSEMENT',
-];
+export const RISK_PHASES: RiskPhase[] = ['AVANT', 'PENDANT', 'APRES', 'RETABLISSEMENT'];
 
 export type RiskLevel = 'FAIBLE' | 'MODERE' | 'ELEVE' | 'EXTREME';
 

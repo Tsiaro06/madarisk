@@ -30,11 +30,7 @@ router.post(
   asyncHandler(eventsController.create),
 );
 
-router.get(
-  '/',
-  validate({ query: listEventsQuerySchema }),
-  asyncHandler(eventsController.list),
-);
+router.get('/', validate({ query: listEventsQuerySchema }), asyncHandler(eventsController.list));
 
 router.get(
   '/:id',

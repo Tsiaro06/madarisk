@@ -10,6 +10,10 @@ import eventsRoutes from './events.routes';
 import weatherRoutes from './weather.routes';
 import risksRoutes from './risks.routes';
 import riskConfigurationsRoutes from './risk-configurations.routes';
+import alertsRoutes from './alerts.routes';
+import dashboardRoutes from './dashboard.routes';
+import reportsRoutes from './reports.routes';
+import aiRoutes from './ai.routes';
 
 const router = Router();
 
@@ -24,5 +28,9 @@ router.use('/events', eventsRoutes);
 router.use('/weather', weatherRoutes);
 router.use('/risks', risksRoutes);
 router.use('/risk-configurations', riskConfigurationsRoutes);
+router.use('/alerts', alertsRoutes);
+router.use('/dashboard', dashboardRoutes);
+router.use('/reports', reportsRoutes);
+router.use('/ai', aiRoutes);
 
 export default router;

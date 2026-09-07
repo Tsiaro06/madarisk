@@ -263,7 +263,9 @@ export const eventsService = {
     req: RequestContext,
   ): Promise<EventTrack> {
     if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
-      throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent ajouter un point de trajectoire');
+      throw AppError.forbidden(
+        'Seuls ADMIN et SUPER_ADMIN peuvent ajouter un point de trajectoire',
+      );
     }
 
     const event = await eventsRepository.findById(id);
@@ -322,7 +324,9 @@ export const eventsService = {
 
     const count = await eventsRepository.countTracks(id);
     if (count < 2) {
-      throw AppError.badRequest('Au moins deux points de trajectoire sont requis pour calculer une zone');
+      throw AppError.badRequest(
+        'Au moins deux points de trajectoire sont requis pour calculer une zone',
+      );
     }
 
     const area = await eventsRepository.calculateArea({
@@ -342,7 +346,12 @@ export const eventsService = {
       action: 'EVENT_AREA_CALCULATED',
       entityType: 'event_area',
       entityId: area.id,
-      newValue: { eventId: id, phase: input.phase, riskLevel: input.riskLevel, radiusKm: input.radiusKm },
+      newValue: {
+        eventId: id,
+        phase: input.phase,
+        riskLevel: input.riskLevel,
+        radiusKm: input.radiusKm,
+      },
       ipAddress: getIp(req),
     });
 
@@ -361,14 +370,14 @@ export const eventsService = {
     req: RequestContext,
   ): Promise<ExposureCalculationResult> {
     if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
-      throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent calculer l\'exposition');
+      throw AppError.forbidden("Seuls ADMIN et SUPER_ADMIN peuvent calculer l'exposition");
     }
 
     await this.ensureExists(id);
 
     const hasAreas = await eventsRepository.hasAreas(id);
     if (!hasAreas) {
-      throw AppError.badRequest('Aucune zone d\'influence disponible pour le calcul d\'exposition');
+      throw AppError.badRequest("Aucune zone d'influence disponible pour le calcul d'exposition");
     }
 
     if (query.allAreas) {

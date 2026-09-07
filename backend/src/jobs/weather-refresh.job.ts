@@ -12,27 +12,20 @@ export function startWeatherRefreshJob(): void {
   if (started) return;
   started = true;
 
-  cron.schedule(
-    env.WEATHER_REFRESH_CRON,
-    () => {
-      void (async () => {
-        logger.info('Job météo : démarrage du rafraîchissement des communes');
-        try {
-          const result = await weatherService.refresh(
-            { confirmAll: true },
-            SYSTEM_ACTOR,
-            {},
-          );
-          logger.info(
-            { targeted: result.totalTargeted, saved: result.totalSaved, failed: result.totalFailed },
-            'Job météo : rafraîchissement terminé',
-          );
-        } catch (err) {
-          logger.error({ err }, 'Job météo : échec du rafraîchissement');
-        }
-      })();
-    },
-  );
+  cron.schedule(env.WEATHER_REFRESH_CRON, () => {
+    void (async () => {
+      logger.info('Job météo : démarrage du rafraîchissement des communes');
+      try {
+        const result = await weatherService.refresh({ confirmAll: true }, SYSTEM_ACTOR, {});
+        logger.info(
+          { targeted: result.totalTargeted, saved: result.totalSaved, failed: result.totalFailed },
+          'Job météo : rafraîchissement terminé',
+        );
+      } catch (err) {
+        logger.error({ err }, 'Job météo : échec du rafraîchissement');
+      }
+    })();
+  });
 
   logger.info('Job météo planifié (ENABLE_SCHEDULED_JOBS=true)');
 }

@@ -18,7 +18,7 @@ export const listImportsQuerySchema = z.object({
 });
 
 export const importIdParamsSchema = z.object({
-  id: z.string().uuid('Identifiant d\'import invalide'),
+  id: z.string().uuid("Identifiant d'import invalide"),
 });
 
 export const listImportErrorsQuerySchema = z.object({

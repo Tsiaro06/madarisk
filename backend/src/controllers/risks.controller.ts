@@ -59,7 +59,7 @@ export const risksController = {
     const { id } = req.validatedParams as IdParams;
     const body = req.validatedBody as RecalculateEventRiskInput;
     const result = await risksService.recalculateEvent(id, body.phase, req.user, req);
-    res.status(200).json(successResponse(result, 'Risques de l\'événement recalculés'));
+    res.status(200).json(successResponse(result, "Risques de l'événement recalculés"));
   },
 
   communeRisks: async (req: Request, res: Response): Promise<void> => {

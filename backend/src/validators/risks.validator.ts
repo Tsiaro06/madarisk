@@ -63,7 +63,13 @@ export const updateRiskConfigurationSchema = z
   })
   .refine(
     (data) => {
-      const weights = [data.rainWeight, data.windWeight, data.proximityWeight, data.vulnerabilityWeight, data.exposureWeight];
+      const weights = [
+        data.rainWeight,
+        data.windWeight,
+        data.proximityWeight,
+        data.vulnerabilityWeight,
+        data.exposureWeight,
+      ];
       if (weights.every((w) => w === undefined)) return true;
       return (
         Math.round(
@@ -80,7 +86,12 @@ export const updateRiskConfigurationSchema = z
   )
   .refine(
     (data) => {
-      const thresholds = [data.lowThreshold, data.moderateThreshold, data.highThreshold, data.extremeThreshold];
+      const thresholds = [
+        data.lowThreshold,
+        data.moderateThreshold,
+        data.highThreshold,
+        data.extremeThreshold,
+      ];
       if (thresholds.every((t) => t === undefined)) return true;
       const defined = thresholds.filter((t): t is number => t !== undefined);
       for (let i = 1; i < defined.length; i += 1) {
@@ -104,7 +115,7 @@ export const communeIdParamsSchema = z.object({
 
 export const recalculateRiskSchema = z
   .object({
-    eventId: z.string().uuid('Identifiant d\'événement invalide').optional(),
+    eventId: z.string().uuid("Identifiant d'événement invalide").optional(),
     communeIds: z
       .array(z.string().uuid('Identifiant de commune invalide'))
       .min(1, 'Au moins un identifiant de commune')
@@ -113,20 +124,17 @@ export const recalculateRiskSchema = z
     districtId: z.string().uuid('Identifiant de district invalide').optional(),
     phase: riskPhaseEnum,
   })
-  .refine(
-    (data) => Boolean(data.eventId) || Boolean(data.communeIds) || Boolean(data.districtId),
-    {
-      message: 'Précisez au moins un filtre (eventId, communeIds ou districtId)',
-      path: ['eventId'],
-    },
-  );
+  .refine((data) => Boolean(data.eventId) || Boolean(data.communeIds) || Boolean(data.districtId), {
+    message: 'Précisez au moins un filtre (eventId, communeIds ou districtId)',
+    path: ['eventId'],
+  });
 
 export const recalculateEventRiskSchema = z.object({
   phase: riskPhaseEnum,
 });
 
 export const communeRiskQuerySchema = z.object({
-  eventId: z.string().uuid('Identifiant d\'événement invalide').optional(),
+  eventId: z.string().uuid("Identifiant d'événement invalide").optional(),
   latest: z
     .string()
     .optional()
@@ -134,7 +142,7 @@ export const communeRiskQuerySchema = z.object({
 });
 
 export const priorityCommunesQuerySchema = z.object({
-  eventId: z.string().uuid('Identifiant d\'événement invalide').optional(),
+  eventId: z.string().uuid("Identifiant d'événement invalide").optional(),
   districtId: z.string().uuid('Identifiant de district invalide').optional(),
   riskLevel: riskLevelEnum.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -142,7 +150,7 @@ export const priorityCommunesQuerySchema = z.object({
 
 export const riskMapLayerQuerySchema = z.object({
   districtId: z.string().uuid('Identifiant de district invalide').optional(),
-  eventId: z.string().uuid('Identifiant d\'événement invalide').optional(),
+  eventId: z.string().uuid("Identifiant d'événement invalide").optional(),
   riskLevel: riskLevelEnum.optional(),
   phase: riskPhaseEnum.optional(),
 });

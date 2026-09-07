@@ -11,10 +11,7 @@ import {
   MatchingStatus,
   SourceRecord,
 } from '../types/imports.types';
-import {
-  ListMatchingQuery,
-  ManualLinkInput,
-} from '../validators/matching.validator';
+import { ListMatchingQuery, ManualLinkInput } from '../validators/matching.validator';
 import { IncomingHttpHeaders } from 'http';
 
 interface RequestContext {
@@ -99,7 +96,10 @@ function decideForSourceRecord(
   // 4. Similarité contrôlée
   if (record.sourceName) {
     const scored = candidates
-      .map((c) => ({ candidate: c, score: similarityPercent(record.sourceName ?? '', c.normalizedName) }))
+      .map((c) => ({
+        candidate: c,
+        score: similarityPercent(record.sourceName ?? '', c.normalizedName),
+      }))
       .filter((x) => x.score >= 95)
       .sort((a, b) => b.score - a.score);
 
@@ -126,11 +126,15 @@ function decideForSourceRecord(
 }
 
 export const matchingService = {
-  async run(importId: string, actor: { id: string }, req: RequestContext): Promise<MatchingRunResult> {
+  async run(
+    importId: string,
+    actor: { id: string },
+    req: RequestContext,
+  ): Promise<MatchingRunResult> {
     const importRecord = await importsRepository.findById(importId);
     if (!importRecord) throw AppError.notFound('Import introuvable');
     if (importRecord.status !== 'TERMINE') {
-      throw AppError.badRequest('L\'import doit être terminé avant d\'être traité');
+      throw AppError.badRequest("L'import doit être terminé avant d'être traité");
     }
 
     const records = await importsRepository.listSourceRecords(importId);
@@ -145,11 +149,21 @@ export const matchingService = {
     for (const type of types) {
       const terr = await matchingRepository.listTerritories(type);
       for (const t of terr) {
-        candidates.push({ id: t.id, type, adminCode: t.adminCode, normalizedName: t.normalizedName });
+        candidates.push({
+          id: t.id,
+          type,
+          adminCode: t.adminCode,
+          normalizedName: t.normalizedName,
+        });
       }
       const aliasRows = await matchingRepository.listAliases(type);
       for (const a of aliasRows) {
-        aliases.push({ type, districtId: a.districtId, communeId: a.communeId, normalizedAlias: a.normalizedAlias });
+        aliases.push({
+          type,
+          districtId: a.districtId,
+          communeId: a.communeId,
+          normalizedAlias: a.normalizedAlias,
+        });
       }
     }
 

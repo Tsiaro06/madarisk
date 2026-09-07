@@ -17,11 +17,16 @@ function parseExpiresIn(value: string): number {
   if (!match) return 7 * 24 * 60 * 60 * 1000;
   const amount = parseInt(match[1], 10);
   switch (match[2]) {
-    case 's': return amount * 1000;
-    case 'm': return amount * 60 * 1000;
-    case 'h': return amount * 60 * 60 * 1000;
-    case 'd': return amount * 24 * 60 * 60 * 1000;
-    default: return 7 * 24 * 60 * 60 * 1000;
+    case 's':
+      return amount * 1000;
+    case 'm':
+      return amount * 60 * 1000;
+    case 'h':
+      return amount * 60 * 60 * 1000;
+    case 'd':
+      return amount * 24 * 60 * 60 * 1000;
+    default:
+      return 7 * 24 * 60 * 60 * 1000;
   }
 }
 
@@ -34,16 +39,21 @@ function clientInfo(req: RequestContext) {
 }
 
 export const authService = {
-  async register(input: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    password: string;
-  }, req: RequestContext): Promise<{ user: SanitizedUser }> {
+  async register(
+    input: {
+      firstName: string;
+      lastName: string;
+      email: string;
+      password: string;
+    },
+    req: RequestContext,
+  ): Promise<{ user: SanitizedUser }> {
     const userCount = await usersRepository.countUsers();
 
     if (userCount > 0) {
-      throw AppError.forbidden('Inscription non autorisée : seul un SUPER_ADMIN peut créer des utilisateurs');
+      throw AppError.forbidden(
+        'Inscription non autorisée : seul un SUPER_ADMIN peut créer des utilisateurs',
+      );
     }
 
     const existing = await usersRepository.findByEmail(input.email);

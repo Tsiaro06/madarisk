@@ -29,16 +29,8 @@ router.post(
   asyncHandler(authController.refresh),
 );
 
-router.post(
-  '/logout',
-  validate({ body: refreshSchema }),
-  asyncHandler(authController.logout),
-);
+router.post('/logout', validate({ body: refreshSchema }), asyncHandler(authController.logout));
 
-router.get(
-  '/me',
-  authenticate,
-  asyncHandler(authController.me),
-);
+router.get('/me', authenticate, asyncHandler(authController.me));
 
 export default router;

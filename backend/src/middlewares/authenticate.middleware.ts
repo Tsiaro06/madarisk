@@ -6,7 +6,7 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
   const header = req.headers.authorization;
 
   if (!header || !header.startsWith('Bearer ')) {
-    next(AppError.unauthorized('Token d\'accès manquant ou invalide'));
+    next(AppError.unauthorized("Token d'accès manquant ou invalide"));
     return;
   }
 
@@ -21,6 +21,6 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
     req.user = { id: payload.sub, role: payload.role };
     next();
   } catch {
-    next(AppError.unauthorized('Token d\'accès invalide ou expiré'));
+    next(AppError.unauthorized("Token d'accès invalide ou expiré"));
   }
 }

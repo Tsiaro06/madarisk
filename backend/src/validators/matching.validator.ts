@@ -4,7 +4,7 @@ const targetTypeEnum = z.enum(['DISTRICT', 'COMMUNE']);
 const matchingStatusEnum = z.enum(['EN_ATTENTE', 'VALIDE', 'REJETE', 'AMBIGU']);
 
 export const runMatchingParamsSchema = z.object({
-  importId: z.string().uuid('Identifiant d\'import invalide'),
+  importId: z.string().uuid("Identifiant d'import invalide"),
 });
 
 export const listMatchingQuerySchema = z.object({
@@ -34,13 +34,10 @@ export const manualLinkSchema = z
     createAlias: z.boolean().optional().default(false),
     alias: z.string().trim().min(1).max(255).optional(),
   })
-  .refine(
-    (data) => (data.targetType === 'DISTRICT' ? !!data.districtId : !!data.communeId),
-    {
-      message: 'Il faut fournir districtId pour DISTRICT ou communeId pour COMMUNE',
-      path: ['targetType'],
-    },
-  )
+  .refine((data) => (data.targetType === 'DISTRICT' ? !!data.districtId : !!data.communeId), {
+    message: 'Il faut fournir districtId pour DISTRICT ou communeId pour COMMUNE',
+    path: ['targetType'],
+  })
   .refine((data) => !data.createAlias || !!data.alias, {
     message: 'Une valeur alias est requise lorsque createAlias est activé',
     path: ['alias'],

@@ -28,10 +28,7 @@ router.get(
   asyncHandler(matchingController.list),
 );
 
-router.get(
-  '/statistics',
-  asyncHandler(matchingController.statistics),
-);
+router.get('/statistics', asyncHandler(matchingController.statistics));
 
 router.post(
   '/manual-link',

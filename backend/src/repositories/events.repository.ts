@@ -222,8 +222,7 @@ export const eventsRepository = {
       totalTrackPoints: parseInt(row?.totalTrackPoints ?? '0', 10),
       totalAreas: parseInt(row?.totalAreas ?? '0', 10),
       totalExposedCommunes: parseInt(row?.totalExposedCommunes ?? '0', 10),
-      exposedPopulation:
-        exposedPopulation !== null ? parseInt(exposedPopulation, 10) : null,
+      exposedPopulation: exposedPopulation !== null ? parseInt(exposedPopulation, 10) : null,
     };
   },
 
@@ -473,10 +472,7 @@ export const eventsRepository = {
     };
   },
 
-  async listTracks(
-    eventId: string,
-    trackType?: string,
-  ): Promise<EventTrack[]> {
+  async listTracks(eventId: string, trackType?: string): Promise<EventTrack[]> {
     const values: unknown[] = [eventId];
     let where = 'WHERE et.event_id = $1';
     if (trackType) {
@@ -549,9 +545,7 @@ export const eventsRepository = {
        GROUP BY et.track_type`,
       [eventId],
     );
-    const features = result.rows
-      .map((r) => r.feature)
-      .filter((f) => f.geometry !== null);
+    const features = result.rows.map((r) => r.feature).filter((f) => f.geometry !== null);
     return { type: 'FeatureCollection', features };
   },
 
@@ -716,8 +710,7 @@ export const eventsRepository = {
       totalExposedCommuneCount: parseCount({
         count: totals.rows[0]?.totalExposedCommuneCount ?? '0',
       }),
-      totalExposedPopulation:
-        exposedPopulation !== null ? parseInt(exposedPopulation, 10) : null,
+      totalExposedPopulation: exposedPopulation !== null ? parseInt(exposedPopulation, 10) : null,
     };
   },
 

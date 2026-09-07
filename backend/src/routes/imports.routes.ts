@@ -23,11 +23,7 @@ router.post(
   asyncHandler(importsController.create),
 );
 
-router.get(
-  '/',
-  validate({ query: listImportsQuerySchema }),
-  asyncHandler(importsController.list),
-);
+router.get('/', validate({ query: listImportsQuerySchema }), asyncHandler(importsController.list));
 
 router.get(
   '/:id',

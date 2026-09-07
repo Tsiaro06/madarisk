@@ -64,7 +64,8 @@ export const weatherService = {
       throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent rafraîchir les données météo');
     }
 
-    const hasFilter = Boolean(input.communeIds?.length) || Boolean(input.districtId) || Boolean(input.eventId);
+    const hasFilter =
+      Boolean(input.communeIds?.length) || Boolean(input.districtId) || Boolean(input.eventId);
     if (!hasFilter && input.confirmAll !== true) {
       throw AppError.badRequest(
         'Précisez au moins un filtre (communeIds, districtId, eventId) ou activez confirmAll',
@@ -111,7 +112,10 @@ export const weatherService = {
         } catch (err) {
           const reason = err instanceof Error ? err.message : 'Erreur inconnue';
           failures.push({ communeId: target.id, reason });
-          logger.warn({ communeId: target.id, err }, 'Échec du rafraîchissement météo d\'une commune');
+          logger.warn(
+            { communeId: target.id, err },
+            "Échec du rafraîchissement météo d'une commune",
+          );
         }
       },
       REFRESH_CONCURRENCY,

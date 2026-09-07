@@ -5,34 +5,142 @@ info:
     Plateforme SIG de surveillance et d'anticipation des catastrophes naturelles à Madagascar.
 
     La plupart des endpoints nécessitent un jeton d'accès JWT.
-    Utilisez `POST /api/v1/auth/login` puis renseignez le jeton dans le bouton **Authorize**.
+    Obtenez-le via `POST /auth/login`, puis cliquez sur **Authorize** et renseignez `Bearer <votre_token>`.
+
+    Conventions :
+    - Réponse de succès : `{ success: true, message, data, meta? }`.
+    - Réponse d'erreur : `{ success: false, message, errors? }`.
+    - Pagination : `page` (défaut 1), `limit` (défaut 20, max 100), `meta: { page, limit, total, totalPages }`.
+    - Erreurs : `400` requête invalide, `401` non authentifié, `403` rôle insuffisant,
+      `404` introuvable, `409` conflit, `422` échec de validation (zod), `429` trop de requêtes,
+      `500` erreur interne.
+    - Rôles : `SUPER_ADMIN`, `ADMIN`, `ANALYSTE_SIG`, `CLIENT`.
   version: 1.0.0
 servers:
   - url: http://localhost:5000/api/v1
-    description: Serveur local de développement
+    description: Serveur local de développement - API versionnée
+  - url: http://localhost:5000
+    description: Serveur local de développement - racine (health + documentation)
 tags:
   - name: Health
-    description: État de l'API
+    description: État de l'API et de la base de données
+  - name: Diagnostics
+    description: Statut de la base de données (désactivé en production)
   - name: Auth
-    description: Authentification (JWT + sessions)
+    description: Authentification, sessions et jeton JWT
   - name: Utilisateurs
-    description: Gestion des utilisateurs
+    description: Gestion des utilisateurs et mot de passe personnel
   - name: Territoires
-    description: Districts et communes (Phase 5)
+    description: Districts et communes de Madagascar (Phase 5)
+  - name: Imports
+    description: Import de fichiers SIG (GeoJSON, JSON, CSV) - ANALYSTE_SIG / SUPER_ADMIN
+  - name: Matching
+    description: Appariement des enregistrements importés vers les territoires - ANALYSTE_SIG / SUPER_ADMIN
+  - name: Événements
+    description: Événements cycloniques, trajectoires, zones d'influence, exposition (Phase 7)
+  - name: Météo
+    description: Observations, prévisions et rafraîchissement météo (Open-Meteo)
+  - name: Risques
+    description: Moteur de calcul des risques par commune (Phase 8)
+  - name: Configurations
+    description: Paramétrage des poids et seuils du moteur de risque
+  - name: Alertes
+    description: Alertes publiques et communications de crise (Phase 9)
+  - name: Tableau de bord
+    description: Synthèse et indicateurs pour le tableau de bord cartographique
+  - name: Rapports & Exports
+    description: Rapports, exports CSV / PDF / GeoJSON et téléchargement de rapports
+  - name: Assistant IA
+    description: Assistant de renseignement IA (Gemini) - (Phase 11)
 paths:
   /health:
     get:
       tags: [Health]
-      summary: État de santé de l'API
+      summary: État de santé de l'API (vérifie la base de données)
+      description: Accessible aussi à la racine du serveur (`GET /health`).
+      operationId: healthCheck
       responses:
         '200':
-          description: API opérationnelle
+          description: API opérationnelle (database connected/degraded)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      status: { type: string, enum: [ok, degraded] }
+                      environment: { type: string }
+                      database: { type: string, enum: [connected, unavailable] }
+                      timestamp: { type: string, format: date-time }
+              example:
+                success: true
+                message: API MadaRisk Map opérationnelle.
+                data:
+                  status: ok
+                  environment: development
+                  database: connected
+                  timestamp: '2026-09-07T08:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /system/database-status:
+    get:
+      tags: [Diagnostics]
+      summary: Statut de la base de données (PostGIS, tables, extensions)
+      description: Désactivé en production (retourne 403).
+      operationId: systemDatabaseStatus
+      responses:
+        '200':
+          description: Statut de la base de données
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    additionalProperties: true
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/docs:
+    get:
+      tags: [Health]
+      summary: Documentation interactive Swagger (GET /api/docs)
+      description: Interface Swagger UI. Alias `GET /api-docs`. Point d'entrée de la documentation.
+      operationId: swaggerUiDocs
+      responses:
+        '200':
+          description: Page HTML de la documentation Swagger UI
+          content:
+            text/html:
+              schema: { type: string }
+  /api-docs:
+    get:
+      tags: [Health]
+      summary: Documentation interactive Swagger (alias /api-docs)
+      operationId: swaggerUiDocsAlias
+      responses:
+        '200':
+          description: Page HTML de la documentation Swagger UI
+          content:
+            text/html:
+              schema: { type: string }
 
   /auth/register:
     post:
       tags: [Auth]
-      summary: Créer le premier SUPER_ADMIN
-      description: Fonctionne uniquement si la table `users` est vide.
+      summary: Créer le premier compte SUPER_ADMIN
+      description: Fonctionne uniquement si la table `users` est vide (sécurité d'amorçage). Limité à 10 requêtes / 15 min.
+      operationId: registerFirstAdmin
       requestBody:
         required: true
         content:
@@ -41,20 +149,41 @@ paths:
               type: object
               required: [firstName, lastName, email, password]
               properties:
-                firstName: { type: string }
-                lastName: { type: string }
-                email: { type: string, format: email }
-                password: { type: string, format: password }
+                firstName: { type: string, minLength: 1, maxLength: 100, example: Admin }
+                lastName: { type: string, minLength: 1, maxLength: 100, example: MadaRisk }
+                email: { type: string, format: email, example: admin@madarisk.mg }
+                password:
+                  type: string
+                  format: password
+                  minLength: 8
+                  description: Au moins 8 caractères, avec majuscule, minuscule, chiffre et caractère spécial.
+                  example: Admin@123!
       responses:
         '201':
-          description: Utilisateur créé
+          description: Compte SUPER_ADMIN créé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/User' }
         '409':
-          description: Base non vide / email existant
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /auth/login:
     post:
       tags: [Auth]
       summary: Connexion
+      description: Retourne un accessToken (15 min) et un refreshToken (7 jours). Limité à 10 tentatives / 15 min (429).
+      operationId: login
       requestBody:
         required: true
         content:
@@ -63,16 +192,55 @@ paths:
               type: object
               required: [email, password]
               properties:
-                email: { type: string, format: email }
-                password: { type: string, format: password }
+                email: { type: string, format: email, example: admin@madarisk.mg }
+                password: { type: string, format: password, example: Admin@123! }
+            examples:
+              loginExample:
+                summary: Connexion administrateur
+                value:
+                  email: admin@madarisk.mg
+                  password: Admin@123!
       responses:
         '200':
-          description: Jetons access + refresh
+          description: Connexion réussie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      accessToken: { type: string, description: Jeton JWT (15 min) }
+                      refreshToken: { type: string, description: Jeton de rafraîchissement (7 jours) }
+                      user: { $ref: '#/components/schemas/User' }
+              example:
+                success: true
+                message: Connexion réussie
+                data:
+                  accessToken: eyJhbGciOiJIUzI1NiIs...
+                  refreshToken: eyJhbGciOiJIUzI1NiIs...
+                  user:
+                    id: 00000000-0000-0000-0000-000000000001
+                    email: admin@madarisk.mg
+                    role: SUPER_ADMIN
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /auth/refresh:
     post:
       tags: [Auth]
-      summary: Rafraîchir les jetons (rotation)
+      summary: Rafraîchir la session
+      description: Échange un refreshToken valide contre de nouveaux jetons. Limité à 30 requêtes / 15 min.
+      operationId: refreshToken
       requestBody:
         required: true
         content:
@@ -84,12 +252,35 @@ paths:
                 refreshToken: { type: string }
       responses:
         '200':
-          description: Nouveaux jetons
+          description: Token rafraîchi avec succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      accessToken: { type: string }
+                      refreshToken: { type: string }
+                      user: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /auth/logout:
     post:
       tags: [Auth]
-      summary: Déconnexion (révoque la session)
+      summary: Déconnexion
+      description: Révoque la session. Le refreshToken doit être fourni dans le corps (le jeton est invalidé côté serveur).
+      operationId: logout
       requestBody:
         required: true
         content:
@@ -100,7 +291,20 @@ paths:
               properties:
                 refreshToken: { type: string }
       responses:
-        '204': { description: Session révoquée }
+        '200':
+          description: Déconnexion réussie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  message: { type: string, example: Déconnexion réussie }
+                  data: { type: 'null' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /auth/me:
     get:
@@ -108,25 +312,277 @@ paths:
       summary: Profil de l'utilisateur connecté
       security:
         - bearerAuth: []
+      operationId: getMe
       responses:
         '200':
           description: Profil utilisateur
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users:
+    get:
+      tags: [Utilisateurs]
+      summary: Liste des utilisateurs (SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: listUsers
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: search, in: query, required: false, schema: { type: string }, description: Recherche sur email, prénom ou nom }
+        - { name: role, in: query, required: false, schema: { $ref: '#/components/schemas/UserRole' } }
+        - { name: isActive, in: query, required: false, schema: { type: boolean }, description: Filtre actif/inactif ("true"/"false") }
+      responses:
+        '200':
+          description: Liste des utilisateurs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/User' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Utilisateurs]
+      summary: Créer un utilisateur (SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: createUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCreateBody'
+      responses:
+        '201':
+          description: Utilisateur créé avec succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/User' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/me/password:
+    patch:
+      tags: [Utilisateurs]
+      summary: Modifier son propre mot de passe
+      security:
+        - bearerAuth: []
+      operationId: changeMyPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [oldPassword, newPassword]
+              properties:
+                oldPassword: { type: string, minLength: 1 }
+                newPassword:
+                  type: string
+                  format: password
+                  minLength: 8
+                  description: Au moins 8 caractères, avec majuscule, minuscule, chiffre et caractère spécial.
+      responses:
+        '200':
+          description: Mot de passe modifié avec succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  message: { type: string, example: Mot de passe modifié avec succès }
+                  data: { type: 'null' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/{id}:
+    get:
+      tags: [Utilisateurs]
+      summary: Détail d'un utilisateur
+      description: Son propre profil pour tout utilisateur connecté ; n'importe quel profil pour un SUPER_ADMIN.
+      security:
+        - bearerAuth: []
+      operationId: getUser
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+      responses:
+        '200':
+          description: Utilisateur
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/User' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Utilisateurs]
+      summary: Modifier un utilisateur
+      description: |
+        Tout utilisateur connecté peut mettre à jour ses propres informations (prénom, nom, email).
+        Les changements de rôle et le modification d'un profil tiers nécessitent SUPER_ADMIN (contrôlé dans le service).
+      security:
+        - bearerAuth: []
+      operationId: updateUser
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UserUpdateBody' }
+      responses:
+        '200':
+          description: Utilisateur mis à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/User' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /users/{id}/status:
+    patch:
+      tags: [Utilisateurs]
+      summary: Activer / désactiver un compte (SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: updateUserStatus
+      parameters:
+        - { $ref: '#/components/parameters/UserId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [isActive]
+              properties:
+                isActive: { type: boolean, description: false pour désactiver le compte }
+      responses:
+        '200':
+          description: Statut de l'utilisateur mis à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/User' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /territories/districts:
     get:
       tags: [Territoires]
-      summary: Liste paginée des districts
+      summary: Liste des districts
       security:
         - bearerAuth: []
+      operationId: listDistricts
       parameters:
-        - { name: page, in: query, schema: { type: integer, default: 1 } }
-        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
-        - { name: search, in: query, required: false, schema: { type: string } }
-        - { name: adminCode, in: query, required: false, schema: { type: string } }
-        - { name: includeGeometry, in: query, required: false, schema: { type: boolean, default: false } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: search, in: query, required: false, schema: { type: string }, description: Recherche sur nom ou code }
+        - { name: adminCode, in: query, required: false, schema: { type: string }, description: Code administratif exact }
+        - { name: includeGeometry, in: query, required: false, schema: { type: boolean }, description: Inclure la géométrie ("true"/"1") }
       responses:
         '200':
-          description: Liste paginée des districts
+          description: Liste des districts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/District' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /territories/districts/{id}:
     get:
@@ -134,160 +590,2926 @@ paths:
       summary: Détail d'un district
       security:
         - bearerAuth: []
+      operationId: getDistrict
       parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/DistrictId' }
       responses:
         '200':
           description: Détail du district
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/District' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: District introuvable
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /territories/communes:
     get:
       tags: [Territoires]
-      summary: Liste paginée des communes
+      summary: Liste des communes
       security:
         - bearerAuth: []
+      operationId: listCommunes
       parameters:
-        - { name: page, in: query, schema: { type: integer, default: 1 } }
-        - { name: limit, in: query, schema: { type: integer, default: 20, maximum: 100 } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: search, in: query, required: false, schema: { type: string }, description: Recherche sur nom ou code }
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: districtCode, in: query, required: false, schema: { type: string } }
-        - { name: search, in: query, required: false, schema: { type: string } }
         - { name: adminCode, in: query, required: false, schema: { type: string } }
-        - { name: riskLevel, in: query, required: false, schema: { type: string, enum: [FAIBLE, MODERE, ELEVE, EXTREME] } }
+        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: includeGeometry, in: query, required: false, schema: { type: boolean, default: false } }
+        - { name: includeGeometry, in: query, required: false, schema: { type: boolean } }
       responses:
         '200':
-          description: Liste paginée des communes
+          description: Liste des communes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Commune' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /territories/communes/{id}:
     get:
       tags: [Territoires]
-      summary: Détail d'une commune (météo, risque, événements)
+      summary: Détail d'une commune
       security:
         - bearerAuth: []
+      operationId: getCommune
       parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/CommuneId' }
       responses:
         '200':
           description: Détail de la commune
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/Commune' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '404':
-          description: Commune introuvable
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /territories/search:
     get:
       tags: [Territoires]
-      summary: Recherche de districts et de communes
+      summary: Recherche de territoires (district ou commune)
       security:
         - bearerAuth: []
+      operationId: searchTerritories
       parameters:
-        - { name: q, in: query, required: true, schema: { type: string, minLength: 2 } }
-        - { name: limit, in: query, required: false, schema: { type: integer, default: 20, maximum: 20 } }
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2 }
+          description: Terme de recherche (nom ou code)
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 20, default: 20 }
       responses:
         '200':
           description: Résultats de recherche
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items:
+                      oneOf:
+                        - $ref: '#/components/schemas/District'
+                        - $ref: '#/components/schemas/Commune'
         '400':
-          description: Requête trop courte (< 2 caractères)
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /territories/map/districts:
     get:
       tags: [Territoires]
-      summary: FeatureCollection GeoJSON des districts (Leaflet)
+      summary: Districts en GeoJSON FeatureCollection (couche carte)
       security:
         - bearerAuth: []
+      operationId: districtsGeoJson
       parameters:
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: riskLevel, in: query, required: false, schema: { type: string, enum: [FAIBLE, MODERE, ELEVE, EXTREME] } }
-        - { name: includeStats, in: query, required: false, schema: { type: boolean, default: false } }
+        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
+        - { name: includeStats, in: query, required: false, schema: { type: boolean }, description: Inclure les statistiques agrégées }
       responses:
         '200':
-          description: FeatureCollection compatible Leaflet
+          description: District FeatureCollection
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeoJsonFeatureCollection' }
+              examples:
+                districtsExample:
+                  $ref: '#/components/examples/geoJsonDistricts'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /territories/map/communes:
     get:
       tags: [Territoires]
-      summary: FeatureCollection GeoJSON des communes (Leaflet)
+      summary: Communes en GeoJSON FeatureCollection (couche carte)
       security:
         - bearerAuth: []
+      operationId: communesGeoJson
       parameters:
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: districtCode, in: query, required: false, schema: { type: string } }
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: riskLevel, in: query, required: false, schema: { type: string, enum: [FAIBLE, MODERE, ELEVE, EXTREME] } }
-        - { name: phase, in: query, required: false, schema: { type: string, enum: [AVANT, PENDANT, APRES, RETABLISSEMENT] } }
-        - { name: includeRisk, in: query, required: false, schema: { type: boolean, default: true } }
-        - { name: includeGeometry, in: query, required: false, schema: { type: boolean, default: false } }
+        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
+        - { name: phase, in: query, required: false, schema: { $ref: '#/components/schemas/RiskPhase' } }
+        - { name: includeRisk, in: query, required: false, schema: { type: boolean }, description: Inclure les attributs de risque (défaut true) }
+        - { name: includeGeometry, in: query, required: false, schema: { type: boolean } }
       responses:
         '200':
-          description: FeatureCollection compatible Leaflet
+          description: Communes FeatureCollection
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeoJsonFeatureCollection' }
+              examples:
+                communesExample:
+                  $ref: '#/components/examples/geoJsonCommunes'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
-  /users:
-    get:
-      tags: [Utilisateurs]
-      summary: Liste paginée des utilisateurs
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Liste paginée des utilisateurs
+  /imports:
     post:
-      tags: [Utilisateurs]
-      summary: Créer un utilisateur
+      tags: [Imports]
+      summary: Importer un fichier SIG (GeoJSON, JSON, CSV)
+      description: |
+        Fichier unique (champ `file`, max 50 Mo, extensions `.geojson`, `.json`, `.csv`).
+        Réservé ANALYSTE_SIG / SUPER_ADMIN.
       security:
         - bearerAuth: []
+      operationId: createImport
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Fichier `.geojson`, `.json` ou `.csv`.
+                territoryType:
+                  type: string
+                  enum: [DISTRICT, COMMUNE]
+                  description: Type de territoire attendu dans le fichier.
+                sourceName:
+                  type: string
+                  description: Nom de la source des données.
       responses:
         '201':
-          description: Utilisateur créé
-
-  /users/{id}:
+          description: Import créé et traité
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/ImportDetail' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
     get:
-      tags: [Utilisateurs]
-      summary: Détail d'un utilisateur
+      tags: [Imports]
+      summary: Liste des imports
       security:
         - bearerAuth: []
+      operationId: listImports
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/ImportStatus' } }
+        - { name: fileType, in: query, required: false, schema: { $ref: '#/components/schemas/ImportFileType' } }
+        - { name: territoryType, in: query, required: false, schema: { type: string, enum: [DISTRICT, COMMUNE] } }
+      responses:
+        '200':
+          description: Liste des imports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ImportDetail' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /imports/{id}:
+    get:
+      tags: [Imports]
+      summary: Détail d'un import
+      security:
+        - bearerAuth: []
+      operationId: getImport
+      parameters:
+        - { $ref: '#/components/parameters/ImportId' }
+      responses:
+        '200':
+          description: Détail de l'import
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/ImportDetail' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /imports/{id}/errors:
+    get:
+      tags: [Imports]
+      summary: Erreurs de validation d'un import
+      security:
+        - bearerAuth: []
+      operationId: getImportErrors
+      parameters:
+        - { $ref: '#/components/parameters/ImportId' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Erreurs de l'import
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ImportError' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /matching/run/{importId}:
+    post:
+      tags: [Matching]
+      summary: Lancer l'appariement automatique d'un import
+      description: Compare les enregistrements importés aux territoires et génère des candidatures (score de confiance 0-100).
+      security:
+        - bearerAuth: []
+      operationId: runMatching
+      parameters:
+        - { $ref: '#/components/parameters/ImportId' }
+      responses:
+        '200':
+          description: Correspondances calculées
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      importId: { type: string, format: uuid }
+                      candidatesCount: { type: integer }
+                      matchedCount: { type: integer }
+                      unmatchedCount: { type: integer }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /matching:
+    get:
+      tags: [Matching]
+      summary: Liste des correspondances candidates
+      security:
+        - bearerAuth: []
+      operationId: listCandidates
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: importId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/MatchStatus' } }
+        - { name: targetType, in: query, required: false, schema: { type: string, enum: [DISTRICT, COMMUNE] } }
+        - { name: minConfidence, in: query, required: false, schema: { type: number, minimum: 0, maximum: 100 } }
+        - { name: maxConfidence, in: query, required: false, schema: { type: number, minimum: 0, maximum: 100 } }
+      responses:
+        '200':
+          description: Liste des correspondances
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/MatchingCandidate' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /matching/statistics:
+    get:
+      tags: [Matching]
+      summary: Statistiques des correspondances
+      security:
+        - bearerAuth: []
+      operationId: matchingStatistics
+      responses:
+        '200':
+          description: Statistiques des correspondances
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    additionalProperties: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /matching/manual-link:
+    post:
+      tags: [Matching]
+      summary: Créer une liaison manuelle
+      security:
+        - bearerAuth: []
+      operationId: createManualLink
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceRecordId, targetType]
+              properties:
+                sourceRecordId: { type: string, format: uuid }
+                targetType:
+                  type: string
+                  enum: [DISTRICT, COMMUNE]
+                districtId: { type: string, format: uuid, description: Requis si targetType=DISTRICT }
+                communeId: { type: string, format: uuid, description: Requis si targetType=COMMUNE }
+                createAlias: { type: boolean, default: false }
+                alias: { type: string, description: Valeur d'alias si createAlias est activé }
+            examples:
+              manualLinkExample:
+                $ref: '#/components/examples/manualLink'
+      responses:
+        '201':
+          description: Liaison manuelle créée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      id: { type: string, format: uuid }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /matching/{id}/approve:
+    post:
+      tags: [Matching]
+      summary: Approuver une correspondance
+      security:
+        - bearerAuth: []
+      operationId: approveCandidate
+      parameters:
+        - { $ref: '#/components/parameters/MatchId' }
+      responses:
+        '200':
+          description: Correspondance validée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/MatchingCandidate' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /matching/{id}/reject:
+    post:
+      tags: [Matching]
+      summary: Rejeter une correspondance (avec note)
+      security:
+        - bearerAuth: []
+      operationId: rejectCandidate
+      parameters:
+        - { $ref: '#/components/parameters/MatchId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [notes]
+              properties:
+                notes:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                  description: Motif du rejet.
+      responses:
+        '200':
+          description: Correspondance rejetée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/MatchingCandidate' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events:
+    post:
+      tags: [Événements]
+      summary: Créer un événement (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: createEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventCreateBody' }
+            examples:
+              cycloneExample:
+                $ref: '#/components/examples/cycloneCreation'
+      responses:
+        '201':
+          description: Événement créé avec succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/EventDetail' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Événements]
+      summary: Liste des événements
+      security:
+        - bearerAuth: []
+      operationId: listEvents
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: type, in: query, required: false, schema: { $ref: '#/components/schemas/HazardType' } }
+        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/EventStatus' } }
+        - { name: severity, in: query, required: false, schema: { $ref: '#/components/schemas/SeverityLevel' } }
+        - { name: startedAfter, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: startedBefore, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: search, in: query, required: false, schema: { type: string } }
+      responses:
+        '200':
+          description: Liste des événements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EventDetail' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}:
+    get:
+      tags: [Événements]
+      summary: Détail d'un événement
+      security:
+        - bearerAuth: []
+      operationId: getEvent
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      responses:
+        '200':
+          description: Détail de l'événement
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/EventDetail' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Événements]
+      summary: Modifier un événement (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: updateEvent
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EventUpdateBody' }
+      responses:
+        '200':
+          description: Événement modifié avec succès
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/EventDetail' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Événements]
+      summary: Supprimer un événement (SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: deleteEvent
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      responses:
+        '200':
+          description: Événement supprimé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, enum: [true] }
+                  message: { type: string }
+                  data: { type: 'null' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/status:
+    patch:
+      tags: [Événements]
+      summary: Mettre à jour le statut d'un événement (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: updateEventStatus
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { $ref: '#/components/schemas/EventStatus' }
+      responses:
+        '200':
+          description: Statut de l'événement mis à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/EventDetail' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/tracks:
+    post:
+      tags: [Événements]
+      summary: Ajouter un point de trajectoire (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: addEventTrack
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrackCreateBody' }
+            examples:
+              trackPointExample:
+                $ref: '#/components/examples/trackPoint'
+      responses:
+        '201':
+          description: Point de trajectoire ajouté
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/EventTrack' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Événements]
+      summary: Points de trajectoire d'un événement
+      security:
+        - bearerAuth: []
+      operationId: listEventTracks
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - { name: trackType, in: query, required: false, schema: { $ref: '#/components/schemas/TrackType' } }
+      responses:
+        '200':
+          description: Points de trajectoire
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/EventTrack' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/track-geojson:
+    get:
+      tags: [Événements]
+      summary: Trajectoires en GeoJSON (couche carte)
+      security:
+        - bearerAuth: []
+      operationId: tracksGeoJson
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      responses:
+        '200':
+          description: Trajectoires GeoJSON
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeoJsonFeatureCollection' }
+              examples:
+                trackGeoJsonExample:
+                  $ref: '#/components/examples/tracksGeoJson'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/areas:
+    get:
+      tags: [Événements]
+      summary: Zones d'influence d'un événement
+      security:
+        - bearerAuth: []
+      operationId: getEventAreas
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      responses:
+        '200':
+          description: Zones d'influence (dont cercles GeoJSON)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/TrackInfluenceArea' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/areas/calculate:
+    post:
+      tags: [Événements]
+      summary: Calculer une zone d'influence (ADMIN / SUPER_ADMIN)
+      description: Crée un cercle d'influence de rayon `radiusKm` (1-500) autour du dernier point de trajectoire, pour une phase et un niveau de risque.
+      security:
+        - bearerAuth: []
+      operationId: calculateArea
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phase, riskLevel, radiusKm]
+              properties:
+                phase: { $ref: '#/components/schemas/RiskPhase' }
+                riskLevel: { $ref: '#/components/schemas/RiskLevel' }
+                radiusKm:
+                  type: number
+                  minimum: 1
+                  maximum: 500
+                  description: Rayon de la zone d'influence en km.
+            examples:
+              influenceAreaExample:
+                $ref: '#/components/examples/influenceArea'
+      responses:
+        '201':
+          description: Zone d'influence calculée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/TrackInfluenceArea' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/exposure/calculate:
+    post:
+      tags: [Événements]
+      summary: Calculer l'exposition des communes (ADMIN / SUPER_ADMIN)
+      description: Détermine les communes intersectant la zone d'influence (population estimée, superficie touchée, enjeux).
+      security:
+        - bearerAuth: []
+      operationId: calculateExposure
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - { name: areaId, in: query, required: false, schema: { type: string, format: uuid }, description: Zone d'influence ciblée }
+        - { name: allAreas, in: query, required: false, schema: { type: boolean }, description: Utiliser toutes les zones ("true" pour oui) }
+      responses:
+        '200':
+          description: Exposition calculée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExposureResult' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/risks/recalculate:
+    post:
+      tags: [Événements]
+      summary: Recalculer les risques des communes exposées (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: recalculateEventRisk
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phase]
+              properties:
+                phase: { $ref: '#/components/schemas/RiskPhase' }
+      responses:
+        '200':
+          description: Risques de l'événement recalculés
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      recalculatedCount: { type: integer }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/exposed-communes:
+    get:
+      tags: [Événements]
+      summary: Communes exposées à un événement
+      security:
+        - bearerAuth: []
+      operationId: exposedCommunes
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
+        - { name: minDistanceKm, in: query, required: false, schema: { type: number, minimum: 0 } }
+        - { name: maxDistanceKm, in: query, required: false, schema: { type: number, minimum: 0 } }
+      responses:
+        '200':
+          description: Communes exposées
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExposedCommune' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /weather/map-layer:
+    get:
+      tags: [Météo]
+      summary: Couche météo GeoJSON (pluie, vent) pour la carte
+      security:
+        - bearerAuth: []
+      operationId: weatherMapLayer
+      parameters:
+        - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: observedAt, in: query, required: false, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Couche météo
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeoJsonFeatureCollection' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /weather/refresh/communes:
+    post:
+      tags: [Météo]
+      summary: Rafraîchir les données météo depuis Open-Meteo (ADMIN / SUPER_ADMIN)
+      description: Synchronise les observations et prévisions. Cibler au moins un filtre (communes, district, événement) ou activer `confirmAll`.
+      security:
+        - bearerAuth: []
+      operationId: refreshWeather
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                communeIds:
+                  type: array
+                  description: Communes à actualiser (1 à 500).
+                  items: { type: string, format: uuid }
+                districtId: { type: string, format: uuid }
+                eventId: { type: string, format: uuid }
+                confirmAll: { type: boolean, default: false, description: Confirmer le rafraîchissement de toutes les communes }
+            examples:
+              weatherRefreshExample:
+                $ref: '#/components/examples/weatherRefresh'
+      responses:
+        '200':
+          description: Rafraîchissement météo terminé
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      communesUpdated: { type: integer }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          description: Source météo (Open-Meteo) inaccessible
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /weather/communes/{communeId}/latest:
+    get:
+      tags: [Météo]
+      summary: Dernière observation météo d'une commune
+      security:
+        - bearerAuth: []
+      operationId: latestWeather
+      parameters:
+        - { $ref: '#/components/parameters/CommuneId' }
+      responses:
+        '200':
+          description: Dernière observation météo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/WeatherObservation' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /weather/communes/{communeId}/forecast:
+    get:
+      tags: [Météo]
+      summary: Prévisions météo d'une commune (Open-Meteo, 7 jours)
+      security:
+        - bearerAuth: []
+      operationId: weatherForecast
+      parameters:
+        - { $ref: '#/components/parameters/CommuneId' }
+      responses:
+        '200':
+          description: Prévisions météo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/WeatherForecast' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /weather/communes/{communeId}/history:
+    get:
+      tags: [Météo]
+      summary: Historique météo d'une commune
+      security:
+        - bearerAuth: []
+      operationId: weatherHistory
+      parameters:
+        - { $ref: '#/components/parameters/CommuneId' }
+        - { name: dateFrom, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: dateTo, in: query, required: false, schema: { type: string, format: date-time } }
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+      responses:
+        '200':
+          description: Historique météo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/WeatherObservation' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /risks/recalculate:
+    post:
+      tags: [Risques]
+      summary: Recalculer les risques (ADMIN / SUPER_ADMIN)
+      description: Recalcule les risques pour le périmètre choisi (événement, communes ou district) dans une phase donnée.
+      security:
+        - bearerAuth: []
+      operationId: recalculateRisks
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phase]
+              properties:
+                phase: { $ref: '#/components/schemas/RiskPhase' }
+                eventId: { type: string, format: uuid, description: Périmètre = communes exposées de l'événement }
+                communeIds:
+                  type: array
+                  description: Périmètre = communes ciblées (1 à 2000).
+                  items: { type: string, format: uuid }
+                districtId: { type: string, format: uuid, description: Périmètre = communes du district }
+      responses:
+        '200':
+          description: Risques recalculés
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      communesRecalculated: { type: integer }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /risks/communes/{communeId}:
+    get:
+      tags: [Risques]
+      summary: Évaluation de risque d'une commune
+      security:
+        - bearerAuth: []
+      operationId: getCommuneRisk
+      parameters:
+        - { $ref: '#/components/parameters/CommuneId' }
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid }, description: Évaluation dans le contexte d'un événement }
+        - { name: latest, in: query, required: false, schema: { type: boolean }, description: Dernière évaluation disponible (défaut true) }
+      responses:
+        '200':
+          description: Évaluation de risque de la commune
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/CommuneRisk' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /risks/priority-communes:
+    get:
+      tags: [Risques]
+      summary: Communes prioritaires
+      description: Classement des communes à plus fort risque (score et population pondérés).
+      security:
+        - bearerAuth: []
+      operationId: priorityCommunes
+      parameters:
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: Communes prioritaires
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/CommuneRisk' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /risks/map-layer:
+    get:
+      tags: [Risques]
+      summary: Couche de risques GeoJSON (carte)
+      security:
+        - bearerAuth: []
+      operationId: riskMapLayer
+      parameters:
+        - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
+        - { name: phase, in: query, required: false, schema: { $ref: '#/components/schemas/RiskPhase' } }
+      responses:
+        '200':
+          description: Couche de risques
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeoJsonFeatureCollection' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /risk-configurations:
+    get:
+      tags: [Configurations]
+      summary: Liste des configurations du moteur de risque
+      security:
+        - bearerAuth: []
+      operationId: listRiskConfigurations
+      responses:
+        '200':
+          description: Configurations de risque
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/RiskConfiguration' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Configurations]
+      summary: Créer une configuration de risque (SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: createRiskConfiguration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RiskConfigurationCreateBody' }
+      responses:
+        '201':
+          description: Configuration de risque créée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/RiskConfiguration' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /risk-configurations/{id}:
+    get:
+      tags: [Configurations]
+      summary: Détail d'une configuration de risque
+      security:
+        - bearerAuth: []
+      operationId: getRiskConfiguration
+      parameters:
+        - { $ref: '#/components/parameters/RiskConfigurationId' }
+      responses:
+        '200':
+          description: Configuration de risque
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/RiskConfiguration' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Configurations]
+      summary: Mettre à jour une configuration de risque (SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: updateRiskConfiguration
+      parameters:
+        - { $ref: '#/components/parameters/RiskConfigurationId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RiskConfigurationUpdateBody' }
+      responses:
+        '200':
+          description: Configuration de risque mise à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/RiskConfiguration' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /alerts:
+    post:
+      tags: [Alertes]
+      summary: Créer une alerte (ADMIN / SUPER_ADMIN)
+      description: Cibler au moins un événement, un district ou une commune (pas les deux territoires à la fois).
+      security:
+        - bearerAuth: []
+      operationId: createAlert
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AlertCreateBody' }
+            examples:
+              alertExample:
+                $ref: '#/components/examples/alertCreation'
+      responses:
+        '201':
+          description: Alerte créée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/Alert' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Alertes]
+      summary: Liste des alertes
+      security:
+        - bearerAuth: []
+      operationId: listAlerts
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/AlertStatus' } }
+        - { name: type, in: query, required: false, schema: { $ref: '#/components/schemas/AlertType' } }
+        - { name: severity, in: query, required: false, schema: { $ref: '#/components/schemas/SeverityLevel' } }
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: communeId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: activeOnly, in: query, required: false, schema: { type: boolean }, description: Alerte actives uniquement ("true"/"1") }
+      responses:
+        '200':
+          description: Liste des alertes
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Alert' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /alerts/{id}:
+    get:
+      tags: [Alertes]
+      summary: Détail d'une alerte
+      security:
+        - bearerAuth: []
+      operationId: getAlert
+      parameters:
+        - { $ref: '#/components/parameters/AlertId' }
+      responses:
+        '200':
+          description: Détail de l'alerte
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/Alert' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Alertes]
+      summary: Modifier une alerte (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: updateAlert
+      parameters:
+        - { $ref: '#/components/parameters/AlertId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AlertUpdateBody' }
+      responses:
+        '200':
+          description: Alerte mise à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/Alert' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /alerts/{id}/publish:
+    post:
+      tags: [Alertes]
+      summary: Publier une alerte (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: publishAlert
+      parameters:
+        - { $ref: '#/components/parameters/AlertId' }
+      responses:
+        '200':
+          description: Alerte publiée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/Alert' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /alerts/{id}/archive:
+    post:
+      tags: [Alertes]
+      summary: Archiver une alerte (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: archiveAlert
+      parameters:
+        - { $ref: '#/components/parameters/AlertId' }
+      responses:
+        '200':
+          description: Alerte archivée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/Alert' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /dashboard/summary:
+    get:
+      tags: [Tableau de bord]
+      summary: Résumé global (événements actifs, alertes actives, communes à risque, population à risque)
+      security:
+        - bearerAuth: []
+      operationId: dashboardSummary
+      responses:
+        '200':
+          description: Résumé du tableau de bord
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/DashboardSummary' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /dashboard/risk-distribution:
+    get:
+      tags: [Tableau de bord]
+      summary: Répartition des niveaux de risque
+      security:
+        - bearerAuth: []
+      operationId: dashboardRiskDistribution
+      responses:
+        '200':
+          description: Répartition des risques
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        riskLevel: { $ref: '#/components/schemas/RiskLevel' }
+                        count: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /dashboard/events-timeline:
+    get:
+      tags: [Tableau de bord]
+      summary: Chronologie des événements
+      security:
+        - bearerAuth: []
+      operationId: dashboardEventsTimeline
+      parameters:
+        - { name: dateFrom, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: dateTo, in: query, required: false, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Chronologie des événements
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        date: { type: string, format: date }
+                        count: { type: integer }
+                        severity: { $ref: '#/components/schemas/SeverityLevel' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /dashboard/priority-communes:
+    get:
+      tags: [Tableau de bord]
+      summary: Communes prioritaires (top risques)
+      security:
+        - bearerAuth: []
+      operationId: dashboardPriorityCommunes
+      parameters:
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: Communes prioritaires
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/CommuneRisk' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reports/dashboard:
+    get:
+      tags: [Rapports & Exports]
+      summary: Rapport complet du tableau de bord (ADMIN / SUPER_ADMIN)
+      description: Filtrage facultatif par plage de dates.
+      security:
+        - bearerAuth: []
+      operationId: dashboardReport
+      parameters:
+        - { name: dateFrom, in: query, required: false, schema: { type: string, format: date-time } }
+        - { name: dateTo, in: query, required: false, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Rapport du tableau de bord
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/DashboardReport' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reports/events/{eventId}:
+    get:
+      tags: [Rapports & Exports]
+      summary: Rapport détaillé d'un événement
+      security:
+        - bearerAuth: []
+      operationId: eventReport
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      responses:
+        '200':
+          description: Rapport détaillé de l'événement
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/EventReport' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reports/export/csv:
+    post:
+      tags: [Rapports & Exports]
+      summary: Exporter des données en CSV
+      description: Export brut (communes, districts, événements, alertes, risques, communes exposées). Fichier renvoyé directement.
+      security:
+        - bearerAuth: []
+      operationId: exportCsv
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CsvExportBody' }
+            examples:
+              exportCsvExample:
+                summary: Export des communes
+                value: { resourceType: communes }
+      responses:
+        '200':
+          description: Fichier CSV
+          content:
+            text/csv:
+              schema: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reports/export/geojson:
+    post:
+      tags: [Rapports & Exports]
+      summary: Exporter des données en GeoJSON
+      description: FeatureCollection GeoJSON de communes, districts, zones d'événement ou risques.
+      security:
+        - bearerAuth: []
+      operationId: exportGeoJson
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/GeoJsonExportBody' }
+      responses:
+        '200':
+          description: FeatureCollection GeoJSON
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeoJsonFeatureCollection' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reports/export/pdf:
+    post:
+      tags: [Rapports & Exports]
+      summary: Générer un rapport PDF (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: exportPdf
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: Critères du rapport PDF.
+              properties:
+                title: { type: string, maxLength: 250 }
+                eventId: { type: string, format: uuid }
+                districtId: { type: string, format: uuid }
+                communeId: { type: string, format: uuid }
+                dateFrom: { type: string, format: date-time }
+                dateTo: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Rapport PDF généré (Content-Disposition attachment)
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reports:
+    get:
+      tags: [Rapports & Exports]
+      summary: Liste des rapports générés (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: listReports
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - { name: format, in: query, required: false, schema: { $ref: '#/components/schemas/ReportFormat' } }
+        - { name: reportType, in: query, required: false, schema: { type: string } }
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Liste des rapports
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ReportRecord' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /reports/{id}/download:
+    get:
+      tags: [Rapports & Exports]
+      summary: Télécharger un rapport généré (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: downloadReport
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid }, description: Identifiant du rapport }
+      responses:
+        '200':
+          description: Fichier du rapport
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ai/chat:
+    post:
+      tags: [Assistant IA]
+      summary: Poser une question à l'assistant IA
+      description: |
+        Analyse la base de renseignement (événements, alertes actives, risques, météo) et répond.
+        - Limité à 30 requêtes / 15 min par utilisateur (headers `RateLimit-*`).
+        - Les réponses passent par la politique de sûreté de Gemini.
+        - Retourne `503` si l'IA n'est pas configurée (`AI_PROVIDER` absent) ou indisponible.
+      security:
+        - bearerAuth: []
+      operationId: aiChat
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  minLength: 1
+                  maxLength: 5000
+                  description: Question (français, malgache ou anglais).
+                conversationId:
+                  type: string
+                  format: uuid
+                  description: Poursuivre une conversation existante (sinon nouvelle conversation).
+            examples:
+              aiQuestionExample:
+                $ref: '#/components/examples/aiQuestion'
+      responses:
+        '200':
+          description: Réponse de l'assistant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      conversationId: { type: string, format: uuid }
+                      reply: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        '503':
+          description: Assistant IA non configuré ou indisponible.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ai/conversations:
+    get:
+      tags: [Assistant IA]
+      summary: Liste des conversations IA
+      description: Conversations de l'utilisateur connecté (vue globale possible pour SUPER_ADMIN si activée).
+      security:
+        - bearerAuth: []
+      operationId: listAiConversations
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+      responses:
+        '200':
+          description: Liste des conversations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AiConversation' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /ai/conversations/{id}:
+    get:
+      tags: [Assistant IA]
+      summary: Détail d'une conversation IA (messages)
+      description: Accessible au propriétaire uniquement (404 sinon).
+      security:
+        - bearerAuth: []
+      operationId: getAiConversation
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
         '200':
-          description: Détail de l'utilisateur
-    patch:
-      tags: [Utilisateurs]
-      summary: Modifier un utilisateur
+          description: Conversation de l'assistant
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/AiConversationDetail' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Assistant IA]
+      summary: Supprimer une conversation IA
+      description: Accessible au propriétaire uniquement (404 sinon).
       security:
         - bearerAuth: []
+      operationId: deleteAiConversation
       parameters:
         - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses:
-        '200':
-          description: Utilisateur modifié
-
-  /users/{id}/status:
-    patch:
-      tags: [Utilisateurs]
-      summary: Activer / désactiver un utilisateur
-      security:
-        - bearerAuth: []
-      parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
-      responses:
-        '200':
-          description: Statut mis à jour
-
-  /users/me/password:
-    patch:
-      tags: [Utilisateurs]
-      summary: Changer son propre mot de passe
-      security:
-        - bearerAuth: []
-      responses:
-        '200':
-          description: Mot de passe modifié
-
+        '204':
+          description: Conversation supprimée
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+      description: Jeton d'accès obtenu via `POST /auth/login`.
+  parameters:
+    Page:
+      name: page
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, default: 1 }
+      description: Numéro de page.
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      description: Nombre d'éléments par page (max 100).
+    UserId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DistrictId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CommuneId:
+      name: communeId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ImportId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MatchId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    EventId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AlertId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RiskConfigurationId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+  responses:
+    BadRequest:
+      description: Requête invalide
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    Unauthorized:
+      description: Non authentifié (jeton manquant, invalide ou expiré)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    Forbidden:
+      description: Rôle insuffisant (opérations réservées aux SUPER_ADMIN / ADMIN / ANALYSTE_SIG)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    NotFound:
+      description: Ressource introuvable
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    Conflict:
+      description: Conflit (ressource existante, base non vide, opération illégale)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    ValidationError:
+      description: Échec de validation (zod) - détails champ par champ
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ValidationBody' }
+    TooManyRequests:
+      description: Trop de requêtes (limite globale 100 / 15 min, login 10 / 15 min, refresh 30 / 15 min, IA 30 / 15 min)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+    InternalError:
+      description: Erreur interne du serveur
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorBody' }
+  examples:
+    geoJsonDistricts:
+      summary: Districts Madagascar (GeoJSON FeatureCollection simplifié)
+      value:
+        type: FeatureCollection
+        features:
+          - type: Feature
+            properties:
+              id: 05566b10-4df7-4ada-8944-bd2210521a44
+              code: '101'
+              name: Antsiranana I
+              region: Diana
+              riskLevel: null
+              population: null
+            geometry:
+              type: MultiPolygon
+              coordinates:
+                - - - [49.315, -12.290]
+                    - [49.310, -12.310]
+                    - [49.345, -12.335]
+                    - [49.315, -12.290]
+    geoJsonCommunes:
+      summary: Communes Madagascar (GeoJSON FeatureCollection avec attributs de risque)
+      value:
+        type: FeatureCollection
+        features:
+          - type: Feature
+            properties:
+              id: 62cba7f4-4a91-4a51-9d8b-7f1d8938d5b2
+              code: '10101'
+              districtCode: '101'
+              name: Antsiranana I
+              region: Diana
+              riskLevel: FAIBLE
+              riskScore: 12.4
+              population: 275000
+            geometry:
+              type: Polygon
+              coordinates:
+                - - [49.315, -12.290]
+                  - [49.345, -12.335]
+                  - [49.380, -12.300]
+                  - [49.315, -12.290]
+    cycloneCreation:
+      summary: Création d'un cyclone
+      value:
+        eventCode: CY-2026-0214
+        name: Cyclone Freddy - Passage Nord-Est
+        type: CYCLONE
+        severity: ELEVEE
+        status: ACTIF
+        description: Cyclone majeur touchant la côte est de Madagascar.
+        sourceName: MeteoFrance
+        sourceUrl: https://www.meteofrance.mg
+        startedAt: '2026-02-14T06:00:00.000Z'
+        expectedEndAt: '2026-02-18T18:00:00.000Z'
+    trackPoint:
+      summary: Ajout d'un point de trajectoire
+      value:
+        observedAt: '2026-02-14T12:00:00.000Z'
+        trackType: OBSERVEE
+        latitude: -15.435
+        longitude: 49.737
+        windSpeedKmh: 120
+        gustSpeedKmh: 150
+        pressureHpa: 958
+    influenceArea:
+      summary: Calcul d'une zone d'influence
+      value:
+        phase: PENDANT
+        riskLevel: ELEVE
+        radiusKm: 75
+    tracksGeoJson:
+      summary: Trajectoires GeoJSON d'un événement
+      value:
+        type: FeatureCollection
+        features:
+          - type: Feature
+            properties:
+              trackType: OBSERVEE
+              observedAt: '2026-02-14T12:00:00.000Z'
+            geometry:
+              type: Point
+              coordinates: [49.737, -15.435]
+    alertCreation:
+      summary: Création d'une alerte
+      value:
+        type: CYCLONE
+        severity: EXTREME
+        title: Alerte cyclone imminent - District de Sambava
+        message: Le cyclone Freddy atteindra la région sous 12 heures. Mesures d'évacuation recommandées.
+        eventId: 11111111-1111-1111-1111-111111111111
+        districtId: 22222222-2222-2222-2222-222222222222
+        expiresAt: '2026-02-18T18:00:00.000Z'
+    manualLink:
+      summary: Création d'une liaison manuelle
+      value:
+        sourceRecordId: 33333333-3333-3333-3333-333333333333
+        targetType: COMMUNE
+        communeId: 62cba7f4-4a91-4a51-9d8b-7f1d8938d5b2
+        createAlias: false
+    weatherRefresh:
+      summary: Rafraîchissement météo
+      value:
+        communeIds:
+          - 62cba7f4-4a91-4a51-9d8b-7f1d8938d5b2
+        districtId: 05566b10-4df7-4ada-8944-bd2210521a44
+    aiQuestion:
+      summary: Question à l'assistant IA
+      value:
+        message: Donne-moi le résumé de la situation et les alertes actives.
+  schemas:
+    ErrorBody:
+      type: object
+      description: Corps d'erreur standard
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        message: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+    ValidationBody:
+      type: object
+      description: Erreur de validation (422)
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        message: { type: string }
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+    PaginationMeta:
+      type: object
+      properties:
+        page: { type: integer, example: 1 }
+        limit: { type: integer, example: 20 }
+        total: { type: integer, example: 1579 }
+        totalPages: { type: integer, example: 79 }
+    UserRole:
+      type: string
+      enum: [SUPER_ADMIN, ADMIN, ANALYSTE_SIG, CLIENT]
+    HazardType:
+      type: string
+      enum: [CYCLONE, INONDATION, SECHERESSE, FORTE_PLUIE, VENT_VIOLENT, GLISSEMENT_TERRAIN, FEU_VEGETATION, AUTRE]
+    EventStatus:
+      type: string
+      enum: [BROUILLON, PREVISION, ACTIF, SUIVI, CLOTURE]
+    SeverityLevel:
+      type: string
+      enum: [FAIBLE, MODEREE, ELEVEE, EXTREME]
+    RiskLevel:
+      type: string
+      enum: [FAIBLE, MODERE, ELEVE, EXTREME]
+    RiskPhase:
+      type: string
+      enum: [AVANT, PENDANT, APRES, RETABLISSEMENT]
+    TrackType:
+      type: string
+      enum: [OBSERVEE, PREVUE]
+    AlertStatus:
+      type: string
+      enum: [BROUILLON, PUBLIEE, ARCHIVEE, EXPIREE]
+    AlertType:
+      type: string
+      enum: [CYCLONE, INONDATION, FORTE_PLUIE, VENT_VIOLENT, SECHERESSE, INFORMATION, URGENCE]
+    ImportStatus:
+      type: string
+      enum: [BROUILLON, EN_COURS, TERMINE, ECHEC]
+    ImportFileType:
+      type: string
+      enum: [GEOJSON, JSON, CSV]
+    MatchStatus:
+      type: string
+      enum: [EN_ATTENTE, VALIDE, REJETE, AMBIGU]
+    ReportFormat:
+      type: string
+      enum: [PDF, CSV, XLSX, GEOJSON, PNG]
+    User:
+      type: object
+      description: Utilisateur (les champs sensibles comme `password_hash` ne sont jamais retournés)
+      properties:
+        id: { type: string, format: uuid }
+        email: { type: string, format: email }
+        firstName: { type: string }
+        lastName: { type: string }
+        role: { $ref: '#/components/schemas/UserRole' }
+        isActive: { type: boolean }
+        organizationId: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    UserCreateBody:
+      type: object
+      required: [email, password, firstName, lastName]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password, minLength: 8 }
+        firstName: { type: string, minLength: 1, maxLength: 100 }
+        lastName: { type: string, minLength: 1, maxLength: 100 }
+        role: { $ref: '#/components/schemas/UserRole' }
+        organizationId: { type: string, format: uuid, nullable: true }
+    UserUpdateBody:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        firstName: { type: string, minLength: 1, maxLength: 100 }
+        lastName: { type: string, minLength: 1, maxLength: 100 }
+        role: { $ref: '#/components/schemas/UserRole', description: Réservé SUPER_ADMIN }
+    District:
+      type: object
+      description: District de Madagascar
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, example: '101' }
+        name: { type: string, example: Antsiranana I }
+        region: { type: string, example: Diana }
+        population: { type: integer, nullable: true }
+        areaKm2: { type: number, nullable: true }
+        centroid:
+          type: object
+          nullable: true
+          properties:
+            lat: { type: number }
+            lon: { type: number }
+        geometry:
+          allOf:
+            - { $ref: '#/components/schemas/GeoJsonGeometry' }
+          nullable: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    Commune:
+      type: object
+      description: Commune de Madagascar
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, example: '10101' }
+        districtId: { type: string, format: uuid }
+        name: { type: string, example: Antsiranana I }
+        communeType: { type: string, enum: [COMMUNE_URBAINE, COMMUNE_RURALE], nullable: true }
+        population: { type: integer, nullable: true }
+        households: { type: integer, nullable: true }
+        areaKm2: { type: number, nullable: true }
+        centroid:
+          type: object
+          nullable: true
+          properties:
+            lat: { type: number }
+            lon: { type: number }
+        geometry:
+          allOf:
+            - { $ref: '#/components/schemas/GeoJsonGeometry' }
+          nullable: true
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    GeoJsonGeometry:
+      type: object
+      description: Géométrie GeoJSON (Point, LineString, Polygon, MultiPolygon, cercle)
+      properties:
+        type:
+          type: string
+          enum: [Point, LineString, Polygon, MultiPolygon, Circle]
+        coordinates: {}
+        radius: { type: number, description: Rayon en km pour une géométrie de type Circle }
+    GeoJsonFeature:
+      type: object
+      properties:
+        type:
+          type: string
+          const: Feature
+        properties:
+          type: object
+          additionalProperties: true
+        geometry: { $ref: '#/components/schemas/GeoJsonGeometry' }
+    GeoJsonFeatureCollection:
+      type: object
+      properties:
+        type:
+          type: string
+          const: FeatureCollection
+        features:
+          type: array
+          items: { $ref: '#/components/schemas/GeoJsonFeature' }
+    ImportDetail:
+      type: object
+      description: Import d'un fichier SIG avec statistiques d'analyse
+      properties:
+        id: { type: string, format: uuid }
+        filename: { type: string, example: districts_de_madagascar.csv }
+        fileType: { $ref: '#/components/schemas/ImportFileType' }
+        territoryType: { type: string, enum: [DISTRICT, COMMUNE] }
+        sourceName: { type: string }
+        status: { $ref: '#/components/schemas/ImportStatus' }
+        totalRecords: { type: integer }
+        validRecords: { type: integer }
+        errorRecords: { type: integer }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+    ImportError:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        importId: { type: string, format: uuid }
+        rowNumber: { type: integer }
+        errorType: { type: string }
+        field: { type: string }
+        message: { type: string }
+        rawValue: { type: string }
+    MatchingCandidate:
+      type: object
+      description: Correspondance proposée entre un enregistrement importé et un territoire
+      properties:
+        id: { type: string, format: uuid }
+        sourceRecordId: { type: string, format: uuid }
+        candidateKey: { type: string }
+        candidateName: { type: string }
+        candidateType: { type: string, enum: [DISTRICT, COMMUNE] }
+        confidence: { type: number, minimum: 0, maximum: 100 }
+        status: { $ref: '#/components/schemas/MatchStatus' }
+        matchedKey: { type: string }
+        matchedName: { type: string }
+        matchedTerritoryId: { type: string, format: uuid }
+        matchedTerritoryType: { type: string, enum: [DISTRICT, COMMUNE] }
+        createdAt: { type: string, format: date-time }
+        reviewedAt: { type: string, format: date-time, nullable: true }
+    EventCreateBody:
+      type: object
+      required: [eventCode, name, type]
+      properties:
+        eventCode:
+          type: string
+          pattern: '^[A-Za-z0-9._-]+$'
+          maxLength: 100
+          example: CY-2026-0214
+        name: { type: string, minLength: 1, maxLength: 200, example: Cyclone Freddy - Passage Nord-Est }
+        type: { $ref: '#/components/schemas/HazardType' }
+        status: { $ref: '#/components/schemas/EventStatus' }
+        severity: { $ref: '#/components/schemas/SeverityLevel' }
+        description: { type: string, nullable: true }
+        sourceName: { type: string, maxLength: 150, nullable: true }
+        sourceUrl: { type: string, format: uri, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        expectedEndAt: { type: string, format: date-time, nullable: true }
+    EventUpdateBody:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 200 }
+        type: { $ref: '#/components/schemas/HazardType' }
+        severity: { $ref: '#/components/schemas/SeverityLevel' }
+        description: { type: string, nullable: true }
+        sourceName: { type: string, maxLength: 150, nullable: true }
+        sourceUrl: { type: string, format: uri, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        expectedEndAt: { type: string, format: date-time, nullable: true }
+    EventDetail:
+      type: object
+      description: Événement cyclonique ou autre aléa
+      properties:
+        id: { type: string, format: uuid }
+        eventCode: { type: string }
+        name: { type: string }
+        type: { $ref: '#/components/schemas/HazardType' }
+        status: { $ref: '#/components/schemas/EventStatus' }
+        severity: { $ref: '#/components/schemas/SeverityLevel', nullable: true }
+        description: { type: string, nullable: true }
+        sourceName: { type: string, nullable: true }
+        sourceUrl: { type: string, format: uri, nullable: true }
+        startedAt: { type: string, format: date-time, nullable: true }
+        expectedEndAt: { type: string, format: date-time, nullable: true }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    TrackCreateBody:
+      type: object
+      required: [observedAt, latitude, longitude]
+      properties:
+        observedAt: { type: string, format: date-time }
+        forecastFor: { type: string, format: date-time, nullable: true }
+        trackType: { $ref: '#/components/schemas/TrackType' }
+        latitude: { type: number, format: float, minimum: -90, maximum: 90 }
+        longitude: { type: number, format: float, minimum: -180, maximum: 180 }
+        windSpeedKmh: { type: number, minimum: 0, nullable: true }
+        gustSpeedKmh: { type: number, minimum: 0, nullable: true }
+        pressureHpa: { type: number, minimum: 0, nullable: true }
+        precipitationMm: { type: number, minimum: 0, nullable: true }
+        movementDirection: { type: string, maxLength: 50, nullable: true }
+        movementSpeedKmh: { type: number, minimum: 0, nullable: true }
+    EventTrack:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        eventId: { type: string, format: uuid }
+        observedAt: { type: string, format: date-time }
+        forecastFor: { type: string, format: date-time, nullable: true }
+        trackType: { $ref: '#/components/schemas/TrackType' }
+        latitude: { type: number }
+        longitude: { type: number }
+        windSpeedKmh: { type: number, nullable: true }
+        gustSpeedKmh: { type: number, nullable: true }
+        pressureHpa: { type: number, nullable: true }
+        precipitationMm: { type: number, nullable: true }
+        movementDirection: { type: string, nullable: true }
+        movementSpeedKmh: { type: number, nullable: true }
+        createdAt: { type: string, format: date-time }
+    TrackInfluenceArea:
+      type: object
+      description: Zone d'influence calculée autour d'un point de trajectoire
+      properties:
+        id: { type: string, format: uuid }
+        eventId: { type: string, format: uuid }
+        trackId: { type: string, format: uuid }
+        phase: { $ref: '#/components/schemas/RiskPhase' }
+        radiusKm: { type: number }
+        riskLevel: { $ref: '#/components/schemas/RiskLevel' }
+        circle: { $ref: '#/components/schemas/GeoJsonGeometry' }
+        createdAt: { type: string, format: date-time }
+    ExposureResult:
+      type: object
+      description: Résultat du calcul d'exposition d'une commune
+      properties:
+        communeId: { type: string, format: uuid }
+        communeName: { type: string }
+        districtId: { type: string, format: uuid }
+        distanceToTrackKm: { type: number }
+        areaRadiusKm: { type: number }
+        phase: { $ref: '#/components/schemas/RiskPhase' }
+        populationEstimated: { type: integer }
+        householdsEstimated: { type: integer }
+        areaKmTouched: { type: number }
+    ExposedCommune:
+      type: object
+      properties:
+        communeId: { type: string, format: uuid }
+        communeName: { type: string }
+        districtId: { type: string, format: uuid }
+        riskScore: { type: number }
+        riskLevel: { $ref: '#/components/schemas/RiskLevel' }
+        population: { type: integer }
+        distanceKm: { type: number }
+        calculatedAt: { type: string, format: date-time }
+    WeatherObservation:
+      type: object
+      description: Observation météo
+      properties:
+        id: { type: string, format: uuid }
+        communeId: { type: string, format: uuid }
+        districtId: { type: string, format: uuid }
+        observedAt: { type: string, format: date-time }
+        temperatureC: { type: number }
+        precipitationMm: { type: number }
+        humidityPct: { type: number }
+        windSpeedKmh: { type: number }
+        windDirectionDeg: { type: integer }
+        pressureHpa: { type: number }
+        source: { type: string }
+        createdAt: { type: string, format: date-time }
+    WeatherForecast:
+      type: object
+      description: Prévisions quotidiennes sur 7 jours
+      properties:
+        communeId: { type: string, format: uuid }
+        communeName: { type: string }
+        generatedAt: { type: string, format: date-time }
+        days:
+          type: array
+          items:
+            type: object
+            properties:
+              date: { type: string, format: date }
+              tempMaxC: { type: number }
+              tempMinC: { type: number }
+              precipitationSumMm: { type: number }
+              windSpeedMaxKmh: { type: number }
+              windGustMaxKmh: { type: number }
+    CommuneRisk:
+      type: object
+      description: Évaluation de risque d'une commune
+      properties:
+        communeId: { type: string, format: uuid }
+        communeName: { type: string }
+        districtId: { type: string, format: uuid }
+        districtName: { type: string }
+        region: { type: string }
+        population: { type: integer }
+        riskScore: { type: number }
+        riskLevel: { $ref: '#/components/schemas/RiskLevel' }
+        components:
+          type: object
+          properties:
+            rain: { type: number }
+            wind: { type: number }
+            proximity: { type: number }
+            vulnerability: { type: number }
+            exposure: { type: number }
+        mainReasons:
+          type: array
+          items: { type: string }
+        updatedAt: { type: string, format: date-time }
+    RiskConfiguration:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        rainWeight: { type: number }
+        windWeight: { type: number }
+        proximityWeight: { type: number }
+        vulnerabilityWeight: { type: number }
+        exposureWeight: { type: number }
+        lowThreshold: { type: number }
+        moderateThreshold: { type: number }
+        highThreshold: { type: number }
+        extremeThreshold: { type: number }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    RiskConfigurationCreateBody:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 150 }
+        rainWeight: { type: number, minimum: 0, maximum: 1, default: 0.3 }
+        windWeight: { type: number, minimum: 0, maximum: 1, default: 0.25 }
+        proximityWeight: { type: number, minimum: 0, maximum: 1, default: 0.2 }
+        vulnerabilityWeight: { type: number, minimum: 0, maximum: 1, default: 0.15 }
+        exposureWeight: { type: number, minimum: 0, maximum: 1, default: 0.1 }
+        lowThreshold: { type: number, minimum: 0, maximum: 100, default: 20 }
+        moderateThreshold: { type: number, minimum: 0, maximum: 100, default: 40 }
+        highThreshold: { type: number, minimum: 0, maximum: 100, default: 60 }
+        extremeThreshold: { type: number, minimum: 0, maximum: 100, default: 80 }
+        isActive: { type: boolean, default: true }
+    RiskConfigurationUpdateBody:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 150 }
+        rainWeight: { type: number, minimum: 0, maximum: 1 }
+        windWeight: { type: number, minimum: 0, maximum: 1 }
+        proximityWeight: { type: number, minimum: 0, maximum: 1 }
+        vulnerabilityWeight: { type: number, minimum: 0, maximum: 1 }
+        exposureWeight: { type: number, minimum: 0, maximum: 1 }
+        lowThreshold: { type: number, minimum: 0, maximum: 100 }
+        moderateThreshold: { type: number, minimum: 0, maximum: 100 }
+        highThreshold: { type: number, minimum: 0, maximum: 100 }
+        extremeThreshold: { type: number, minimum: 0, maximum: 100 }
+        isActive: { type: boolean }
+    Alert:
+      type: object
+      description: Alerte (brouillon, publiée, archivée ou expirée)
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/AlertType' }
+        severity: { $ref: '#/components/schemas/SeverityLevel' }
+        status: { $ref: '#/components/schemas/AlertStatus' }
+        title: { type: string }
+        message: { type: string }
+        eventId: { type: string, format: uuid, nullable: true }
+        districtId: { type: string, format: uuid, nullable: true }
+        communeId: { type: string, format: uuid, nullable: true }
+        publishedAt: { type: string, format: date-time, nullable: true }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AlertCreateBody:
+      type: object
+      required: [type, severity, title, message]
+      properties:
+        eventId: { type: string, format: uuid, nullable: true }
+        districtId: { type: string, format: uuid, nullable: true }
+        communeId: { type: string, format: uuid, nullable: true }
+        type: { $ref: '#/components/schemas/AlertType' }
+        severity: { $ref: '#/components/schemas/SeverityLevel' }
+        title: { type: string, minLength: 1, maxLength: 250 }
+        message: { type: string, minLength: 1, maxLength: 4000 }
+        expiresAt: { type: string, format: date-time, nullable: true }
+    AlertUpdateBody:
+      type: object
+      properties:
+        eventId: { type: string, format: uuid, nullable: true }
+        districtId: { type: string, format: uuid, nullable: true }
+        communeId: { type: string, format: uuid, nullable: true }
+        type: { $ref: '#/components/schemas/AlertType' }
+        severity: { $ref: '#/components/schemas/SeverityLevel' }
+        title: { type: string, minLength: 1, maxLength: 250 }
+        message: { type: string, minLength: 1, maxLength: 4000 }
+        expiresAt: { type: string, format: date-time, nullable: true }
+    DashboardSummary:
+      type: object
+      properties:
+        activeEvents: { type: integer }
+        activeAlerts: { type: integer }
+        highRiskCommunesCount: { type: integer }
+        populationAtRisk: { type: integer }
+        generatedAt: { type: string, format: date-time }
+    DashboardReport:
+      type: object
+      description: Agrégation complète du tableau de bord
+      properties:
+        summary: { $ref: '#/components/schemas/DashboardSummary' }
+        riskDistribution:
+          type: array
+          items:
+            type: object
+            properties:
+              riskLevel: { $ref: '#/components/schemas/RiskLevel' }
+              count: { type: integer }
+        activeEvents:
+          type: array
+          items: { $ref: '#/components/schemas/EventDetail' }
+        priorityCommunities:
+          type: array
+          items: { $ref: '#/components/schemas/CommuneRisk' }
+        generatedAt: { type: string, format: date-time }
+    EventReport:
+      type: object
+      description: Rapport détaillé d'un événement
+      properties:
+        event: { $ref: '#/components/schemas/EventDetail' }
+        tracks:
+          type: array
+          items: { $ref: '#/components/schemas/EventTrack' }
+        exposedCommunes:
+          type: array
+          items: { $ref: '#/components/schemas/ExposedCommune' }
+        riskDistribution:
+          type: array
+          items:
+            type: object
+            properties:
+              riskLevel: { $ref: '#/components/schemas/RiskLevel' }
+              count: { type: integer }
+        generatedAt: { type: string, format: date-time }
+    CsvExportBody:
+      type: object
+      required: [resourceType]
+      properties:
+        resourceType:
+          type: string
+          enum: [communes, districts, events, alerts, risks, exposed-communes]
+        eventId: { type: string, format: uuid }
+        districtId: { type: string, format: uuid }
+        communeId: { type: string, format: uuid }
+        dateFrom: { type: string, format: date-time }
+        dateTo: { type: string, format: date-time }
+    GeoJsonExportBody:
+      type: object
+      required: [resourceType]
+      properties:
+        resourceType:
+          type: string
+          enum: [communes, districts, event-areas, risks]
+        eventId: { type: string, format: uuid, description: Requis si resourceType=event-areas }
+        districtId: { type: string, format: uuid }
+        communeId: { type: string, format: uuid }
+        dateFrom: { type: string, format: date-time }
+        dateTo: { type: string, format: date-time }
+    ReportRecord:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        filename: { type: string }
+        format: { $ref: '#/components/schemas/ReportFormat' }
+        reportType: { type: string }
+        sizeBytes: { type: integer }
+        downloadUrl: { type: string }
+        createdBy: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+    AiConversation:
+      type: object
+      description: Conversation IA (entête)
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        title: { type: string, nullable: true }
+        messageCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    AiConversationDetail:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        userId: { type: string, format: uuid }
+        title: { type: string, nullable: true }
+        messages:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: string, format: uuid }
+              role: { type: string, enum: [user, assistant, system] }
+              content: { type: string }
+              createdAt: { type: string, format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }

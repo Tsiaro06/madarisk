@@ -27,7 +27,9 @@ async function tableExists(tableName: string): Promise<boolean> {
 }
 
 async function countRows(tableName: string): Promise<number> {
-  const result = await db.query<{ count: string }>(`SELECT COUNT(*)::text AS count FROM ${tableName}`);
+  const result = await db.query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count FROM ${tableName}`,
+  );
   return parseInt(result.rows[0]?.count ?? '0', 10);
 }
 
@@ -52,9 +54,7 @@ export const systemRepository = {
   },
 
   async getPostgisVersion(): Promise<string> {
-    const result = await db.query<{ version: string }>(
-      "SELECT PostGIS_Version() AS version",
-    );
+    const result = await db.query<{ version: string }>('SELECT PostGIS_Version() AS version');
     return result.rows[0]?.version ?? 'unknown';
   },
 

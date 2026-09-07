@@ -1,9 +1,5 @@
 import { db } from '../config/database';
-import {
-  WeatherMapGeoJson,
-  WeatherMapPoint,
-  WeatherObservation,
-} from '../types/weather.types';
+import { WeatherMapGeoJson, WeatherMapPoint, WeatherObservation } from '../types/weather.types';
 import { PaginatedResult } from '../types/territory.types';
 
 interface CountRow {
@@ -190,10 +186,7 @@ export const weatherRepository = {
     }));
   },
 
-  async insertObservations(
-    rows: WeatherInsertData[],
-    sourceId: string,
-  ): Promise<number> {
+  async insertObservations(rows: WeatherInsertData[], sourceId: string): Promise<number> {
     if (rows.length === 0) return 0;
 
     const placeholders: string[] = [];

@@ -33,6 +33,10 @@ const envSchema = z.object({
 
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  AI_SUPER_ADMIN_VIEW_CONVERSATIONS: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
 
   UPLOAD_DIR: z.string().default('uploads'),
   MAX_FILE_SIZE_MB: z.coerce.number().default(50),
@@ -53,7 +57,7 @@ const envSchema = z.object({
 const parsed = envSchema.safeParse(process.env);
 
 if (!parsed.success) {
-  console.error('❌ Variables d\'environnement invalides :');
+  console.error("❌ Variables d'environnement invalides :");
   console.error(parsed.error.flatten().fieldErrors);
   process.exit(1);
 }

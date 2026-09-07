@@ -70,9 +70,7 @@ export const territoriesRepository = {
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const geometrySelect = query.includeGeometry
-      ? `, ST_AsGeoJSON(d.geom)::jsonb AS geometry`
-      : '';
+    const geometrySelect = query.includeGeometry ? `, ST_AsGeoJSON(d.geom)::jsonb AS geometry` : '';
 
     const countResult = await db.query<CountRow>(
       `SELECT COUNT(*)::text AS count FROM districts d ${where}`,
@@ -169,9 +167,7 @@ export const territoriesRepository = {
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const geometrySelect = query.includeGeometry
-      ? `, ST_AsGeoJSON(c.geom)::jsonb AS geometry`
-      : '';
+    const geometrySelect = query.includeGeometry ? `, ST_AsGeoJSON(c.geom)::jsonb AS geometry` : '';
 
     const countResult = await db.query<CountRow>(
       `SELECT COUNT(*)::text AS count
@@ -322,10 +318,7 @@ export const territoriesRepository = {
     return result.rows;
   },
 
-  async searchTerritories(
-    q: string,
-    limit: number,
-  ): Promise<TerritorySearchResult[]> {
+  async searchTerritories(q: string, limit: number): Promise<TerritorySearchResult[]> {
     const like = `%${q}%`;
     const districts = await db.query<{
       type: 'district';

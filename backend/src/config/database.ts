@@ -25,7 +25,10 @@ pool.on('error', (err) => {
   logger.error({ err }, 'Erreur inattendue sur le pool PostgreSQL');
 });
 
-logger.info({ host: env.DB_HOST, port: env.DB_PORT, database: env.DB_NAME }, 'Connexion PostgreSQL configurée');
+logger.info(
+  { host: env.DB_HOST, port: env.DB_PORT, database: env.DB_NAME },
+  'Connexion PostgreSQL configurée',
+);
 
 export const db = {
   pool,

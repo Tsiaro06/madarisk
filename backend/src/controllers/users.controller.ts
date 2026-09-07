@@ -48,7 +48,7 @@ export const usersController = {
     const id = req.params.id as string;
     const { isActive } = req.validatedBody as UpdateUserStatusInput;
     const user = await usersService.updateStatus(id, isActive, req.user, req);
-    res.status(200).json(successResponse(user, 'Statut de l\'utilisateur mis à jour'));
+    res.status(200).json(successResponse(user, "Statut de l'utilisateur mis à jour"));
   },
 
   changePassword: async (req: Request, res: Response): Promise<void> => {

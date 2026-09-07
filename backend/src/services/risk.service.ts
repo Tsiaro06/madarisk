@@ -23,6 +23,7 @@ import {
 import { UserRole } from '../types/auth.types';
 import { PaginatedResult } from '../types/territory.types';
 import { eventsService } from './events.service';
+import { alertsService } from './alerts.service';
 
 interface RequestContext {
   ip?: string;
@@ -93,16 +94,10 @@ export function scoreVulnerability(vulnerabilityScore: number | null): number {
 
 export function scoreExposure(population: number | null): number {
   if (population === null) return DEFAULT_NEUTRAL_EXPOSURE_SCORE;
-  return Math.min(
-    100,
-    Math.max(0, Math.round((population / EXPOSURE_MAX_POPULATION) * 100)),
-  );
+  return Math.min(100, Math.max(0, Math.round((population / EXPOSURE_MAX_POPULATION) * 100)));
 }
 
-function computeFactors(
-  context: RiskContext,
-  hasEvent: boolean,
-): RiskFactors {
+function computeFactors(context: RiskContext, hasEvent: boolean): RiskFactors {
   return {
     rainScore: scoreRain(context.rainfall24hMm, context.precipitationMm),
     windScore: scoreWind(context.windSpeedKmh),
@@ -116,10 +111,7 @@ function computeFactors(
   };
 }
 
-export function presentationFor(
-  score: number,
-  thresholds: RiskThresholds,
-): RiskPresentation {
+export function presentationFor(score: number, thresholds: RiskThresholds): RiskPresentation {
   if (score >= thresholds.extremeThreshold) {
     return { riskLevel: 'EXTREME', displayLevel: 'EXTRÊME', color: '#DC2626' };
   }
@@ -148,9 +140,9 @@ export function buildExplanation(factors: RiskFactors): string[] {
     lines.push('Des rafales de vent significatives sont prévues.');
   }
   if (factors.proximityScore >= 85) {
-    lines.push('La commune se situe à proximité de la trajectoire ou dans la zone d\'influence.');
+    lines.push("La commune se situe à proximité de la trajectoire ou dans la zone d'influence.");
   } else if (factors.proximityScore >= 60) {
-    lines.push('La commune est modérément proche de la zone d\'influence.');
+    lines.push("La commune est modérément proche de la zone d'influence.");
   }
   if (factors.vulnerabilityScore >= 60) {
     lines.push('Le niveau de vulnérabilité enregistré augmente le risque.');
@@ -191,9 +183,10 @@ export function computeRiskAssessment(
   };
 }
 
-function asConfiguration(
-  row: RiskConfiguration | null,
-): { weights: RiskWeights; thresholds: RiskThresholds } {
+function asConfiguration(row: RiskConfiguration | null): {
+  weights: RiskWeights;
+  thresholds: RiskThresholds;
+} {
   if (!row) {
     return { weights: DEFAULT_WEIGHTS, thresholds: DEFAULT_THRESHOLDS };
   }
@@ -214,10 +207,7 @@ function asConfiguration(
   };
 }
 
-function enrichAssessment(
-  assessment: RiskAssessment,
-  thresholds: RiskThresholds,
-): RiskAssessment {
+function enrichAssessment(assessment: RiskAssessment, thresholds: RiskThresholds): RiskAssessment {
   const presentation = presentationFor(assessment.riskScore, thresholds);
   return { ...assessment, ...presentation };
 }
@@ -344,13 +334,7 @@ export const risksService = {
       eventId: input.eventId,
     });
 
-    return this.runRecalculation(
-      communeIds,
-      input.eventId ?? null,
-      input.phase,
-      actor,
-      req,
-    );
+    return this.runRecalculation(communeIds, input.eventId ?? null, input.phase, actor, req);
   },
 
   async recalculateEvent(
@@ -419,10 +403,9 @@ export const risksService = {
     const saved = await risksRepository.saveAssessments(rows);
     const assessments = saved.map((a) => enrichAssessment(a, thresholds));
 
-    logger.info(
-      { eventId, phase, total: assessments.length },
-      'Recalcul des risques terminé',
-    );
+    logger.info({ eventId, phase, total: assessments.length }, 'Recalcul des risques terminé');
+
+    await alertsService.createRiskAlertIfThresholdExceeded(saved);
 
     await usersRepository.writeAudit({
       userId: actor.id,
@@ -442,11 +425,7 @@ export const risksService = {
   async communeRisks(
     communeId: string,
     query: { eventId?: string; latest: boolean },
-  ): Promise<
-    | RiskAssessment
-    | PaginatedResult<RiskAssessment>
-    | null
-  > {
+  ): Promise<RiskAssessment | PaginatedResult<RiskAssessment> | null> {
     const exists = await weatherRepository.verifyCommuneExists(communeId);
     if (!exists) {
       throw AppError.notFound('Commune introuvable');
@@ -456,19 +435,11 @@ export const risksService = {
     const { thresholds } = asConfiguration(configuration);
 
     if (query.latest) {
-      const assessment = await risksRepository.latestForCommune(
-        communeId,
-        query.eventId,
-      );
+      const assessment = await risksRepository.latestForCommune(communeId, query.eventId);
       return assessment ? enrichAssessment(assessment, thresholds) : null;
     }
 
-    const result = await risksRepository.historyForCommune(
-      communeId,
-      query.eventId,
-      1,
-      20,
-    );
+    const result = await risksRepository.historyForCommune(communeId, query.eventId, 1, 20);
     return {
       items: result.items.map((a) => enrichAssessment(a, thresholds)),
       page: result.page,
@@ -477,9 +448,12 @@ export const risksService = {
     };
   },
 
-  async priorityCommunes(
-    query: { eventId?: string; districtId?: string; riskLevel?: RiskLevel; limit: number },
-  ): Promise<PriorityCommune[]> {
+  async priorityCommunes(query: {
+    eventId?: string;
+    districtId?: string;
+    riskLevel?: RiskLevel;
+    limit: number;
+  }): Promise<PriorityCommune[]> {
     const configuration = await risksRepository.getActiveConfiguration();
     const { thresholds } = asConfiguration(configuration);
 
@@ -490,14 +464,12 @@ export const risksService = {
     });
   },
 
-  async mapLayer(
-    query: {
-      districtId?: string;
-      eventId?: string;
-      riskLevel?: RiskLevel;
-      phase?: RiskPhase;
-    },
-  ): Promise<RiskMapGeoJson> {
+  async mapLayer(query: {
+    districtId?: string;
+    eventId?: string;
+    riskLevel?: RiskLevel;
+    phase?: RiskPhase;
+  }): Promise<RiskMapGeoJson> {
     const configuration = await risksRepository.getActiveConfiguration();
     const { thresholds } = asConfiguration(configuration);
 

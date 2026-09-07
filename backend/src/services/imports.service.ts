@@ -29,10 +29,43 @@ function getIp(req: RequestContext): string | null {
   return req.ip ?? req.socket?.remoteAddress ?? null;
 }
 
-const NAME_KEYS = ['name', 'nom', 'NAME', 'NOM', 'libelle', 'LIBELLE', 'territoire', 'territory', 'district', 'commune'];
-const CODE_KEYS = ['code', 'CODE', 'admin_code', 'adminCode', 'ADMIN_CODE', 'code_administratif', 'code_admin'];
-const DISTRICT_KEYS = ['district', 'DISTRICT', 'district_name', 'source_district', 'sourceDistrict', 'districtName'];
-const REGION_KEYS = ['region', 'REGION', 'region_name', 'source_region', 'sourceRegion', 'regionName'];
+const NAME_KEYS = [
+  'name',
+  'nom',
+  'NAME',
+  'NOM',
+  'libelle',
+  'LIBELLE',
+  'territoire',
+  'territory',
+  'district',
+  'commune',
+];
+const CODE_KEYS = [
+  'code',
+  'CODE',
+  'admin_code',
+  'adminCode',
+  'ADMIN_CODE',
+  'code_administratif',
+  'code_admin',
+];
+const DISTRICT_KEYS = [
+  'district',
+  'DISTRICT',
+  'district_name',
+  'source_district',
+  'sourceDistrict',
+  'districtName',
+];
+const REGION_KEYS = [
+  'region',
+  'REGION',
+  'region_name',
+  'source_region',
+  'sourceRegion',
+  'regionName',
+];
 const REF_KEYS = ['external_reference', 'externalReference', 'ref', 'REF'];
 
 function detectFileType(fileName: string): ImportFileType {
@@ -94,18 +127,22 @@ function parseJsonRecords(content: string): Array<Record<string, unknown>> {
   }
 
   if (Array.isArray(parsed)) {
-    return parsed.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object');
+    return parsed.filter(
+      (item): item is Record<string, unknown> => !!item && typeof item === 'object',
+    );
   }
 
   if (parsed && typeof parsed === 'object') {
     const obj = parsed as Record<string, unknown>;
     const arrayValue = Object.values(obj).find((v) => Array.isArray(v));
     if (arrayValue && arrayValue.length > 0) {
-      return arrayValue.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object');
+      return arrayValue.filter(
+        (item): item is Record<string, unknown> => !!item && typeof item === 'object',
+      );
     }
   }
 
-  throw AppError.badRequest('Fichier JSON tabulaire invalide : tableau d\'objets attendu');
+  throw AppError.badRequest("Fichier JSON tabulaire invalide : tableau d'objets attendu");
 }
 
 function parseGeoJsonRecords(content: string): Array<Record<string, unknown>> {
@@ -128,9 +165,9 @@ function parseGeoJsonRecords(content: string): Array<Record<string, unknown>> {
   return geojson.features
     .filter((f): f is Record<string, unknown> => !!f && typeof f === 'object')
     .map((feature: Record<string, unknown>) => {
-      const props = (feature.properties && typeof feature.properties === 'object'
-        ? feature.properties
-        : {}) as Record<string, unknown>;
+      const props = (
+        feature.properties && typeof feature.properties === 'object' ? feature.properties : {}
+      ) as Record<string, unknown>;
       let geometry: unknown = null;
       if (feature.geometry && typeof feature.geometry === 'object') {
         geometry = feature.geometry;
@@ -178,7 +215,7 @@ export const importsService = {
       try {
         content = fs.readFileSync(file.path, 'utf-8');
       } catch (readErr) {
-        logger.error({ err: readErr, importId }, 'Lecture du fichier d\'import impossible');
+        logger.error({ err: readErr, importId }, "Lecture du fichier d'import impossible");
         throw AppError.badRequest('Lecture du fichier impossible');
       }
 
@@ -274,7 +311,7 @@ export const importsService = {
              WHERE id = $2`,
             [
               JSON.stringify([
-                { row: 0, reason: err instanceof Error ? err.message : 'Erreur d\'import' },
+                { row: 0, reason: err instanceof Error ? err.message : "Erreur d'import" },
               ]),
               importId,
             ],
@@ -285,13 +322,15 @@ export const importsService = {
       }
 
       if (err instanceof AppError) throw err;
-      throw AppError.internal('Échec de l\'import du fichier');
+      throw AppError.internal("Échec de l'import du fichier");
     } finally {
       client.release();
     }
   },
 
-  async list(query: ListImportsQuery): Promise<{ imports: ImportDetail[]; page: number; limit: number; total: number }> {
+  async list(
+    query: ListImportsQuery,
+  ): Promise<{ imports: ImportDetail[]; page: number; limit: number; total: number }> {
     const { items, total } = await importsRepository.list(query);
     return { imports: items, page: query.page, limit: query.limit, total };
   },
@@ -303,7 +342,11 @@ export const importsService = {
     return { import: record, sourceRecords };
   },
 
-  async getErrors(id: string, page: number, limit: number): Promise<{
+  async getErrors(
+    id: string,
+    page: number,
+    limit: number,
+  ): Promise<{
     items: ImportErrorEntry[];
     page: number;
     limit: number;
