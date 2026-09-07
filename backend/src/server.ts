@@ -2,6 +2,8 @@ import app from './app';
 import { env } from './config/env';
 import { logger } from './config/logger';
 import { db } from './config/database';
+import { startWeatherRefreshJob } from './jobs/weather-refresh.job';
+import { startRiskRecalculationJob } from './jobs/risk-recalculation.job';
 
 async function main(): Promise<void> {
   const dbOk = await db.healthCheck();
@@ -10,6 +12,9 @@ async function main(): Promise<void> {
   } else {
     logger.info('Connexion PostgreSQL établie.');
   }
+
+  startWeatherRefreshJob();
+  startRiskRecalculationJob();
 
   app.listen(env.PORT, () => {
     logger.info(`🚀 MadaRisk API démarrée sur http://localhost:${env.PORT}`);

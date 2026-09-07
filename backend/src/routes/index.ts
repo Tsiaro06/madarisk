@@ -6,6 +6,10 @@ import usersRoutes from './users.routes';
 import territoriesRoutes from './territories.routes';
 import importsRoutes from './imports.routes';
 import matchingRoutes from './matching.routes';
+import eventsRoutes from './events.routes';
+import weatherRoutes from './weather.routes';
+import risksRoutes from './risks.routes';
+import riskConfigurationsRoutes from './risk-configurations.routes';
 
 const router = Router();
 
@@ -16,5 +20,9 @@ router.use('/users', usersRoutes);
 router.use('/territories', territoriesRoutes);
 router.use('/imports', importsRoutes);
 router.use('/matching', matchingRoutes);
+router.use('/events', eventsRoutes);
+router.use('/weather', weatherRoutes);
+router.use('/risks', risksRoutes);
+router.use('/risk-configurations', riskConfigurationsRoutes);
 
 export default router;
