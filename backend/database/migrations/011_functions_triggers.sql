@@ -1,7 +1,5 @@
 -- Migration 011: Functions & Triggers
--- Crée la fonction normalize_territory_name et les triggers updated_at.
 
--- Fonction de normalisation des noms de territoire
 CREATE OR REPLACE FUNCTION normalize_territory_name(input_name TEXT)
 RETURNS TEXT
 LANGUAGE plpgsql
@@ -24,7 +22,6 @@ BEGIN
 END;
 $$;
 
--- Fonction générique pour triggers updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER
 LANGUAGE plpgsql
@@ -35,42 +32,42 @@ BEGIN
 END;
 $$;
 
--- Triggers updated_at sur les tables qui ont une colonne updated_at
+DROP TRIGGER IF EXISTS set_updated_at ON organizations;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON organizations
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS set_updated_at ON users;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER set_updated_at BEFORE UPDATE ON matching_rules
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
-CREATE TRIGGER set_updated_at BEFORE UPDATE ON territory_matching
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
+DROP TRIGGER IF EXISTS set_updated_at ON hazard_events;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON hazard_events
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS set_updated_at ON weather_sources;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON weather_sources
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS set_updated_at ON risk_configurations;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON risk_configurations
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER set_updated_at BEFORE UPDATE ON risk_assessments
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
+DROP TRIGGER IF EXISTS set_updated_at ON alerts;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON alerts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
-CREATE TRIGGER set_updated_at BEFORE UPDATE ON dashboard_indicators
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
-
+DROP TRIGGER IF EXISTS set_updated_at ON ai_conversations;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON ai_conversations
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS set_updated_at ON districts;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON districts
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS set_updated_at ON communes;
 CREATE TRIGGER set_updated_at BEFORE UPDATE ON communes
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+DROP TRIGGER IF EXISTS set_updated_at ON regions;
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON regions
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

@@ -1,5 +1,4 @@
--- Migration 009: AI
--- Crée ai_conversations, ai_messages.
+-- Migration 009: AI conversations / messages
 
 CREATE TABLE IF NOT EXISTS ai_conversations (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -16,7 +15,7 @@ CREATE TABLE IF NOT EXISTS ai_messages (
   role ai_message_role NOT NULL,
   content TEXT NOT NULL,
   token_count INTEGER,
-  metadata JSONB,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

@@ -198,7 +198,7 @@ export const weatherRepository = {
       placeholders.push(
         `($${n}, $${n + 1}, $${n + 2}, $${n + 3}, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7}` +
           `, $${n + 8}, $${n + 9}, $${n + 10}, $${n + 11}, $${n + 12}, $${n + 13}, $${n + 14}` +
-          `, ST_SetSRID(ST_MakePoint(round($${n + 5}::numeric, 6)::double precision, round($${n + 4}::numeric, 6)::double precision), 4326))`,
+          `, ST_SetSRID(ST_MakePoint($${n + 5}::double precision, $${n + 4}::double precision), 4326))`,
       );
       values.push(
         sourceId,

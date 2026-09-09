@@ -31,6 +31,9 @@ function getMigrationFiles(): string[] {
 
 async function run(): Promise<void> {
   const { env } = await import('../../src/config/env');
+  const { assertLocalDbWritable } = await import('./assert-local-db');
+
+  assertLocalDbWritable({ databaseUrl: env.DATABASE_URL, host: env.DB_HOST });
 
   const connectionString = env.DATABASE_URL || `postgresql://${env.DB_USER}:${env.DB_PASSWORD}@${env.DB_HOST}:${env.DB_PORT}/${env.DB_NAME}`;
 

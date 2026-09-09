@@ -428,10 +428,7 @@ export const eventsRepository = {
           movement_direction, movement_speed_kmh, geom)
        VALUES
          ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-          ST_SetSRID(
-             ST_MakePoint(round($13::numeric, 6)::double precision, round($14::numeric, 6)::double precision),
-             4326
-           ))
+          ST_SetSRID(ST_MakePoint($6::double precision, $5::double precision), 4326))
        RETURNING
          id, event_id, observed_at, forecast_for, track_type, latitude, longitude,
          wind_speed_kmh, gust_speed_kmh, pressure_hpa, precipitation_mm,
@@ -449,8 +446,6 @@ export const eventsRepository = {
         data.precipitationMm,
         data.movementDirection,
         data.movementSpeedKmh,
-        data.longitude,
-        data.latitude,
       ],
     );
     const r = result.rows[0];

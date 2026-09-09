@@ -1,7 +1,10 @@
 import dotenv from 'dotenv';
+import path from 'path';
 import { z } from 'zod';
 
-dotenv.config();
+// Charge toujours madarisk/backend/.env (indépendamment du cwd)
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config(); // fallback éventuel .env local / variables déjà exportées
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
@@ -62,4 +65,22 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-export const env = parsed.data;
+/** Si DATABASE_URL est défini, aligne DB_HOST / DB_PORT / DB_NAME pour les logs et outils. */
+function withUrlOverrides(data: z.infer<typeof envSchema>) {
+  if (!data.DATABASE_URL) return data;
+  try {
+    const url = new URL(data.DATABASE_URL);
+    return {
+      ...data,
+      DB_HOST: url.hostname || data.DB_HOST,
+      DB_PORT: url.port ? Number(url.port) : data.DB_PORT,
+      DB_NAME: url.pathname.replace(/^\//, '') || data.DB_NAME,
+      DB_USER: url.username ? decodeURIComponent(url.username) : data.DB_USER,
+      DB_PASSWORD: url.password ? decodeURIComponent(url.password) : data.DB_PASSWORD,
+    };
+  } catch {
+    return data;
+  }
+}
+
+export const env = withUrlOverrides(parsed.data);

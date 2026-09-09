@@ -3,6 +3,9 @@ import bcrypt from 'bcrypt';
 
 async function run(): Promise<void> {
   const { env } = await import('../../src/config/env');
+  const { assertLocalDbWritable } = await import('./assert-local-db');
+
+  assertLocalDbWritable({ databaseUrl: env.DATABASE_URL, host: env.DB_HOST });
 
   const connectionString = env.DATABASE_URL || `postgresql://${env.DB_USER}:${env.DB_PASSWORD}@${env.DB_HOST}:${env.DB_PORT}/${env.DB_NAME}`;
 
@@ -42,8 +45,8 @@ async function run(): Promise<void> {
       await client.query(
         `INSERT INTO risk_configurations
            (name, rain_weight, wind_weight, proximity_weight, vulnerability_weight, exposure_weight,
-            low_threshold, moderate_threshold, high_threshold, extreme_threshold)
-         VALUES ($1, 0.30, 0.25, 0.20, 0.15, 0.10, 20, 40, 60, 80)`,
+            low_threshold, moderate_threshold, high_threshold, extreme_threshold, is_active)
+         VALUES ($1, 0.30, 0.25, 0.20, 0.15, 0.10, 20, 40, 60, 80, true)`,
         ['Configuration par défaut'],
       );
       console.log('  ✓ Configuration de risque par défaut créée.');
@@ -58,7 +61,7 @@ async function run(): Promise<void> {
     if (weatherResult.rows.length === 0) {
       await client.query(
         `INSERT INTO weather_sources (name, provider_type, base_url, refresh_interval_minutes)
-         VALUES ('Open-Meteo', 'REST', 'https://api.open-meteo.com', 60)`,
+         VALUES ('Open-Meteo', 'OPEN_METEO', 'https://api.open-meteo.com', 60)`,
       );
       console.log('  ✓ Source météo "Open-Meteo" créée.');
     } else {

@@ -26,7 +26,7 @@ app.use(
 app.use(
   rateLimit({
     windowMs: 15 * 60 * 1000,
-    max: 100,
+    max: env.NODE_ENV === 'development' ? 2000 : 100,
     standardHeaders: true,
     legacyHeaders: false,
     message: { success: false, message: 'Trop de requêtes, veuillez réessayer plus tard.' },
