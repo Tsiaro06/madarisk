@@ -36,6 +36,7 @@ function context(overrides: Partial<RiskContext> = {}): RiskContext {
     windSpeedKmh: null,
     insideArea: false,
     distanceKm: null,
+    severity: null,
     ...overrides,
   };
 }
@@ -232,5 +233,46 @@ describe('computeRiskAssessment - score total et réponse explicable', () => {
     expect(result.riskScore).toBeLessThan(50);
     expect(result.riskLevel).toBe('MODERE');
     expect(result.explanation.join(' ')).toContain('Aucun facteur');
+  });
+
+  it("amplifie le score selon l'intensité de l'événement", () => {
+    const base = computeRiskAssessment(
+      context({
+        insideArea: true,
+        distanceKm: 0,
+        vulnerabilityScore: 50,
+        population: 100_000,
+      }),
+      DEFAULT_CFG,
+      '2026-09-07T06:00:00.000Z',
+    );
+
+    const extreme = computeRiskAssessment(
+      context({
+        insideArea: true,
+        distanceKm: 0,
+        vulnerabilityScore: 50,
+        population: 100_000,
+        severity: 'EXTREME' as const,
+      }),
+      DEFAULT_CFG,
+      '2026-09-07T06:00:00.000Z',
+    );
+
+    const faible = computeRiskAssessment(
+      context({
+        insideArea: true,
+        distanceKm: 0,
+        vulnerabilityScore: 50,
+        population: 100_000,
+        severity: 'FAIBLE' as const,
+      }),
+      DEFAULT_CFG,
+      '2026-09-07T06:00:00.000Z',
+    );
+
+    expect(extreme.riskScore).toBe(Math.min(100, Math.round(base.riskScore * 1.5)));
+    expect(faible.riskScore).toBe(base.riskScore);
+    expect(extreme.explanation.join(' ')).toContain("L'intensité exceptionnelle");
   });
 });

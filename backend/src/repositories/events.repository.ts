@@ -595,6 +595,47 @@ export const eventsRepository = {
     };
   },
 
+  async createAreaFromPolygon(data: {
+    eventId: string;
+    phase: RiskPhase;
+    riskLevel: RiskLevel;
+    geometry: { type: 'Polygon' | 'MultiPolygon'; coordinates: unknown };
+    source?: string;
+  }): Promise<{ id: string; geometry: unknown; radiusKm: number | null }> {
+    const result = await db.query<{
+      id: string;
+      geometry: unknown;
+      radius_km: string | null;
+    }>(
+      `INSERT INTO event_areas (event_id, phase, risk_level, radius_km, source, geom)
+       VALUES (
+         $1,
+         $2::risk_phase,
+         $3::risk_level,
+         NULL,
+         $4,
+         ST_SetSRID(
+           ST_Multi(ST_GeomFromGeoJSON($5::jsonb)),
+           4326
+         )
+       )
+       RETURNING id, ST_AsGeoJSON(geom)::jsonb AS geometry, radius_km::text AS radius_km`,
+      [
+        data.eventId,
+        data.phase,
+        data.riskLevel,
+        data.source ?? 'manual-polygon',
+        JSON.stringify(data.geometry),
+      ],
+    );
+    const r = result.rows[0];
+    return {
+      id: r.id,
+      geometry: r.geometry,
+      radiusKm: r.radius_km !== null ? parseFloat(r.radius_km) : null,
+    };
+  },
+
   async listAreas(eventId: string): Promise<AreaGeoJson> {
     const result = await db.query<{ feature: AreaGeoJson['features'][number] }>(
       `SELECT
@@ -626,6 +667,14 @@ export const eventsRepository = {
       [eventId],
     );
     return parseCount(result.rows[0]) > 0;
+  },
+
+  async latestAreaPhase(eventId: string): Promise<RiskPhase | null> {
+    const result = await db.query<{ phase: string }>(
+      `SELECT phase FROM event_areas WHERE event_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      [eventId],
+    );
+    return result.rows[0] ? (result.rows[0].phase as RiskPhase) : null;
   },
 
   async countTracks(eventId: string): Promise<number> {
@@ -670,7 +719,7 @@ export const eventsRepository = {
            e.population
          FROM exposed e
          JOIN communes c ON c.id = e.commune_id
-         CROSS JOIN (SELECT line FROM track) t
+         LEFT JOIN (SELECT line FROM track) t ON true
          ON CONFLICT (event_id, commune_id)
          DO UPDATE SET
            distance_to_track_km = EXCLUDED.distance_to_track_km,

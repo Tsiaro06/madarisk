@@ -140,6 +140,33 @@ export const calculateAreaSchema = z.object({
   radiusKm: z.coerce.number().min(1, 'radiusKm minimum 1 km').max(500, 'radiusKm maximum 500 km'),
 });
 
+const geoPositionSchema = z
+  .tuple([
+    z.number().min(-180, 'longitude entre -180 et 180').max(180, 'longitude entre -180 et 180'),
+    z.number().min(-90, 'latitude entre -90 et 90').max(90, 'latitude entre -90 et 90'),
+  ])
+  .describe('Position GeoJSON [longitude, latitude]');
+
+const polygonRingSchema = z
+  .array(geoPositionSchema)
+  .min(4, 'Un polygone doit avoir au moins 4 sommets (fermé)');
+
+const polygonGeometrySchema = z.object({
+  type: z.literal('Polygon'),
+  coordinates: z.array(polygonRingSchema).min(1, 'Un polygone doit avoir au moins un contour'),
+});
+
+const multiPolygonGeometrySchema = z.object({
+  type: z.literal('MultiPolygon'),
+  coordinates: z.array(z.array(polygonRingSchema).min(1)).min(1),
+});
+
+export const createPolygonAreaSchema = z.object({
+  phase: riskPhaseEnum,
+  riskLevel: riskLevelEnum,
+  geometry: z.union([polygonGeometrySchema, multiPolygonGeometrySchema]),
+});
+
 export const calculateExposureSchema = z.object({
   areaId: z.string().uuid('Identifiant de zone invalide').optional(),
   allAreas: z
@@ -164,5 +191,6 @@ export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
 export type CreateTrackInput = z.infer<typeof createTrackSchema>;
 export type ListTracksQuery = z.infer<typeof listTracksQuerySchema>;
 export type CalculateAreaInput = z.infer<typeof calculateAreaSchema>;
+export type CreatePolygonAreaInput = z.infer<typeof createPolygonAreaSchema>;
 export type CalculateExposureInput = z.infer<typeof calculateExposureSchema>;
 export type ListExposedCommunesQuery = z.infer<typeof listExposedCommunesQuerySchema>;

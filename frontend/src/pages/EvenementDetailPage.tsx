@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { FeatureCollection } from 'geojson';
+import type { FeatureCollection, Polygon } from 'geojson';
 import type { z } from 'zod';
 import { eventsApi } from '@/api';
 import type { EventListItem, EventStatus, RiskLevel, RiskPhase } from '@/types';
@@ -18,6 +18,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { GeoJsonMap } from '@/components/maps/GeoJsonMap';
+import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatNumber } from '@/lib/utils';
 import { canManageOps } from '@/lib/roles';
@@ -46,6 +47,11 @@ export function EvenementDetailPage() {
   const role = useAuthStore((s) => s.user?.role);
   const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
   const [trackPoint, setTrackPoint] = useState({ lat: '', lng: '', trackType: 'PREVUE' });
+  const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
+  const [polyForm, setPolyForm] = useState<{ phase: RiskPhase; riskLevel: RiskLevel }>({
+    phase: 'PENDANT',
+    riskLevel: 'ELEVE',
+  });
 
   const areaForm = useForm<AreaForm>({
     resolver: zodResolver(calculateAreaSchema),
@@ -106,7 +112,19 @@ export function EvenementDetailPage() {
     onSuccess: () => {
       toast('Zone d’influence calculée', 'success');
       void qc.invalidateQueries({ queryKey: ['event', id, 'areas'] });
-      exposureM.mutate();
+      void qc.invalidateQueries({ queryKey: ['event', id, 'exposed'] });
+    },
+    onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
+  });
+
+  const polygonM = useMutation({
+    mutationFn: (body: { phase: RiskPhase; riskLevel: RiskLevel; geometry: Polygon }) =>
+      eventsApi.createPolygonArea(id, body),
+    onSuccess: () => {
+      toast('Zone polygonale définie', 'success');
+      setPolygonPoints([]);
+      void qc.invalidateQueries({ queryKey: ['event', id, 'areas'] });
+      void qc.invalidateQueries({ queryKey: ['event', id, 'exposed'] });
     },
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
   });
@@ -223,6 +241,65 @@ export function EvenementDetailPage() {
                   Calculer
                 </Button>
               </form>
+            </Card>
+
+            <Card title="Zone polygonale (dessin)">
+              <div className="space-y-2">
+                <Select
+                  label="Phase"
+                  value={polyForm.phase}
+                  onChange={(e) => setPolyForm((p) => ({ ...p, phase: e.target.value as RiskPhase }))}
+                  options={PHASES.map((p) => ({ value: p, label: p }))}
+                />
+                <Select
+                  label="Niveau"
+                  value={polyForm.riskLevel}
+                  onChange={(e) =>
+                    setPolyForm((p) => ({ ...p, riskLevel: e.target.value as RiskLevel }))
+                  }
+                  options={LEVELS.map((p) => ({ value: p, label: p }))}
+                />
+                <PolygonDrawMap points={polygonPoints} onChange={setPolygonPoints} height={240} />
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    variant="secondary"
+                    disabled={polygonPoints.length === 0}
+                    onClick={() => setPolygonPoints((p) => p.slice(0, -1))}
+                  >
+                    Annuler le point
+                  </Button>
+                  <Button
+                    className="flex-1"
+                    variant="outline"
+                    disabled={polygonPoints.length === 0}
+                    onClick={() => setPolygonPoints([])}
+                  >
+                    Effacer
+                  </Button>
+                </div>
+                <Button
+                  className="w-full"
+                  loading={polygonM.isPending}
+                  disabled={polygonPoints.length < 3}
+                  onClick={() => {
+                    const ring: Polygon['coordinates'][number] = [
+                      ...polygonPoints.map(([lat, lng]) => [lng, lat] as [number, number]),
+                      [polygonPoints[0][1], polygonPoints[0][0]],
+                    ];
+                    polygonM.mutate({
+                      phase: polyForm.phase,
+                      riskLevel: polyForm.riskLevel,
+                      geometry: { type: 'Polygon', coordinates: [ring] },
+                    });
+                  }}
+                >
+                  Définir la zone ({polygonPoints.length} point{polygonPoints.length > 1 ? 's' : ''})
+                </Button>
+                <p className="text-xs text-muted">
+                  Cliquez la carte pour tracer la zone (≥ 3 points). Aucune trajectoire requise.
+                </p>
+              </div>
             </Card>
 
             <Card title="Exposition & risques">

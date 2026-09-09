@@ -13,6 +13,7 @@ import {
   createTrackSchema,
   listTracksQuerySchema,
   calculateAreaSchema,
+  createPolygonAreaSchema,
   calculateExposureSchema,
   listExposedCommunesQuerySchema,
 } from '../validators/events.validator';
@@ -89,6 +90,13 @@ router.get(
   '/:id/areas',
   validate({ params: eventIdParamsSchema }),
   asyncHandler(eventsController.getAreas),
+);
+
+router.post(
+  '/:id/areas/polygon',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  validate({ params: eventIdParamsSchema, body: createPolygonAreaSchema }),
+  asyncHandler(eventsController.createAreaFromPolygon),
 );
 
 router.post(

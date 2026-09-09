@@ -165,22 +165,26 @@ afterAll(async () => {
   await db.query(`DELETE FROM weather_observations WHERE commune_id = $1`, [communeId]);
   await db.query(`DELETE FROM risk_assessments WHERE commune_id = $1`, [communeId]);
   await db.query(`DELETE FROM risk_configurations WHERE name LIKE 'wx-%'`);
-  await db.query(
-    `DELETE FROM hazard_events WHERE created_by IN ($1, $2, $3)`,
-    [admin.id, superAdmin.id, client.id],
-  );
-  await db.query(
-    `DELETE FROM user_sessions WHERE user_id IN ($1, $2, $3)`,
-    [admin.id, superAdmin.id, client.id],
-  );
-  await db.query(
-    `DELETE FROM audit_logs WHERE user_id IN ($1, $2, $3)`,
-    [admin.id, superAdmin.id, client.id],
-  );
-  await db.query(
-    `DELETE FROM users WHERE id IN ($1, $2, $3)`,
-    [admin.id, superAdmin.id, client.id],
-  );
+  await db.query(`DELETE FROM hazard_events WHERE created_by IN ($1, $2, $3)`, [
+    admin.id,
+    superAdmin.id,
+    client.id,
+  ]);
+  await db.query(`DELETE FROM user_sessions WHERE user_id IN ($1, $2, $3)`, [
+    admin.id,
+    superAdmin.id,
+    client.id,
+  ]);
+  await db.query(`DELETE FROM audit_logs WHERE user_id IN ($1, $2, $3)`, [
+    admin.id,
+    superAdmin.id,
+    client.id,
+  ]);
+  await db.query(`DELETE FROM users WHERE id IN ($1, $2, $3)`, [
+    admin.id,
+    superAdmin.id,
+    client.id,
+  ]);
   await db.pool.end();
 });
 
@@ -189,7 +193,9 @@ describe('Météo - authentification et rôles', () => {
     const res = await request(app).get('/api/v1/weather/map-layer');
     expect(res.status).toBe(401);
 
-    const post = await request(app).post('/api/v1/weather/refresh/communes').send({ confirmAll: true });
+    const post = await request(app)
+      .post('/api/v1/weather/refresh/communes')
+      .send({ confirmAll: true });
     expect(post.status).toBe(401);
   });
 
@@ -363,6 +369,42 @@ describe('Risques - recalcul lié à un événement', () => {
       .set('Authorization', `Bearer ${admin.token}`)
       .send({});
     expect(res.status).toBe(422);
+  });
+});
+
+describe('Risques - recalcul automatique', () => {
+  it('recalcule automatiquement les risques dès la création de la zone', async () => {
+    const eventId = await prepareEventWithExposure(admin.token);
+
+    const res = await request(app)
+      .get(`/api/v1/risks/communes/${communeId}?latest=true&eventId=${eventId}`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.eventId).toBe(eventId);
+    expect(res.body.data.phase).toBe('PENDANT');
+    expect(typeof res.body.data.riskScore).toBe('number');
+    expect(res.body.data.factors).toBeDefined();
+  });
+
+  it('recalcule automatiquement les risques quand la sévérité change', async () => {
+    const eventId = await prepareEventWithExposure(admin.token);
+    const before = await db.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM risk_assessments WHERE event_id = $1`,
+      [eventId],
+    );
+
+    const res = await request(app)
+      .patch(`/api/v1/events/${eventId}`)
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({ severity: 'EXTREME' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.severity).toBe('EXTREME');
+
+    const after = await db.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM risk_assessments WHERE event_id = $1`,
+      [eventId],
+    );
+    expect(parseInt(after.rows[0].n, 10)).toBeGreaterThan(parseInt(before.rows[0].n, 10));
   });
 });
 

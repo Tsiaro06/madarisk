@@ -18,6 +18,7 @@ import {
   CalculateAreaInput,
   CalculateExposureInput,
   CreateEventInput,
+  CreatePolygonAreaInput,
   CreateTrackInput,
   ListEventsQuery,
   ListExposedCommunesQuery,
@@ -26,6 +27,7 @@ import {
   UpdateEventStatusInput,
 } from '../validators/events.validator';
 import { IncomingHttpHeaders } from 'http';
+import { risksService } from './risk.service';
 
 interface RequestContext {
   ip?: string;
@@ -154,6 +156,21 @@ export const eventsService = {
       newValue: updated ?? undefined,
       ipAddress: getIp(req),
     });
+
+    // La sévérité modifie le multiplicateur d'intensité du score de risque :
+    // on recalcule automatiquement les risques quand elle change.
+    // Non bloquant : un échec ne doit pas empêcher la mise à jour.
+    if (updated && input.severity !== undefined && input.severity !== existing.severity) {
+      const phase = (await eventsRepository.latestAreaPhase(id)) ?? 'PENDANT';
+      try {
+        await risksService.recalculateEvent(id, phase, actor, req);
+      } catch (err) {
+        logger.warn(
+          { err, eventId: id, phase },
+          'Recalcul automatique des risques (sévérité) échoué',
+        );
+      }
+    }
 
     return updated!;
   },
@@ -366,12 +383,79 @@ export const eventsService = {
       logger.warn({ err, eventId: id }, "Recalcul automatique de l'exposition échoué");
     }
 
+    // Recalcul automatique des scores de risque avec la phase de la zone.
+    // Non bloquant : un échec (ex. aucune commune exposée) ne bloque pas la zone.
+    try {
+      await risksService.recalculateEvent(id, input.phase, actor, req);
+    } catch (err) {
+      logger.warn(
+        { err, eventId: id, phase: input.phase },
+        'Recalcul automatique des risques échoué',
+      );
+    }
+
     return { areaId: area.id, geometry: area.geometry, radiusKm: area.radiusKm };
   },
 
   async getAreas(id: string): Promise<AreaGeoJson> {
     await this.ensureExists(id);
     return eventsRepository.listAreas(id);
+  },
+
+  async createAreaFromPolygon(
+    id: string,
+    input: CreatePolygonAreaInput,
+    actor: { id: string; role: UserRole },
+    req: RequestContext,
+  ): Promise<{ areaId: string; geometry: unknown; radiusKm: number | null }> {
+    if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
+      throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent définir une zone polygonale');
+    }
+
+    await this.ensureExists(id);
+
+    const area = await eventsRepository.createAreaFromPolygon({
+      eventId: id,
+      phase: input.phase,
+      riskLevel: input.riskLevel,
+      geometry: input.geometry,
+      source: `phase=${input.phase};risk=${input.riskLevel};type=${input.geometry.type}`,
+    });
+
+    await usersRepository.writeAudit({
+      userId: actor.id,
+      action: 'EVENT_AREA_POLYGON_CREATED',
+      entityType: 'event_area',
+      entityId: area.id,
+      newValue: {
+        eventId: id,
+        phase: input.phase,
+        riskLevel: input.riskLevel,
+        geometryType: input.geometry.type,
+      },
+      ipAddress: getIp(req),
+    });
+
+    // Recalcul automatique des communes exposées dès la création de la zone.
+    // Un échec d'exposition ne doit pas bloquer la création de la zone.
+    try {
+      await eventsRepository.calculateExposure(id, null);
+    } catch (err) {
+      logger.warn({ err, eventId: id }, "Recalcul automatique de l'exposition échoué");
+    }
+
+    // Recalcul automatique des scores de risque avec la phase de la zone.
+    // Non bloquant : un échec (ex. aucune commune exposée) ne bloque pas la zone.
+    try {
+      await risksService.recalculateEvent(id, input.phase, actor, req);
+    } catch (err) {
+      logger.warn(
+        { err, eventId: id, phase: input.phase },
+        'Recalcul automatique des risques échoué',
+      );
+    }
+
+    return { areaId: area.id, geometry: area.geometry, radiusKm: area.radiusKm };
   },
 
   async calculateExposure(

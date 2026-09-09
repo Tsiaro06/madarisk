@@ -1,5 +1,5 @@
 import { db } from '../config/database';
-import { RiskLevel, RiskPhase } from '../types/event.types';
+import { RiskLevel, RiskPhase, SeverityLevel } from '../types/event.types';
 import {
   PriorityCommune,
   RiskAssessment,
@@ -317,6 +317,7 @@ export const risksRepository = {
       windSpeedKmh: string | null;
       insideArea: boolean;
       distanceKm: string | null;
+      severity: string | null;
     }>(
       `SELECT
          t.id AS "communeId",
@@ -329,7 +330,8 @@ export const risksRepository = {
            SELECT 1 FROM event_areas a
            WHERE a.event_id = $2 AND ST_Intersects(c.geom, a.geom)
          ) AS "insideArea",
-         d.distance_km AS "distanceKm"
+         d.distance_km AS "distanceKm",
+         (SELECT he.severity FROM hazard_events he WHERE he.id = $2) AS "severity"
        FROM communes c
        JOIN unnest($1::uuid[]) AS t(id) ON t.id = c.id
        LEFT JOIN LATERAL (
@@ -365,6 +367,7 @@ export const risksRepository = {
       windSpeedKmh: r.windSpeedKmh !== null ? parseFloat(r.windSpeedKmh) : null,
       insideArea: r.insideArea,
       distanceKm: r.distanceKm !== null ? parseFloat(r.distanceKm) : null,
+      severity: (r.severity ?? null) as SeverityLevel | null,
     }));
   },
 

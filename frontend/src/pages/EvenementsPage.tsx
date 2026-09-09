@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
+import type { Polygon } from 'geojson';
 import { eventsApi } from '@/api';
-import type { EventStatus, EventType, SeverityLevel } from '@/types';
+import type { EventStatus, EventType, RiskLevel, RiskPhase, SeverityLevel } from '@/types';
 import { ApiClientError } from '@/api/client';
 import { createEventSchema } from '@/schemas/forms';
 import { Card } from '@/components/ui/Card';
@@ -15,6 +16,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
+import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/lib/utils';
 import { canManageOps } from '@/lib/roles';
@@ -41,6 +43,8 @@ const EVENT_TYPES: EventType[] = [
 ];
 
 const SEVERITIES: SeverityLevel[] = ['FAIBLE', 'MODEREE', 'ELEVEE', 'EXTREME'];
+const PHASES: RiskPhase[] = ['AVANT', 'PENDANT', 'APRES', 'RETABLISSEMENT'];
+const LEVELS: RiskLevel[] = ['FAIBLE', 'MODERE', 'ELEVE', 'EXTREME'];
 
 type CreateEventForm = z.infer<typeof createEventSchema>;
 
@@ -51,6 +55,13 @@ export function EvenementsPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [open, setOpen] = useState(false);
+  const [trackPoints, setTrackPoints] = useState<[number, number][]>([]);
+  const [trackType, setTrackType] = useState('PREVUE');
+  const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
+  const [polyForm, setPolyForm] = useState<{ phase: RiskPhase; riskLevel: RiskLevel }>({
+    phase: 'PENDANT',
+    riskLevel: 'ELEVE',
+  });
 
   const form = useForm<CreateEventForm>({
     resolver: zodResolver(createEventSchema),
@@ -70,11 +81,35 @@ export function EvenementsPage() {
   });
 
   const createM = useMutation({
-    mutationFn: (body: CreateEventForm) => eventsApi.create(body),
+    mutationFn: async (body: CreateEventForm) => {
+      const created = await eventsApi.create(body);
+      for (const [lat, lng] of trackPoints) {
+        await eventsApi.addTrack(created.id, {
+          trackType,
+          latitude: lat,
+          longitude: lng,
+          observedAt: new Date().toISOString(),
+        });
+      }
+      if (polygonPoints.length >= 3) {
+        const ring: Polygon['coordinates'][number] = [
+          ...polygonPoints.map(([lat, lng]) => [lng, lat] as [number, number]),
+          [polygonPoints[0][1], polygonPoints[0][0]],
+        ];
+        await eventsApi.createPolygonArea(created.id, {
+          phase: polyForm.phase,
+          riskLevel: polyForm.riskLevel,
+          geometry: { type: 'Polygon', coordinates: [ring] },
+        });
+      }
+      return created;
+    },
     onSuccess: () => {
       toast('Événement créé', 'success');
       setOpen(false);
       form.reset();
+      setTrackPoints([]);
+      setPolygonPoints([]);
       void qc.invalidateQueries({ queryKey: ['events'] });
     },
     onError: (err) => {
@@ -168,30 +203,127 @@ export function EvenementsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <form
             onSubmit={form.handleSubmit((values) => createM.mutate(values))}
-            className="w-full max-w-lg space-y-3 rounded-2xl bg-white p-5 shadow-2xl"
+            className="w-full max-w-3xl space-y-3 overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
           >
             <h2 className="font-display text-xl">Nouvel événement</h2>
-            <Input label="Code" {...form.register('eventCode')} error={form.formState.errors.eventCode?.message} />
-            <Input label="Nom" {...form.register('name')} error={form.formState.errors.name?.message} />
-            <Select
-              label="Type"
-              {...form.register('type')}
-              options={EVENT_TYPES.map((t) => ({ value: t, label: t }))}
-            />
-            <Select
-              label="Sévérité"
-              {...form.register('severity')}
-              options={SEVERITIES.map((t) => ({ value: t, label: t }))}
-            />
-            <Select
-              label="Statut"
-              {...form.register('status')}
-              options={(Object.keys(STATUS_TONE) as EventStatus[]).map((s) => ({
-                value: s,
-                label: s,
-              }))}
-            />
-            <Input label="Description" {...form.register('description')} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Input label="Code" {...form.register('eventCode')} error={form.formState.errors.eventCode?.message} />
+              <Input label="Nom" {...form.register('name')} error={form.formState.errors.name?.message} />
+              <Select
+                label="Type"
+                {...form.register('type')}
+                options={EVENT_TYPES.map((t) => ({ value: t, label: t }))}
+              />
+              <Select
+                label="Sévérité"
+                {...form.register('severity')}
+                options={SEVERITIES.map((t) => ({ value: t, label: t }))}
+              />
+              <Select
+                label="Statut"
+                {...form.register('status')}
+                options={(Object.keys(STATUS_TONE) as EventStatus[]).map((s) => ({
+                  value: s,
+                  label: s,
+                }))}
+              />
+              <Input label="Description" {...form.register('description')} />
+            </div>
+
+            {form.watch('type') === 'CYCLONE' ? (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-ink">Points de trajectoire (cyclone)</p>
+                <PolygonDrawMap
+                  variant="track"
+                  points={trackPoints}
+                  onChange={setTrackPoints}
+                  height={240}
+                />
+                <div className="flex gap-2">
+                  <Select
+                    label="Type"
+                    value={trackType}
+                    onChange={(e) => setTrackType(e.target.value)}
+                    options={[
+                      { value: 'OBSERVEE', label: 'OBSERVEE' },
+                      { value: 'PREVUE', label: 'PREVUE' },
+                    ]}
+                  />
+                  <div className="flex flex-1 items-end gap-2">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="flex-1"
+                      disabled={trackPoints.length === 0}
+                      onClick={() => setTrackPoints((p) => p.slice(0, -1))}
+                    >
+                      Annuler le point
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1"
+                      disabled={trackPoints.length === 0}
+                      onClick={() => setTrackPoints([])}
+                    >
+                      Effacer
+                    </Button>
+                  </div>
+                </div>
+                <p className="text-xs text-muted">
+                  Limites de districts affichées pour repérage (facultatif).
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-ink">Zone polygonale (dessin)</p>
+                <Select
+                  label="Phase"
+                  value={polyForm.phase}
+                  onChange={(e) => setPolyForm((p) => ({ ...p, phase: e.target.value as RiskPhase }))}
+                  options={PHASES.map((p) => ({ value: p, label: p }))}
+                />
+                <Select
+                  label="Niveau"
+                  value={polyForm.riskLevel}
+                  onChange={(e) =>
+                    setPolyForm((p) => ({ ...p, riskLevel: e.target.value as RiskLevel }))
+                  }
+                  options={LEVELS.map((p) => ({ value: p, label: p }))}
+                />
+                <PolygonDrawMap
+                  variant="polygon"
+                  points={polygonPoints}
+                  onChange={setPolygonPoints}
+                  height={240}
+                />
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    className="flex-1"
+                    disabled={polygonPoints.length === 0}
+                    onClick={() => setPolygonPoints((p) => p.slice(0, -1))}
+                  >
+                    Annuler le point
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    disabled={polygonPoints.length === 0}
+                    onClick={() => setPolygonPoints([])}
+                  >
+                    Effacer
+                  </Button>
+                </div>
+                <p className="text-xs text-muted">
+                  ≥ 3 points pour définir la zone (facultatif). Limites de districts affichées pour
+                  repérage.
+                </p>
+              </div>
+            )}
+
             <div className="flex justify-end gap-2 pt-2">
               <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
                 Annuler

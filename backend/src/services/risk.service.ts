@@ -5,7 +5,7 @@ import { usersRepository } from '../repositories/users.repository';
 import { eventsRepository } from '../repositories/events.repository';
 import { weatherRepository } from '../repositories/weather.repository';
 import { risksRepository } from '../repositories/risks.repository';
-import { RiskLevel, RiskPhase } from '../types/event.types';
+import { RiskLevel, RiskPhase, SeverityLevel } from '../types/event.types';
 import {
   PriorityCommune,
   RiskAssessment,
@@ -22,7 +22,6 @@ import {
 } from '../types/risk.types';
 import { UserRole } from '../types/auth.types';
 import { PaginatedResult } from '../types/territory.types';
-import { eventsService } from './events.service';
 import { alertsService } from './alerts.service';
 
 interface RequestContext {
@@ -40,6 +39,16 @@ const DEFAULT_NEUTRAL_PROXIMITY_SCORE = 50;
 const DEFAULT_NEUTRAL_VULNERABILITY_SCORE = 50;
 const DEFAULT_NEUTRAL_EXPOSURE_SCORE = 50;
 const EXPOSURE_MAX_POPULATION = 200_000;
+
+// Multiplicateur d'intensité appliqué au score total quand un événement est actif.
+// La sévérité de l'événement amplifie le risque : un événement EXTREME pèse plus
+// lourd qu'un événement FAIBLE pour un même niveau de proximité/exposition.
+const SEVERITY_INTENSITY_FACTOR: Record<SeverityLevel, number> = {
+  FAIBLE: 1,
+  MODEREE: 1.1,
+  ELEVEE: 1.25,
+  EXTREME: 1.5,
+};
 
 const DEFAULT_THRESHOLDS: RiskThresholds = {
   lowThreshold: 20,
@@ -97,6 +106,24 @@ export function scoreExposure(population: number | null): number {
   return Math.min(100, Math.max(0, Math.round((population / EXPOSURE_MAX_POPULATION) * 100)));
 }
 
+// Intensité de l'événement (severity) transformée en facteur 0-100.
+// Sans événement actif, retourne le neutre pour ne pas déformer le score global.
+export function scoreSeverity(severity: SeverityLevel | null, hasEvent: boolean): number {
+  if (!hasEvent || severity === null) return DEFAULT_NEUTRAL_PROXIMITY_SCORE;
+  switch (severity) {
+    case 'FAIBLE':
+      return 20;
+    case 'MODEREE':
+      return 45;
+    case 'ELEVEE':
+      return 70;
+    case 'EXTREME':
+      return 100;
+    default:
+      return DEFAULT_NEUTRAL_PROXIMITY_SCORE;
+  }
+}
+
 function computeFactors(context: RiskContext, hasEvent: boolean): RiskFactors {
   return {
     rainScore: scoreRain(context.rainfall24hMm, context.precipitationMm),
@@ -127,7 +154,7 @@ export function presentationFor(score: number, thresholds: RiskThresholds): Risk
   return { riskLevel: 'FAIBLE', displayLevel: 'SUIVI', color: '#3B82F6' };
 }
 
-export function buildExplanation(factors: RiskFactors): string[] {
+export function buildExplanation(factors: RiskFactors, severity?: SeverityLevel | null): string[] {
   const lines: string[] = [];
   if (factors.rainScore >= 65) {
     lines.push('Les précipitations prévues dépassent le seuil critique.');
@@ -150,6 +177,15 @@ export function buildExplanation(factors: RiskFactors): string[] {
   if (factors.exposureScore >= 60) {
     lines.push('La population exposée est importante.');
   }
+  if (severity !== undefined && severity !== null && severity !== 'FAIBLE') {
+    const intensity =
+      severity === 'EXTREME'
+        ? "L'intensité exceptionnelle de l'événement amplifie fortement le risque."
+        : severity === 'ELEVEE'
+          ? "La forte intensité de l'événement amplifie le risque."
+          : "L'intensité modérée de l'événement accentue le risque.";
+    lines.push(intensity);
+  }
   if (lines.length === 0) {
     lines.push('Aucun facteur dommageable majeur identifié.');
   }
@@ -171,14 +207,18 @@ export function computeRiskAssessment(
     config.weights.vulnerabilityWeight * factors.vulnerabilityScore +
     config.weights.exposureWeight * factors.exposureScore;
 
-  const riskScore = Math.round(totalScore);
+  const severity = hasEvent ? context.severity : null;
+  const intensity =
+    severity === null || severity === undefined ? 1 : SEVERITY_INTENSITY_FACTOR[severity];
+
+  const riskScore = Math.min(100, Math.round(totalScore * intensity));
   const presentation = presentationFor(riskScore, config.thresholds);
 
   return {
     riskScore,
     ...presentation,
     factors,
-    explanation: buildExplanation(factors),
+    explanation: buildExplanation(factors, severity),
     assessedAt,
   };
 }
@@ -347,7 +387,10 @@ export const risksService = {
       throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent recalculer les risques');
     }
 
-    await eventsService.ensureExists(eventId);
+    const event = await eventsRepository.findById(eventId);
+    if (!event) {
+      throw AppError.notFound('Événement introuvable');
+    }
 
     const communeIds = await risksRepository.resolveTargetCommunes({
       eventId,

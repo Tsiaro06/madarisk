@@ -1,4 +1,4 @@
-import { RiskLevel, RiskPhase } from './event.types';
+import { RiskLevel, RiskPhase, SeverityLevel } from './event.types';
 import { GeoJsonGeometry } from './territory.types';
 
 export interface RiskFactors {
@@ -103,6 +103,7 @@ export interface RiskContext {
   windSpeedKmh: number | null;
   insideArea: boolean;
   distanceKm: number | null;
+  severity: SeverityLevel | null;
 }
 
 export interface RiskMapProperties {

@@ -1520,6 +1520,58 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /events/{id}/areas/polygon:
+    post:
+      tags: [Événements]
+      summary: Définir une zone d'influence polygonale (ADMIN / SUPER_ADMIN)
+      description: >-
+        Crée une zone d'influence à partir d'un polygone GeoJSON (Polygon ou MultiPolygon),
+        tracé manuellement (aucun point de trajectoire requis). Utile pour les événements
+        sans trajectoire claire (inondation, sécheresse, glissement de terrain...).
+      security:
+        - bearerAuth: []
+      operationId: createAreaFromPolygon
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phase, riskLevel, geometry]
+              properties:
+                phase: { $ref: '#/components/schemas/RiskPhase' }
+                riskLevel: { $ref: '#/components/schemas/RiskLevel' }
+                geometry:
+                  $ref: '#/components/schemas/PolygonGeometry'
+            examples:
+              polygonAreaExample:
+                $ref: '#/components/examples/polygonArea'
+      responses:
+        '201':
+          description: Zone polygonale définie
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/TrackInfluenceArea' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /events/{id}/exposure/calculate:
     post:
       tags: [Événements]
@@ -2883,6 +2935,15 @@ components:
         phase: PENDANT
         riskLevel: ELEVE
         radiusKm: 75
+    polygonArea:
+      summary: Définition d'une zone polygonale
+      value:
+        phase: PENDANT
+        riskLevel: ELEVE
+        geometry:
+          type: Polygon
+          coordinates:
+            - [[-50.0, -20.0], [-48.0, -20.0], [-48.0, -18.0], [-50.0, -18.0], [-50.0, -20.0]]
     tracksGeoJson:
       summary: Trajectoires GeoJSON d'un événement
       value:
@@ -3236,6 +3297,23 @@ components:
         riskLevel: { $ref: '#/components/schemas/RiskLevel' }
         circle: { $ref: '#/components/schemas/GeoJsonGeometry' }
         createdAt: { type: string, format: date-time }
+    PolygonGeometry:
+      type: object
+      description: Géométrie GeoJSON (Polygon ou MultiPolygon) représentant la zone d'influence tracée manuellement.
+      required: [type, coordinates]
+      properties:
+        type:
+          type: string
+          enum: [Polygon, MultiPolygon]
+        coordinates:
+          type: array
+          description: >-
+            Pour un Polygon : liste de contours (ring) fermés `[[[lng,lat],...]]`.
+            Pour un MultiPolygon : liste de polygones, chacun étant une liste de contours.
+      example:
+        type: Polygon
+        coordinates:
+          - [[-50.0, -20.0], [-48.0, -20.0], [-48.0, -18.0], [-50.0, -18.0], [-50.0, -20.0]]
     ExposureResult:
       type: object
       description: Résultat du calcul d'exposition d'une commune

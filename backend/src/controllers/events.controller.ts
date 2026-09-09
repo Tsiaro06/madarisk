@@ -6,6 +6,7 @@ import {
   CalculateAreaInput,
   CalculateExposureInput,
   CreateEventInput,
+  CreatePolygonAreaInput,
   CreateTrackInput,
   ListEventsQuery,
   ListExposedCommunesQuery,
@@ -95,6 +96,14 @@ export const eventsController = {
     const { id } = req.validatedParams as EventIdParams;
     const geojson = await eventsService.getAreas(id);
     res.status(200).json(successResponse(geojson, "Zones d'influence GeoJSON"));
+  },
+
+  createAreaFromPolygon: async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) throw AppError.unauthorized();
+    const { id } = req.validatedParams as EventIdParams;
+    const body = req.validatedBody as CreatePolygonAreaInput;
+    const area = await eventsService.createAreaFromPolygon(id, body, req.user, req);
+    res.status(201).json(successResponse(area, 'Zone polygonale définie'));
   },
 
   calculateExposure: async (req: Request, res: Response): Promise<void> => {

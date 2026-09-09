@@ -403,6 +403,87 @@ describe('Événements - zones d influence', () => {
     expect(list.body.data.features.length).toBe(1);
     expect(['Polygon', 'MultiPolygon']).toContain(list.body.data.features[0].geometry.type);
   });
+
+  it('définit une zone polygonale manuelle (sans trajectoire)', async () => {
+    const { id } = await createEvent(adminToken);
+
+    const res = await request(app)
+      .post(`/api/v1/events/${id}/areas/polygon`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        phase: 'PENDANT',
+        riskLevel: 'ELEVE',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [communeLon, communeLat],
+              [communeLon + 2, communeLat],
+              [communeLon + 2, communeLat + 2],
+              [communeLon, communeLat + 2],
+              [communeLon, communeLat],
+            ],
+          ],
+        },
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.data.areaId).toBeDefined();
+    expect(res.body.data.radiusKm).toBeNull();
+
+    const list = await request(app)
+      .get(`/api/v1/events/${id}/areas`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(list.status).toBe(200);
+    expect(list.body.data.features.length).toBe(1);
+    expect(list.body.data.features[0].geometry.type).toBe('MultiPolygon');
+  });
+
+  it('refuse une géométrie invalide pour une zone polygonale', async () => {
+    const { id } = await createEvent(adminToken);
+    const res = await request(app)
+      .post(`/api/v1/events/${id}/areas/polygon`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ phase: 'PENDANT', riskLevel: 'ELEVE', geometry: { type: 'Point', coordinates: [] } });
+    expect(res.status).toBe(422);
+  });
+
+  it('calcule l exposition depuis une zone polygonale', async () => {
+    const { id } = await createEvent(adminToken);
+    const areaRes = await request(app)
+      .post(`/api/v1/events/${id}/areas/polygon`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        phase: 'PENDANT',
+        riskLevel: 'ELEVE',
+        geometry: {
+          type: 'Polygon',
+          coordinates: [
+            [
+              [communeLon - 3, communeLat - 3],
+              [communeLon + 3, communeLat - 3],
+              [communeLon + 3, communeLat + 3],
+              [communeLon - 3, communeLat + 3],
+              [communeLon - 3, communeLat - 3],
+            ],
+          ],
+        },
+      });
+    expect(areaRes.status).toBe(201);
+
+    const dbCount = await db.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM exposed_communes
+       WHERE event_id = $1 AND commune_id = $2`,
+      [id, communeId],
+    );
+    expect(parseInt(dbCount.rows[0].count, 10)).toBe(1);
+
+    const totals = await db.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM exposed_communes WHERE event_id = $1`,
+      [id],
+    );
+    expect(parseInt(totals.rows[0].n, 10)).toBeGreaterThan(0);
+  });
 });
 
 describe('Événements - exposition des communes', () => {

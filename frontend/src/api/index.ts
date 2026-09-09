@@ -68,6 +68,7 @@ export const eventsApi = {
   addTrack: (id: string, body: unknown) => apiPost(`/events/${id}/tracks`, body),
   areas: (id: string) => apiGet<FeatureCollection>(`/events/${id}/areas`),
   calculateArea: (id: string, body: unknown) => apiPost(`/events/${id}/areas/calculate`, body),
+  createPolygonArea: (id: string, body: unknown) => apiPost(`/events/${id}/areas/polygon`, body),
   calculateExposure: (id: string, params?: Record<string, string | undefined>) =>
     apiPost(`/events/${id}/exposure/calculate`, undefined, { params }),
   recalculateRisks: (id: string, body: unknown) =>
