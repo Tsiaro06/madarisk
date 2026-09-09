@@ -9,6 +9,7 @@ type Role = 'ADMIN' | 'SUPER_ADMIN' | 'ANALYSTE_SIG' | 'CLIENT';
 
 let adminId: string;
 let analysteId: string;
+let scopedEventId: string;
 
 let admin: { id: string; token: string };
 let analyste: { id: string; token: string };
@@ -58,26 +59,26 @@ beforeAll(async () => {
     .post('/api/v1/events')
     .set('Authorization', `Bearer ${admin.token}`)
     .send(body);
-  void created;
+  scopedEventId = created.body.data.id;
 });
 
 afterAll(async () => {
-  await db.query(
-    `DELETE FROM hazard_events WHERE created_by IN ($1, $2, $3)`,
-    [adminId, analysteId, client.id],
-  );
-  await db.query(
-    `DELETE FROM user_sessions WHERE user_id IN ($1, $2, $3)`,
-    [adminId, analysteId, client.id],
-  );
-  await db.query(
-    `DELETE FROM audit_logs WHERE user_id IN ($1, $2, $3)`,
-    [adminId, analysteId, client.id],
-  );
-  await db.query(
-    `DELETE FROM users WHERE id IN ($1, $2, $3)`,
-    [adminId, analysteId, client.id],
-  );
+  await db.query(`DELETE FROM hazard_events WHERE created_by IN ($1, $2, $3)`, [
+    adminId,
+    analysteId,
+    client.id,
+  ]);
+  await db.query(`DELETE FROM user_sessions WHERE user_id IN ($1, $2, $3)`, [
+    adminId,
+    analysteId,
+    client.id,
+  ]);
+  await db.query(`DELETE FROM audit_logs WHERE user_id IN ($1, $2, $3)`, [
+    adminId,
+    analysteId,
+    client.id,
+  ]);
+  await db.query(`DELETE FROM users WHERE id IN ($1, $2, $3)`, [adminId, analysteId, client.id]);
   await db.pool.end();
 });
 
@@ -138,8 +139,7 @@ describe('Dashboard - endpoints spécifiques', () => {
     for (const key of ['FAIBLE', 'MODERE', 'ELEVE', 'EXTREME', 'SANS_RISQUE']) {
       expect(typeof data[key]).toBe('number');
     }
-    const sum =
-      data.FAIBLE + data.MODERE + data.ELEVE + data.EXTREME + data.SANS_RISQUE;
+    const sum = data.FAIBLE + data.MODERE + data.ELEVE + data.EXTREME + data.SANS_RISQUE;
     expect(sum).toBeGreaterThan(0);
   });
 
@@ -147,7 +147,9 @@ describe('Dashboard - endpoints spécifiques', () => {
     const from = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const to = new Date().toISOString();
     const res = await request(app)
-      .get(`/api/v1/dashboard/events-timeline?dateFrom=${encodeURIComponent(from)}&dateTo=${encodeURIComponent(to)}`)
+      .get(
+        `/api/v1/dashboard/events-timeline?dateFrom=${encodeURIComponent(from)}&dateTo=${encodeURIComponent(to)}`,
+      )
       .set('Authorization', `Bearer ${client.token}`);
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.data)).toBe(true);
@@ -167,5 +169,45 @@ describe('Dashboard - endpoints spécifiques', () => {
     if (scores.length > 1) {
       expect(scores[0]).toBe(Math.max(...scores));
     }
+  });
+});
+
+describe('Dashboard - scoping par événement', () => {
+  it('résumé filtré : seuls les indicateurs de l événement sont comptés', async () => {
+    const res = await request(app)
+      .get(`/api/v1/dashboard/summary?eventId=${scopedEventId}`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    const data = res.body.data;
+    expect(data.activeEvents).toBe(1);
+    expect(data.forecastEvents).toBe(0);
+    expect(typeof data.extremeRiskCommunes).toBe('number');
+    expect(typeof data.exposedPopulation).toBe('number');
+    expect(Array.isArray(data.latestAlerts)).toBe(true);
+    expect(Array.isArray(data.priorityCommunes)).toBe(true);
+  });
+
+  it('répartition filtrée : SANS_RISQUE nul et niveaux bornés par l événement', async () => {
+    const res = await request(app)
+      .get(`/api/v1/dashboard/risk-distribution?eventId=${scopedEventId}`)
+      .set('Authorization', `Bearer ${client.token}`);
+    expect(res.status).toBe(200);
+    const data = res.body.data;
+    for (const key of ['FAIBLE', 'MODERE', 'ELEVE', 'EXTREME', 'SANS_RISQUE']) {
+      expect(typeof data[key]).toBe('number');
+    }
+    expect(data.SANS_RISQUE).toBe(0);
+  });
+
+  it('chronologie filtrée : volume d évaluations de l événement', async () => {
+    const from = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const to = new Date().toISOString();
+    const res = await request(app)
+      .get(
+        `/api/v1/dashboard/events-timeline?eventId=${scopedEventId}&dateFrom=${encodeURIComponent(from)}&dateTo=${encodeURIComponent(to)}`,
+      )
+      .set('Authorization', `Bearer ${client.token}`);
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data)).toBe(true);
   });
 });

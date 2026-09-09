@@ -11,13 +11,15 @@ import {
   LineChart,
 } from 'recharts';
 import { Link } from 'react-router-dom';
-import { dashboardApi, risksApi } from '@/api';
+import { dashboardApi, eventsApi, risksApi } from '@/api';
 import { Card } from '@/components/ui/Card';
 import { Spinner } from '@/components/ui/Spinner';
 import { Badge } from '@/components/ui/Badge';
+import { Select } from '@/components/ui/Select';
 import { GeoJsonMap } from '@/components/maps/GeoJsonMap';
 import { formatDate, formatNumber } from '@/lib/utils';
-import { RISK_LABELS, type RiskLevel } from '@/types';
+import { useCrisisStore } from '@/stores/crisisStore';
+import { RISK_LABELS, type EventListItem, type RiskLevel } from '@/types';
 
 function riskTone(level: RiskLevel) {
   if (level === 'EXTREME') return 'danger' as const;
@@ -27,30 +29,56 @@ function riskTone(level: RiskLevel) {
 }
 
 export function DashboardPage() {
-  const summaryQ = useQuery({ queryKey: ['dashboard', 'summary'], queryFn: () => dashboardApi.summary() });
+  const activeEventId = useCrisisStore((s) => s.activeEventId);
+  const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
+  const scope = activeEventId || 'global';
+  const scoped = Boolean(activeEventId);
+
+  const eventsQ = useQuery({
+    queryKey: ['events', 'options'],
+    queryFn: () => eventsApi.list({ limit: 100 }),
+    staleTime: 60_000,
+  });
+
+  const activeEventQ = useQuery({
+    queryKey: ['events', 'detail', activeEventId],
+    queryFn: () => (activeEventId ? (eventsApi.get(activeEventId) as Promise<EventListItem>) : null),
+    enabled: Boolean(activeEventId),
+  });
+
+  const summaryParams = scoped ? { eventId: activeEventId as string } : undefined;
+  const summaryQ = useQuery({
+    queryKey: ['dashboard', 'summary', scope],
+    queryFn: () => dashboardApi.summary(summaryParams),
+  });
   const distQ = useQuery({
-    queryKey: ['dashboard', 'risk-distribution'],
-    queryFn: () => dashboardApi.riskDistribution(),
+    queryKey: ['dashboard', 'risk-distribution', scope],
+    queryFn: () => dashboardApi.riskDistribution(summaryParams),
   });
   const timelineQ = useQuery({
-    queryKey: ['dashboard', 'timeline'],
-    queryFn: () => dashboardApi.eventsTimeline(),
+    queryKey: ['dashboard', 'timeline', scope],
+    queryFn: () => dashboardApi.eventsTimeline(summaryParams),
   });
   const priorityQ = useQuery({
-    queryKey: ['dashboard', 'priority'],
-    queryFn: () => dashboardApi.priorityCommunes(10),
+    queryKey: ['dashboard', 'priority', scope],
+    queryFn: () => dashboardApi.priorityCommunes(10, activeEventId ?? undefined),
   });
   const mapQ = useQuery({
-    queryKey: ['risks', 'map-layer'],
-    queryFn: () => risksApi.mapLayer(),
+    queryKey: ['risks', 'map-layer', scope],
+    queryFn: () => risksApi.mapLayer(scoped ? { eventId: activeEventId as string } : {}),
   });
 
   if (summaryQ.isLoading) return <Spinner />;
 
   const s = summaryQ.data;
-  const kpis = [
-    { label: 'Événements actifs', value: s?.activeEvents },
-    { label: 'Prévisions', value: s?.forecastEvents },
+  const activeEvent = scoped ? (activeEventQ.data ?? null) : null;
+  const kpis: { label: string; value: string | number | null | undefined }[] = [
+    scoped
+      ? { label: 'Événement', value: activeEvent?.name ?? '—' }
+      : { label: 'Événements actifs', value: s?.activeEvents },
+    scoped
+      ? { label: 'Statut', value: activeEvent?.status ?? '—' }
+      : { label: 'Prévisions', value: s?.forecastEvents },
     { label: 'Alertes actives', value: s?.activeAlerts },
     { label: 'Communes extrêmes', value: s?.extremeRiskCommunes },
     { label: 'Risque élevé', value: s?.highRiskCommunes },
@@ -74,21 +102,52 @@ export function DashboardPage() {
       <div>
         <h1 className="font-display text-3xl text-ink">Tableau de bord</h1>
         <p className="text-sm text-muted">
-          Vue d&apos;ensemble · mise à jour {formatDate(s?.lastUpdatedAt)}
+          Vue d&apos;ensemble{scoped ? ` · événement ${activeEvent?.name ?? ''}` : ''} · mise à jour{' '}
+          {formatDate(s?.lastUpdatedAt)}
         </p>
+      </div>
+
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="max-w-xs">
+          <Select
+            label="Événement affiché"
+            value={activeEventId ?? ''}
+            onChange={(e) => setActiveEventId(e.target.value || null)}
+            options={[
+              { value: '', label: 'Tous (global)' },
+              ...(eventsQ.data?.data ?? []).map((ev) => ({
+                value: ev.id,
+                label: `${ev.eventCode} · ${ev.name}`,
+              })),
+            ]}
+          />
+        </div>
+        {scoped ? (
+          <div className="flex items-center gap-2 text-sm text-muted">
+            <Badge tone={activeEvent?.status === 'ACTIF' ? 'danger' : 'info'}>
+              {activeEvent?.status ?? ''}
+            </Badge>
+            Ce tableau ne montre que les données de cet événement.
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {kpis.map((k) => (
           <Card key={k.label} className="!p-4">
             <p className="text-xs uppercase tracking-wide text-muted">{k.label}</p>
-            <p className="mt-1 font-display text-3xl text-brand">{formatNumber(k.value)}</p>
+            <p className="mt-1 font-display text-3xl text-brand">
+              {typeof k.value === 'number' ? formatNumber(k.value) : (k.value ?? '—')}
+            </p>
           </Card>
         ))}
       </div>
 
       <div className="grid gap-5 xl:grid-cols-2">
-        <Card title="Distribution des risques" description="Répartition des communes">
+        <Card
+          title={scoped ? 'Répartition des risques' : 'Distribution des risques'}
+          description={scoped ? 'Communes de l’événement par niveau' : 'Répartition des communes'}
+        >
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={distData}>
@@ -102,7 +161,10 @@ export function DashboardPage() {
           </div>
         </Card>
 
-        <Card title="Chronologie des événements" description="Volume quotidien">
+        <Card
+          title={scoped ? 'Évolution du risque' : 'Chronologie des événements'}
+          description={scoped ? 'Évaluations de risque par jour' : 'Volume quotidien'}
+        >
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={timeline}>

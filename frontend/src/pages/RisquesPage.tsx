@@ -1,12 +1,11 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { risksApi } from '@/api';
+import { risksApi, eventsApi } from '@/api';
 import { ApiClientError } from '@/api/client';
 import { RISK_LABELS, type RiskLevel, type RiskPhase } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
@@ -33,14 +32,20 @@ export function RisquesPage() {
   const [eventId, setEventId] = useState('');
   const [phase, setPhase] = useState<RiskPhase>('PENDANT');
 
+  const eventsQ = useQuery({
+    queryKey: ['events', 'options'],
+    queryFn: () => eventsApi.list({ limit: 100 }),
+    staleTime: 60_000,
+  });
+
   const priorityQ = useQuery({
-    queryKey: ['risks', 'priority'],
-    queryFn: () => risksApi.priority({ limit: 20 }),
+    queryKey: ['risks', 'priority', eventId || 'global'],
+    queryFn: () => risksApi.priority({ limit: 20, ...(eventId ? { eventId } : {}) }),
   });
 
   const mapQ = useQuery({
-    queryKey: ['risks', 'map-layer'],
-    queryFn: () => risksApi.mapLayer(),
+    queryKey: ['risks', 'map-layer', eventId || 'global'],
+    queryFn: () => risksApi.mapLayer(eventId ? { eventId } : {}),
   });
 
   const recalcM = useMutation({
@@ -76,11 +81,17 @@ export function RisquesPage() {
       {canManageOps(role) ? (
         <Card title="Recalculer les risques" description="ADMIN / SUPER_ADMIN">
           <form className="grid gap-3 sm:grid-cols-[1fr_180px_auto]" onSubmit={onRecalc}>
-            <Input
-              label="ID événement (optionnel)"
+            <Select
+              label="Événement"
               value={eventId}
               onChange={(e) => setEventId(e.target.value)}
-              placeholder="uuid…"
+              options={[
+                { value: '', label: 'Tous (global)' },
+                ...(eventsQ.data?.data ?? []).map((ev) => ({
+                  value: ev.id,
+                  label: `${ev.eventCode} · ${ev.name}`,
+                })),
+              ]}
             />
             <Select
               label="Phase"

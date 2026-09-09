@@ -6,7 +6,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import type { FeatureCollection, Polygon } from 'geojson';
 import type { z } from 'zod';
 import { eventsApi } from '@/api';
-import type { EventListItem, EventStatus, RiskLevel, RiskPhase } from '@/types';
+import type { EventListItem, EventStatus, ExposedCommuneRow, RiskLevel, RiskPhase } from '@/types';
+import { RISK_LABELS } from '@/types';
 import { ApiClientError } from '@/api/client';
 import { calculateAreaSchema } from '@/schemas/forms';
 import { Card } from '@/components/ui/Card';
@@ -29,13 +30,11 @@ const STATUSES: EventStatus[] = ['BROUILLON', 'PREVISION', 'ACTIF', 'SUIVI', 'CL
 const PHASES: RiskPhase[] = ['AVANT', 'PENDANT', 'APRES', 'RETABLISSEMENT'];
 const LEVELS: RiskLevel[] = ['FAIBLE', 'MODERE', 'ELEVE', 'EXTREME'];
 
-interface ExposedRow {
-  communeId?: string;
-  communeName?: string;
-  name?: string;
-  population?: number | null;
-  exposureScore?: number | null;
-  [key: string]: unknown;
+function tone(level: RiskLevel) {
+  if (level === 'EXTREME') return 'danger' as const;
+  if (level === 'ELEVE') return 'warning' as const;
+  if (level === 'MODERE') return 'info' as const;
+  return 'success' as const;
 }
 
 type AreaForm = z.infer<typeof calculateAreaSchema>;
@@ -157,7 +156,7 @@ export function EvenementDetailPage() {
   }
 
   const ev = eventQ.data;
-  const exposed = (exposedQ.data?.data ?? []) as unknown as ExposedRow[];
+  const exposed = exposedQ.data?.data ?? [] as ExposedCommuneRow[];
   const tracks = tracksQ.data as FeatureCollection | undefined;
   const areas = areasQ.data as FeatureCollection | undefined;
 
@@ -399,26 +398,39 @@ export function EvenementDetailPage() {
                 <tr>
                   <th className="px-2 py-2">Commune</th>
                   <th className="px-2 py-2">Population</th>
+                  <th className="px-2 py-2">Exposée</th>
+                  <th className="px-2 py-2">Distance</th>
                   <th className="px-2 py-2">Score</th>
+                  <th className="px-2 py-2">Niveau</th>
                 </tr>
               </thead>
               <tbody>
-                {exposed.map((row, i) => (
-                  <tr key={String(row.communeId ?? i)} className="border-b border-brand/5">
+                {exposed.map((row) => (
+                  <tr key={row.communeId} className="border-b border-brand/5">
                     <td className="px-2 py-2">
-                      {row.communeId ? (
-                        <Link
-                          className="text-brand hover:underline"
-                          to={`/territoires/communes/${row.communeId}`}
-                        >
-                          {String(row.communeName ?? row.name ?? row.communeId)}
-                        </Link>
+                      <Link
+                        className="text-brand hover:underline"
+                        to={`/territoires/communes/${row.communeId}`}
+                      >
+                        {row.communeName}
+                      </Link>
+                      <div className="text-xs text-muted">{row.districtName}</div>
+                    </td>
+                    <td className="px-2 py-2">{formatNumber(row.population)}</td>
+                    <td className="px-2 py-2">{formatNumber(row.exposedPopulation)}</td>
+                    <td className="px-2 py-2">
+                      {row.distanceToTrackKm !== null ? `${formatNumber(row.distanceToTrackKm)} km` : '—'}
+                    </td>
+                    <td className="px-2 py-2">
+                      {row.riskScore !== null ? formatNumber(row.riskScore) : '—'}
+                    </td>
+                    <td className="px-2 py-2">
+                      {row.riskLevel ? (
+                        <Badge tone={tone(row.riskLevel)}>{RISK_LABELS[row.riskLevel]}</Badge>
                       ) : (
-                        String(row.communeName ?? row.name ?? '—')
+                        '—'
                       )}
                     </td>
-                    <td className="px-2 py-2">{formatNumber(row.population as number | null)}</td>
-                    <td className="px-2 py-2">{formatNumber(row.exposureScore as number | null)}</td>
                   </tr>
                 ))}
               </tbody>

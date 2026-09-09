@@ -31,12 +31,16 @@ export const authApi = {
 };
 
 export const dashboardApi = {
-  summary: () => apiGet<DashboardSummary>('/dashboard/summary'),
-  riskDistribution: () => apiGet<RiskDistribution>('/dashboard/risk-distribution'),
-  eventsTimeline: (params?: { dateFrom?: string; dateTo?: string }) =>
+  summary: (params?: { eventId?: string }) =>
+    apiGet<DashboardSummary>('/dashboard/summary', { params }),
+  riskDistribution: (params?: { eventId?: string }) =>
+    apiGet<RiskDistribution>('/dashboard/risk-distribution', { params }),
+  eventsTimeline: (params?: { eventId?: string; dateFrom?: string; dateTo?: string }) =>
     apiGet<EventsTimelineEntry[]>('/dashboard/events-timeline', { params }),
-  priorityCommunes: (limit = 10) =>
-    apiGet<PriorityCommune[]>('/dashboard/priority-communes', { params: { limit } }),
+  priorityCommunes: (limit = 10, eventId?: string) =>
+    apiGet<PriorityCommune[]>('/dashboard/priority-communes', {
+      params: { limit, ...(eventId ? { eventId } : {}) },
+    }),
 };
 
 export const territoriesApi = {

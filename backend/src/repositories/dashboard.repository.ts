@@ -36,7 +36,14 @@ export interface EventsTimelineEntry {
 }
 
 export const dashboardRepository = {
-  async summaryData(): Promise<DashboardSummaryData> {
+  async summaryData(eventId?: string): Promise<DashboardSummaryData> {
+    const has = Boolean(eventId);
+    const evClause = has ? 'id = $1 AND' : '';
+    const alertClause = has ? ' AND event_id = $1' : '';
+    const raClause = has ? ' AND event_id = $1' : '';
+    const expClause = has ? 'ec.event_id = $1' : "he.status IN ('ACTIF', 'SUIVI')";
+    const values: unknown[] = has ? [eventId] : [];
+
     const result = await db.query<{
       activeEvents: number;
       forecastEvents: number;
@@ -49,28 +56,31 @@ export const dashboardRepository = {
     }>(
       `SELECT
          (SELECT COUNT(*)::integer FROM hazard_events
-           WHERE status IN ('ACTIF', 'SUIVI')) AS "activeEvents",
+           WHERE ${evClause} status IN ('ACTIF', 'SUIVI')) AS "activeEvents",
          (SELECT COUNT(*)::integer FROM hazard_events
-           WHERE status = 'PREVISION') AS "forecastEvents",
+           WHERE ${evClause} status = 'PREVISION') AS "forecastEvents",
          (SELECT COUNT(*)::integer FROM alerts
-           WHERE status = 'BROUILLON'
-              OR (status = 'PUBLIEE' AND (expires_at IS NULL OR expires_at > now()))) AS "activeAlerts",
+           WHERE (status = 'BROUILLON'
+              OR (status = 'PUBLIEE' AND (expires_at IS NULL OR expires_at > now())))${alertClause}) AS "activeAlerts",
          (SELECT COUNT(*)::integer FROM districts) AS "totalDistricts",
          (SELECT COUNT(*)::integer FROM communes) AS "totalCommunes",
          (SELECT COUNT(*)::integer FROM (
             SELECT DISTINCT ON (commune_id) commune_id, risk_level
-            FROM risk_assessments
+            FROM risk_assessments ra
+            WHERE TRUE${raClause}
             ORDER BY commune_id, assessed_at DESC
          ) latest WHERE risk_level = 'EXTREME') AS "extremeRiskCommunes",
          (SELECT COUNT(*)::integer FROM (
             SELECT DISTINCT ON (commune_id) commune_id, risk_level
-            FROM risk_assessments
+            FROM risk_assessments ra
+            WHERE TRUE${raClause}
             ORDER BY commune_id, assessed_at DESC
          ) latest WHERE risk_level = 'ELEVE') AS "highRiskCommunes",
          (SELECT COALESCE(SUM(ec.exposed_population), 0)::text
             FROM exposed_communes ec
             JOIN hazard_events he ON he.id = ec.event_id
-           WHERE he.status IN ('ACTIF', 'SUIVI')) AS "exposedPopulation"`,
+           WHERE ${expClause}) AS "exposedPopulation"`,
+      values,
     );
     const row = result.rows[0];
 
@@ -111,7 +121,10 @@ export const dashboardRepository = {
     return parseInt(result.rows[0]?.count ?? '0', 10);
   },
 
-  async latestAlerts(limit: number): Promise<LatestAlertRow[]> {
+  async latestAlerts(limit: number, eventId?: string): Promise<LatestAlertRow[]> {
+    const eventClause = eventId ? ' AND event_id = $1' : '';
+    const limitIdx = eventId ? 2 : 1;
+    const values: unknown[] = eventId ? [eventId, limit] : [limit];
     const result = await db.query<LatestAlertRow>(
       `SELECT
          id,
@@ -124,19 +137,22 @@ export const dashboardRepository = {
          commune_id AS "communeId",
          published_at AS "publishedAt"
        FROM alerts
-       WHERE status = 'PUBLIEE' AND (expires_at IS NULL OR expires_at > now())
+       WHERE status = 'PUBLIEE' AND (expires_at IS NULL OR expires_at > now())${eventClause}
        ORDER BY published_at DESC NULLS LAST
-       LIMIT $1`,
-      [limit],
+       LIMIT $${limitIdx}`,
+      values,
     );
     return result.rows;
   },
 
-  async riskDistribution(): Promise<RiskDistributionEntry[]> {
+  async riskDistribution(eventId?: string): Promise<RiskDistributionEntry[]> {
+    const eventClause = eventId ? ' WHERE event_id = $1' : '';
+    const values: unknown[] = eventId ? [eventId] : [];
     const result = await db.query<{ riskLevel: string; count: number }>(
       `WITH latest AS (
          SELECT DISTINCT ON (commune_id) commune_id, risk_level
          FROM risk_assessments
+         ${eventClause}
          ORDER BY commune_id, assessed_at DESC
        ),
        counts AS (
@@ -147,29 +163,52 @@ export const dashboardRepository = {
        SELECT risk_level::text AS "riskLevel", count
        FROM counts
        ORDER BY risk_level`,
+      values,
     );
     return result.rows.map((r) => ({ riskLevel: r.riskLevel, count: r.count }));
   },
 
-  async eventsTimeline(dateFrom: Date, dateTo: Date): Promise<EventsTimelineEntry[]> {
-    const result = await db.query<{ date: string; type: string; count: number }>(
-      `SELECT
-         to_char(day, 'YYYY-MM-DD') AS date,
-         e.type,
-         COUNT(*)::integer AS count
-       FROM hazard_events e
-       CROSS JOIN LATERAL (
-         SELECT date_trunc('day', COALESCE(e.started_at, e.created_at)) AS day
-       ) d
-       WHERE d.day >= date_trunc('day', $1::timestamptz)
-         AND d.day <= date_trunc('day', $2::timestamptz)
-       GROUP BY 1, 2
-       ORDER BY 1 ASC`,
-      [dateFrom.toISOString(), dateTo.toISOString()],
-    );
+  async eventsTimeline(
+    dateFrom: Date,
+    dateTo: Date,
+    eventId?: string,
+  ): Promise<EventsTimelineEntry[]> {
+    const rows = eventId
+      ? (
+          await db.query<{ date: string; type: string; count: number }>(
+            `SELECT
+               to_char(date_trunc('day', assessed_at), 'YYYY-MM-DD') AS date,
+               ra.risk_level::text AS type,
+               COUNT(*)::integer AS count
+             FROM risk_assessments ra
+             WHERE ra.event_id = $3
+               AND date_trunc('day', assessed_at) >= date_trunc('day', $1::timestamptz)
+               AND date_trunc('day', assessed_at) <= date_trunc('day', $2::timestamptz)
+             GROUP BY 1, 2
+             ORDER BY 1 ASC`,
+            [dateFrom.toISOString(), dateTo.toISOString(), eventId],
+          )
+        ).rows
+      : (
+          await db.query<{ date: string; type: string; count: number }>(
+            `SELECT
+               to_char(day, 'YYYY-MM-DD') AS date,
+               e.type,
+               COUNT(*)::integer AS count
+             FROM hazard_events e
+             CROSS JOIN LATERAL (
+               SELECT date_trunc('day', COALESCE(e.started_at, e.created_at)) AS day
+             ) d
+             WHERE d.day >= date_trunc('day', $1::timestamptz)
+               AND d.day <= date_trunc('day', $2::timestamptz)
+             GROUP BY 1, 2
+             ORDER BY 1 ASC`,
+            [dateFrom.toISOString(), dateTo.toISOString()],
+          )
+        ).rows;
 
     const byDate = new Map<string, Map<string, number>>();
-    for (const row of result.rows) {
+    for (const row of rows) {
       let types = byDate.get(row.date);
       if (!types) {
         types = new Map<string, number>();

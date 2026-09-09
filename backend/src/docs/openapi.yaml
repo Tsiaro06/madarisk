@@ -2302,10 +2302,12 @@ paths:
   /dashboard/summary:
     get:
       tags: [Tableau de bord]
-      summary: Résumé global (événements actifs, alertes actives, communes à risque, population à risque)
+      summary: Résumé global (événements actifs, alertes actives, communes à risque, population à risque). Filtrable par événement.
       security:
         - bearerAuth: []
       operationId: dashboardSummary
+      parameters:
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
       responses:
         '200':
           description: Résumé du tableau de bord
@@ -2325,10 +2327,12 @@ paths:
   /dashboard/risk-distribution:
     get:
       tags: [Tableau de bord]
-      summary: Répartition des niveaux de risque
+      summary: Répartition des niveaux de risque (filtrable par événement)
       security:
         - bearerAuth: []
       operationId: dashboardRiskDistribution
+      parameters:
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
       responses:
         '200':
           description: Répartition des risques
@@ -2340,12 +2344,14 @@ paths:
                   success: { type: boolean }
                   message: { type: string }
                   data:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        riskLevel: { $ref: '#/components/schemas/RiskLevel' }
-                        count: { type: integer }
+                    type: object
+                    required: [FAIBLE, MODERE, ELEVE, EXTREME, SANS_RISQUE]
+                    properties:
+                      FAIBLE: { type: integer }
+                      MODERE: { type: integer }
+                      ELEVE: { type: integer }
+                      EXTREME: { type: integer }
+                      SANS_RISQUE: { type: integer }
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -2359,11 +2365,12 @@ paths:
         - bearerAuth: []
       operationId: dashboardEventsTimeline
       parameters:
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: dateFrom, in: query, required: false, schema: { type: string, format: date-time } }
         - { name: dateTo, in: query, required: false, schema: { type: string, format: date-time } }
       responses:
         '200':
-          description: Chronologie des événements
+          description: Chronologie des événements (ou volume d'évaluations de risque si eventId fourni)
           content:
             application/json:
               schema:
@@ -2377,8 +2384,10 @@ paths:
                       type: object
                       properties:
                         date: { type: string, format: date }
-                        count: { type: integer }
-                        severity: { $ref: '#/components/schemas/SeverityLevel' }
+                        total: { type: integer }
+                        byType:
+                          type: object
+                          additionalProperties: { type: integer }
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':

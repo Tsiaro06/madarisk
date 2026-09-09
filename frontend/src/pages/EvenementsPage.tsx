@@ -21,6 +21,7 @@ import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/lib/utils';
 import { canManageOps } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
+import { useCrisisStore } from '@/stores/crisisStore';
 import type { z } from 'zod';
 
 const STATUS_TONE: Record<EventStatus, 'neutral' | 'info' | 'warning' | 'danger' | 'success'> = {
@@ -52,6 +53,7 @@ export function EvenementsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const role = useAuthStore((s) => s.user?.role);
+  const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [open, setOpen] = useState(false);
@@ -104,13 +106,15 @@ export function EvenementsPage() {
       }
       return created;
     },
-    onSuccess: () => {
+    onSuccess: (created) => {
       toast('Événement créé', 'success');
+      setActiveEventId(created.id);
       setOpen(false);
       form.reset();
       setTrackPoints([]);
       setPolygonPoints([]);
       void qc.invalidateQueries({ queryKey: ['events'] });
+      void qc.invalidateQueries({ queryKey: ['events', 'options'] });
     },
     onError: (err) => {
       const msg = err instanceof ApiClientError ? err.message : 'Erreur de création';
