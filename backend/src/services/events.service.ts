@@ -1,4 +1,5 @@
 import { AppError } from '../utils/app-error';
+import { logger } from '../config/logger';
 import { usersRepository } from '../repositories/users.repository';
 import { eventsRepository } from '../repositories/events.repository';
 import {
@@ -354,6 +355,16 @@ export const eventsService = {
       },
       ipAddress: getIp(req),
     });
+
+    // Recalcul automatique des communes exposées dès la création d'une zone :
+    // toutes les zones existantes sont intersectées avec les communes.
+    // Enveloppé dans un try/catch : un échec d'exposition ne doit pas bloquer
+    // la création de la zone elle-même.
+    try {
+      await eventsRepository.calculateExposure(id, null);
+    } catch (err) {
+      logger.warn({ err, eventId: id }, "Recalcul automatique de l'exposition échoué");
+    }
 
     return { areaId: area.id, geometry: area.geometry, radiusKm: area.radiusKm };
   },

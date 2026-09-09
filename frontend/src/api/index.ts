@@ -2,14 +2,20 @@ import { apiGet, apiGetPage, apiPost, apiPatch, apiDelete, apiBlob } from './cli
 import type {
   AlertListRow,
   AuthTokens,
+  CommuneDetail,
   CommuneListItem,
   DashboardSummary,
   DistrictListItem,
   EventListItem,
   EventsTimelineEntry,
+  ExposedCommuneRow,
   PriorityCommune,
+  RiskAssessment,
   RiskDistribution,
   SanitizedUser,
+  TerritorySearchResult,
+  WeatherForecastData,
+  WeatherObservation,
 } from '@/types';
 import type { FeatureCollection } from 'geojson';
 
@@ -39,9 +45,9 @@ export const territoriesApi = {
   communes: (params?: Record<string, string | number | undefined>) =>
     apiGetPage<CommuneListItem[]>('/territories/communes', { params }),
   district: (id: string) => apiGet(`/territories/districts/${id}`),
-  commune: (id: string) => apiGet(`/territories/communes/${id}`),
+  commune: (id: string) => apiGet<CommuneDetail>(`/territories/communes/${id}`),
   search: (q: string, limit = 20) =>
-    apiGet('/territories/search', { params: { q, limit } }),
+    apiGet<TerritorySearchResult[]>('/territories/search', { params: { q, limit } }),
   mapDistricts: (params?: Record<string, string | undefined>) =>
     apiGet<FeatureCollection>('/territories/map/districts', { params }),
   mapCommunes: (params?: Record<string, string | undefined>) =>
@@ -67,7 +73,13 @@ export const eventsApi = {
   recalculateRisks: (id: string, body: unknown) =>
     apiPost(`/events/${id}/risks/recalculate`, body),
   exposedCommunes: (id: string, params?: Record<string, string | number | undefined>) =>
-    apiGetPage(`/events/${id}/exposed-communes`, { params }),
+    apiGetPage<ExposedCommuneRow[]>(`/events/${id}/exposed-communes`, { params }),
+  exposedCommunesIds: async (id: string): Promise<Set<string>> => {
+    const res = await apiGetPage<ExposedCommuneRow[]>(`/events/${id}/exposed-communes`, {
+      params: { page: 1, limit: 10000 },
+    });
+    return new Set(res.data.map((r) => r.communeId));
+  },
 };
 
 export const alertsApi = {
@@ -81,8 +93,9 @@ export const alertsApi = {
 };
 
 export const weatherApi = {
-  latest: (communeId: string) => apiGet(`/weather/communes/${communeId}/latest`),
-  forecast: (communeId: string) => apiGet(`/weather/communes/${communeId}/forecast`),
+  latest: (communeId: string) => apiGet<WeatherObservation>(`/weather/communes/${communeId}/latest`),
+  forecast: (communeId: string) =>
+    apiGet<WeatherForecastData>(`/weather/communes/${communeId}/forecast`),
   history: (communeId: string, params?: Record<string, string | number | undefined>) =>
     apiGetPage(`/weather/communes/${communeId}/history`, { params }),
   mapLayer: (params?: Record<string, string | undefined>) =>
@@ -92,7 +105,7 @@ export const weatherApi = {
 
 export const risksApi = {
   commune: (communeId: string, params?: Record<string, string | boolean | undefined>) =>
-    apiGet(`/risks/communes/${communeId}`, { params }),
+    apiGet<RiskAssessment | null>(`/risks/communes/${communeId}`, { params }),
   priority: (params?: Record<string, string | number | undefined>) =>
     apiGet<PriorityCommune[]>('/risks/priority-communes', { params }),
   mapLayer: (params?: Record<string, string | undefined>) =>

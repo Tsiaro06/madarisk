@@ -3,6 +3,7 @@ import { RequireAuth } from '@/components/auth/RequireAuth';
 import { RequireRole } from '@/components/auth/RequireRole';
 import { AppShell } from '@/components/layout/AppShell';
 import { LoginPage } from '@/pages/LoginPage';
+import { CrisisRoomPage } from '@/pages/CrisisRoomPage';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { TerritoiresPage } from '@/pages/TerritoiresPage';
 import { CommuneDetailPage } from '@/pages/CommuneDetailPage';
@@ -28,8 +29,9 @@ export function AppRouter() {
         <Route path="/login" element={<LoginPage />} />
 
         <Route element={<RequireAuth />}>
+          <Route index element={<CrisisRoomPage />} />
           <Route element={<AppShell />}>
-            <Route index element={<DashboardPage />} />
+            <Route path="dashboard" element={<DashboardPage />} />
             <Route path="territoires" element={<TerritoiresPage />} />
             <Route path="territoires/districts/:id" element={<DistrictDetailPage />} />
             <Route path="territoires/communes/:id" element={<CommuneDetailPage />} />

@@ -86,7 +86,7 @@ export function AppShell() {
   if (!user) return <Spinner label="Chargement de la session…" />;
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[260px_1fr]">
+    <div className="min-h-screen lg:h-screen lg:grid lg:grid-cols-[260px_1fr] lg:overflow-hidden">
       <aside
         className={cn(
           'fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col border-r border-brand/15 bg-[#073f42] text-white transition-transform lg:static lg:translate-x-0',
@@ -137,7 +137,7 @@ export function AppShell() {
         />
       ) : null}
 
-      <div className="flex min-w-0 flex-col">
+      <div className="flex min-w-0 flex-col lg:overflow-y-auto">
         <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-brand/10 bg-white/80 px-4 py-3 backdrop-blur-md sm:px-6">
           <div className="flex items-center gap-3">
             <button

@@ -35,6 +35,31 @@ export const createEventSchema = z.object({
   description: z.string().trim().max(5000).optional().nullable(),
 });
 
+export const createCrisisEventSchema = z.object({
+  eventCode: z
+    .string()
+    .trim()
+    .min(1, 'Code requis')
+    .max(100)
+    .regex(/^[A-Za-z0-9._-]+$/, 'Lettres, chiffres, ., -, _ uniquement'),
+  name: z.string().trim().min(1, 'Nom requis').max(200),
+  type: z.enum([
+    'CYCLONE',
+    'INONDATION',
+    'SECHERESSE',
+    'FORTE_PLUIE',
+    'VENT_VIOLENT',
+    'GLISSEMENT_TERRAIN',
+    'FEU_VEGETATION',
+    'AUTRE',
+  ]),
+  status: z.enum(['BROUILLON', 'PREVISION', 'ACTIF', 'SUIVI', 'CLOTURE']),
+  severity: z.enum(['FAIBLE', 'MODEREE', 'ELEVEE', 'EXTREME']),
+  description: z.string().trim().max(5000).optional().nullable(),
+  startedAt: z.string().optional().nullable(),
+  expectedEndAt: z.string().optional().nullable(),
+});
+
 export const createAlertSchema = z
   .object({
     title: z.string().trim().min(1, 'Titre requis').max(250),

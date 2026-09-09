@@ -11,59 +11,57 @@ import {
   Legend,
 } from 'recharts';
 import { territoriesApi, weatherApi } from '@/api';
+import type { CommuneDetail, WeatherForecastData, WeatherObservation } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Spinner } from '@/components/ui/Spinner';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { formatDate, formatNumber } from '@/lib/utils';
 
-interface CommuneDetail {
-  id: string;
-  name: string;
-  adminCode: string;
-  population?: number | null;
-  vulnerabilityScore?: number | null;
-  districtName?: string;
-  districtId?: string;
-  postalCode?: string | null;
+interface ChartPoint {
+  date: string;
+  temp: number;
+  rain: number;
 }
 
-interface WeatherLatest {
-  temperature?: number | null;
-  humidity?: number | null;
-  windSpeed?: number | null;
-  precipitation?: number | null;
-  observedAt?: string;
-  [key: string]: unknown;
-}
-
-interface ForecastPoint {
-  date?: string;
-  forecastAt?: string;
-  temperature?: number | null;
-  tempMax?: number | null;
-  tempMin?: number | null;
-  precipitation?: number | null;
-  [key: string]: unknown;
+function buildChartData(forecast: WeatherForecastData): ChartPoint[] {
+  const hourly = forecast.hourly;
+  const days = new Map<string, { tempMax: number; rain: number }>();
+  hourly.time.forEach((t, i) => {
+    const day = t.slice(0, 10);
+    const cur = days.get(day) ?? { tempMax: -Infinity, rain: 0 };
+    const tc = hourly.temperatureC[i];
+    if (tc != null) cur.tempMax = Math.max(cur.tempMax, tc);
+    const pr = hourly.precipitationMm[i];
+    if (pr != null) cur.rain += pr;
+    days.set(day, cur);
+  });
+  return [...days.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, v]) => ({
+      date: date.slice(5),
+      temp: Number.isFinite(v.tempMax) ? Number(v.tempMax.toFixed(1)) : 0,
+      rain: Number(v.rain.toFixed(1)),
+    }));
 }
 
 export function CommuneDetailPage() {
   const { id = '' } = useParams();
 
-  const communeQ = useQuery({
+  const communeQ = useQuery<CommuneDetail>({
     queryKey: ['commune', id],
-    queryFn: () => territoriesApi.commune(id) as Promise<CommuneDetail>,
+    queryFn: () => territoriesApi.commune(id),
     enabled: Boolean(id),
   });
 
-  const latestQ = useQuery({
+  const latestQ = useQuery<WeatherObservation | null>({
     queryKey: ['weather', 'latest', id],
-    queryFn: () => weatherApi.latest(id) as Promise<WeatherLatest>,
+    queryFn: () => weatherApi.latest(id),
     enabled: Boolean(id),
   });
 
-  const forecastQ = useQuery({
+  const forecastQ = useQuery<WeatherForecastData | null>({
     queryKey: ['weather', 'forecast', id],
-    queryFn: () => weatherApi.forecast(id) as Promise<ForecastPoint[] | { items?: ForecastPoint[] }>,
+    queryFn: () => weatherApi.forecast(id),
     enabled: Boolean(id),
   });
 
@@ -72,17 +70,9 @@ export function CommuneDetailPage() {
     return <AlertBanner tone="danger">Impossible de charger la commune.</AlertBanner>;
   }
 
-  const c = communeQ.data;
+  const c = communeQ.data.commune;
   const latest = latestQ.data;
-  const rawForecast = forecastQ.data;
-  const forecastArr = Array.isArray(rawForecast)
-    ? rawForecast
-    : (rawForecast?.items ?? []);
-  const chartData = forecastArr.map((p) => ({
-    date: String(p.date ?? p.forecastAt ?? '').slice(0, 10),
-    temp: Number(p.temperature ?? p.tempMax ?? 0),
-    rain: Number(p.precipitation ?? 0),
-  }));
+  const chartData = forecastQ.data ? buildChartData(forecastQ.data) : [];
 
   return (
     <div className="space-y-5">
@@ -92,7 +82,8 @@ export function CommuneDetailPage() {
         </Link>
         <h1 className="mt-1 font-display text-3xl text-ink">{c.name}</h1>
         <p className="text-sm text-muted">
-          {c.adminCode} · {c.districtName ?? 'District'} · pop. {formatNumber(c.population)}
+          {c.adminCode} · {communeQ.data.district?.name ?? 'District'} · pop.{' '}
+          {formatNumber(c.population)}
         </p>
       </div>
 
@@ -104,13 +95,13 @@ export function CommuneDetailPage() {
         <Card className="!p-4">
           <p className="text-xs text-muted">Température</p>
           <p className="font-display text-2xl">
-            {latest?.temperature != null ? `${latest.temperature}°C` : '—'}
+            {latest?.temperatureC != null ? `${latest.temperatureC}°C` : '—'}
           </p>
         </Card>
         <Card className="!p-4">
           <p className="text-xs text-muted">Précipitations</p>
           <p className="font-display text-2xl">
-            {latest?.precipitation != null ? `${latest.precipitation} mm` : '—'}
+            {latest?.precipitationMm != null ? `${latest.precipitationMm} mm` : '—'}
           </p>
         </Card>
         <Card className="!p-4">

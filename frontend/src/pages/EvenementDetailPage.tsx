@@ -92,20 +92,21 @@ export function EvenementDetailPage() {
     },
   });
 
-  const areaM = useMutation({
-    mutationFn: (body: AreaForm) => eventsApi.calculateArea(id, body),
-    onSuccess: () => {
-      toast('Zone d’influence calculée', 'success');
-      void qc.invalidateQueries({ queryKey: ['event', id, 'areas'] });
-    },
-    onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
-  });
-
   const exposureM = useMutation({
     mutationFn: () => eventsApi.calculateExposure(id, { allAreas: 'true' }),
     onSuccess: () => {
       toast('Exposition recalculée', 'success');
       void qc.invalidateQueries({ queryKey: ['event', id, 'exposed'] });
+    },
+    onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
+  });
+
+  const areaM = useMutation({
+    mutationFn: (body: AreaForm) => eventsApi.calculateArea(id, body),
+    onSuccess: () => {
+      toast('Zone d’influence calculée', 'success');
+      void qc.invalidateQueries({ queryKey: ['event', id, 'areas'] });
+      exposureM.mutate();
     },
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
   });
@@ -138,7 +139,7 @@ export function EvenementDetailPage() {
   }
 
   const ev = eventQ.data;
-  const exposed = (exposedQ.data?.data ?? []) as ExposedRow[];
+  const exposed = (exposedQ.data?.data ?? []) as unknown as ExposedRow[];
   const tracks = tracksQ.data as FeatureCollection | undefined;
   const areas = areasQ.data as FeatureCollection | undefined;
 
