@@ -14,6 +14,9 @@ let client: { id: string; token: string };
 let communeId: string;
 let communeLon: number;
 let communeLat: number;
+let secondCommuneId: string;
+let secondCommuneLon: number;
+let secondCommuneLat: number;
 
 const mockProvider: WeatherProvider = {
   getCurrent: async () => ({
@@ -102,14 +105,19 @@ async function createEvent(token: string): Promise<string> {
   return res.body.data.id;
 }
 
-async function prepareEventWithExposure(token: string): Promise<string> {
+async function prepareEventWithExposure(
+  token: string,
+  point?: { latitude: number; longitude: number },
+): Promise<string> {
+  const lat = point?.latitude ?? communeLat;
+  const lon = point?.longitude ?? communeLon;
   const eventId = await createEvent(token);
 
   const track = {
     observedAt: '2026-03-01T06:00:00.000Z',
     trackType: 'OBSERVEE',
-    latitude: communeLat,
-    longitude: communeLon,
+    latitude: lat,
+    longitude: lon,
     windSpeedKmh: 120,
     gustSpeedKmh: 150,
     pressureHpa: 960,
@@ -121,7 +129,7 @@ async function prepareEventWithExposure(token: string): Promise<string> {
   await request(app)
     .post(`/api/v1/events/${eventId}/tracks`)
     .set('Authorization', `Bearer ${token}`)
-    .send({ ...track, observedAt: '2026-03-01T12:00:00.000Z', latitude: communeLat + 0.05 });
+    .send({ ...track, observedAt: '2026-03-01T12:00:00.000Z', latitude: lat + 0.05 });
 
   const areaRes = await request(app)
     .post(`/api/v1/events/${eventId}/areas/calculate`)
@@ -159,11 +167,31 @@ beforeAll(async () => {
   communeId = c.rows[0].id;
   communeLon = c.rows[0].lon;
   communeLat = c.rows[0].lat;
+
+  const c2 = await db.query<{ id: string; lon: number; lat: number }>(
+    `SELECT
+       c.id,
+       ST_X(c.centroid) AS lon,
+       ST_Y(c.centroid) AS lat
+     FROM communes c
+     WHERE ST_Y(c.centroid) <
+       ST_Y((SELECT centroid FROM communes WHERE id = $1)) - 2
+     ORDER BY ST_Y(c.centroid) DESC
+     LIMIT 1`,
+    [communeId],
+  );
+  secondCommuneId = c2.rows[0].id;
+  secondCommuneLon = c2.rows[0].lon;
+  secondCommuneLat = c2.rows[0].lat;
 });
 
 afterAll(async () => {
-  await db.query(`DELETE FROM weather_observations WHERE commune_id = $1`, [communeId]);
-  await db.query(`DELETE FROM risk_assessments WHERE commune_id = $1`, [communeId]);
+  await db.query(`DELETE FROM weather_observations WHERE commune_id = ANY($1::uuid[])`, [
+    [communeId, secondCommuneId],
+  ]);
+  await db.query(`DELETE FROM risk_assessments WHERE commune_id = ANY($1::uuid[])`, [
+    [communeId, secondCommuneId],
+  ]);
   await db.query(`DELETE FROM risk_configurations WHERE name LIKE 'wx-%'`);
   await db.query(`DELETE FROM hazard_events WHERE created_by IN ($1, $2, $3)`, [
     admin.id,
@@ -405,6 +433,38 @@ describe('Risques - recalcul automatique', () => {
       [eventId],
     );
     expect(parseInt(after.rows[0].n, 10)).toBeGreaterThan(parseInt(before.rows[0].n, 10));
+  });
+});
+
+describe('Risques - couche carto scopée par événement', () => {
+  it('chaque événement n expose que ses propres communes : changer d événement fait disparaître les communes du précédent', async () => {
+    const eventA = await prepareEventWithExposure(admin.token);
+    const eventB = await prepareEventWithExposure(admin.token, {
+      latitude: secondCommuneLat,
+      longitude: secondCommuneLon,
+    });
+
+    const resA = await request(app)
+      .get(`/api/v1/risks/map-layer?eventId=${eventA}`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    const resB = await request(app)
+      .get(`/api/v1/risks/map-layer?eventId=${eventB}`)
+      .set('Authorization', `Bearer ${admin.token}`);
+
+    expect(resA.status).toBe(200);
+    expect(resB.status).toBe(200);
+
+    const idsA = resA.body.data.features.map(
+      (f: { properties: { communeId: string } }) => f.properties.communeId,
+    );
+    const idsB = resB.body.data.features.map(
+      (f: { properties: { communeId: string } }) => f.properties.communeId,
+    );
+
+    expect(idsA).toContain(communeId);
+    expect(idsB).toContain(secondCommuneId);
+    expect(idsA).not.toContain(secondCommuneId);
+    expect(idsB).not.toContain(communeId);
   });
 });
 
