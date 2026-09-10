@@ -42,7 +42,16 @@ export const weatherController = {
 
   mapLayer: async (req: Request, res: Response): Promise<void> => {
     const query = req.validatedQuery as WeatherMapQuery;
-    const geojson = await weatherService.mapLayer(query);
-    res.status(200).json(successResponse(geojson, 'Couche météo'));
+    const [geojson, latestObservationAt] = await Promise.all([
+      weatherService.mapLayer(query),
+      weatherService.latestObservationAt(),
+    ]);
+    res.status(200).json(successResponse(geojson, 'Couche météo', { latestObservationAt }));
+  },
+
+  ingestDgmMaproom: async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) throw AppError.unauthorized();
+    const result = await weatherService.ingestDgmMaproom(req.user, req);
+    res.status(200).json(successResponse(result, 'Ingestion DGM (maproom) terminée'));
   },
 };

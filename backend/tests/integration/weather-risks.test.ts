@@ -235,6 +235,13 @@ describe('Météo - authentification et rôles', () => {
     expect(res.status).toBe(403);
   });
 
+  it('interdit l’ingestion DGM à un CLIENT (403)', async () => {
+    const res = await request(app)
+      .post('/api/v1/weather/ingest/dgm-maproom')
+      .set('Authorization', `Bearer ${client.token}`);
+    expect(res.status).toBe(403);
+  });
+
   it('rejette un refresh sans filtre ni confirmAll (422)', async () => {
     const res = await request(app)
       .post('/api/v1/weather/refresh/communes')
@@ -300,6 +307,32 @@ describe('Météo - endpoints données', () => {
     );
     expect(mine).toBeDefined();
     expect(mine.geometry.type).toBe('Point');
+  });
+
+  it('accepte metric, date et hour et retourne meta.latestObservationAt', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const nowHour = new Date().getUTCHours();
+    const res = await request(app)
+      .get(`/api/v1/weather/map-layer?metric=precipitation&date=${today}&hour=${nowHour}`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.type).toBe('FeatureCollection');
+    expect(typeof res.body.meta.latestObservationAt).toBe('string');
+    expect(new Date(res.body.meta.latestObservationAt)).toBeInstanceOf(Date);
+  });
+
+  it('rejette une métrique inconnue (422)', async () => {
+    const res = await request(app)
+      .get('/api/v1/weather/map-layer?metric=pluie')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(422);
+  });
+
+  it('rejette hour sans date (422)', async () => {
+    const res = await request(app)
+      .get('/api/v1/weather/map-layer?hour=12')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(422);
   });
 });
 

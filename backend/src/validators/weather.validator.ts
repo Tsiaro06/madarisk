@@ -40,12 +40,32 @@ export const weatherHistoryQuerySchema = z
     path: ['dateTo'],
   });
 
-export const weatherMapQuerySchema = z.object({
-  districtId: z.string().uuid('Identifiant de district invalide').optional(),
-  eventId: z.string().uuid("Identifiant d'événement invalide").optional(),
-  observedAt: z.coerce.date().optional(),
-});
+export const weatherMetricSchema = z.enum([
+  'precipitation',
+  'temperature_2m',
+  'relative_humidity_2m',
+  'pressure_msl',
+  'wind_speed_10m',
+]);
+
+export const weatherMapQuerySchema = z
+  .object({
+    districtId: z.string().uuid('Identifiant de district invalide').optional(),
+    eventId: z.string().uuid("Identifiant d'événement invalide").optional(),
+    observedAt: z.coerce.date().optional(),
+    metric: weatherMetricSchema.optional(),
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide (format attendu : YYYY-MM-DD)')
+      .optional(),
+    hour: z.coerce.number().int().min(0).max(23).optional(),
+  })
+  .refine((data) => !data.hour || Boolean(data.date), {
+    message: 'hour ne peut être fourni sans date',
+    path: ['hour'],
+  });
 
 export type RefreshWeatherInput = z.infer<typeof refreshWeatherSchema>;
 export type WeatherHistoryQuery = z.infer<typeof weatherHistoryQuerySchema>;
 export type WeatherMapQuery = z.infer<typeof weatherMapQuerySchema>;
+export type WeatherMetric = z.infer<typeof weatherMetricSchema>;

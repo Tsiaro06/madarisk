@@ -34,6 +34,11 @@ const envSchema = z.object({
   OPEN_METEO_BASE_URL: z.string().default('https://api.open-meteo.com'),
   OPEN_METEO_TIMEOUT_MS: z.coerce.number().default(10000),
 
+  DGM_MAPROOM_BASE_URL: z.string().default('https://map.meteomadagascar.mg'),
+  DGM_MAPROOM_TIMEOUT_MS: z.coerce.number().default(20000),
+  DGM_MAPROOM_INGEST_CRON: z.string().default('0 6 * * *'),
+  DGM_MAPROOM_MAX_DISTANCE_DEG: z.coerce.number().default(0.1),
+
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
   AI_SUPER_ADMIN_VIEW_CONVERSATIONS: z

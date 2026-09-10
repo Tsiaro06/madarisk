@@ -1,10 +1,19 @@
-import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { KeyRound, LogOut, Menu, MapPinned, PanelLeft, PanelRight, Plus } from 'lucide-react';
-import { useAuthStore } from '@/stores/authStore';
-import { ROLE_LABELS } from '@/lib/roles';
-import { EventSelector } from '@/components/crisis/EventSelector';
-import { cn } from '@/lib/utils';
+import { useEffect, useRef, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  CloudSun,
+  KeyRound,
+  LogOut,
+  MapPinned,
+  Menu,
+  PanelLeft,
+  PanelRight,
+  Plus,
+} from "lucide-react";
+import { useAuthStore } from "@/stores/authStore";
+import { ROLE_LABELS } from "@/lib/roles";
+import { EventSelector } from "@/components/crisis/EventSelector";
+import { cn } from "@/lib/utils";
 
 interface CrisisHeaderProps {
   canCreate: boolean;
@@ -32,15 +41,16 @@ export function CrisisHeader({
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+      if (menuRef.current && !menuRef.current.contains(e.target as Node))
+        setMenuOpen(false);
     };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
   }, [menuOpen]);
 
   const onLogout = async () => {
     await logout();
-    navigate('/login', { replace: true });
+    navigate("/login", { replace: true });
   };
 
   return (
@@ -75,11 +85,15 @@ export function CrisisHeader({
         <button
           type="button"
           onClick={onToggleLeft}
-          aria-label={leftOpen ? 'Réduire le panneau de filtres' : 'Ouvrir le panneau de filtres'}
+          aria-label={
+            leftOpen
+              ? "Réduire le panneau de filtres"
+              : "Ouvrir le panneau de filtres"
+          }
           aria-pressed={leftOpen}
           className={cn(
-            'hidden rounded-lg border border-white/15 p-2 transition hover:bg-white/10 lg:block',
-            leftOpen && 'bg-white/15',
+            "hidden rounded-lg border border-white/15 p-2 transition hover:bg-white/10 lg:block",
+            leftOpen && "bg-white/15",
           )}
           title="Panneau filtres / événements"
         >
@@ -88,11 +102,15 @@ export function CrisisHeader({
         <button
           type="button"
           onClick={onToggleRight}
-          aria-label={rightOpen ? 'Réduire le panneau détails' : 'Ouvrir le panneau détails'}
+          aria-label={
+            rightOpen
+              ? "Réduire le panneau détails"
+              : "Ouvrir le panneau détails"
+          }
           aria-pressed={rightOpen}
           className={cn(
-            'hidden rounded-lg border border-white/15 p-2 transition hover:bg-white/10 lg:block',
-            rightOpen && 'bg-white/15',
+            "hidden rounded-lg border border-white/15 p-2 transition hover:bg-white/10 lg:block",
+            rightOpen && "bg-white/15",
           )}
           title="Panneau commune"
         >
@@ -111,6 +129,16 @@ export function CrisisHeader({
           </button>
         ) : null}
 
+        <button
+          type="button"
+          onClick={() => navigate("/meteo")}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/15 px-3 text-sm font-medium text-white transition hover:bg-white/10"
+          title="Voir la météo"
+        >
+          <CloudSun className="size-4 text-teal-200" />
+          <span className="hidden md:inline">Voir la météo</span>
+        </button>
+
         <div ref={menuRef} className="relative">
           <button
             type="button"
@@ -120,15 +148,15 @@ export function CrisisHeader({
             aria-expanded={menuOpen}
           >
             <span className="grid size-7 place-items-center rounded-full bg-white/15 text-xs font-bold">
-              {user?.firstName?.[0] ?? ''}
-              {user?.lastName?.[0] ?? ''}
+              {user?.firstName?.[0] ?? ""}
+              {user?.lastName?.[0] ?? ""}
             </span>
             <span className="hidden text-left leading-tight xl:block">
               <span className="block max-w-[140px] truncate text-xs font-medium">
                 {user?.firstName} {user?.lastName}
               </span>
               <span className="block text-[10px] text-teal-100/70">
-                {user ? ROLE_LABELS[user.role] : ''}
+                {user ? ROLE_LABELS[user.role] : ""}
               </span>
             </span>
           </button>

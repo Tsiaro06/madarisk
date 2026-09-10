@@ -28,6 +28,12 @@ router.post(
   asyncHandler(weatherController.refresh),
 );
 
+router.post(
+  '/ingest/dgm-maproom',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  asyncHandler(weatherController.ingestDgmMaproom),
+);
+
 router.get(
   '/communes/:communeId/latest',
   validate({ params: communeIdParamsSchema }),

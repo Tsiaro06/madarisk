@@ -1691,6 +1691,11 @@ paths:
     get:
       tags: [Météo]
       summary: Couche météo GeoJSON (pluie, vent) pour la carte
+      description: >
+        Renvoie la dernière observation (≤ date/heure cibles) de chaque commune.
+        `metric` est accepté pour compatibilité (toutes les métriques sont retournées dans `properties`) ;
+        `date` (+ éventuellement `hour`) filtre sur une période passée. La réponse inclut
+        `meta.latestObservationAt` (dernière observation disponible toutes sources confondues).
       security:
         - bearerAuth: []
       operationId: weatherMapLayer
@@ -1698,12 +1703,31 @@ paths:
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: observedAt, in: query, required: false, schema: { type: string, format: date-time } }
+        - name: metric
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [precipitation, temperature_2m, relative_humidity_2m, pressure_msl, wind_speed_10m]
+        - { name: date, in: query, required: false, description: 'Date cible au format YYYY-MM-DD', schema: { type: string, pattern: '^\\d{4}-\\d{2}-\\d{2}$' } }
+        - { name: hour, in: query, required: false, description: 'Heure cible (0 à 23), nécessite date', schema: { type: integer, minimum: 0, maximum: 23 } }
       responses:
         '200':
           description: Couche météo
           content:
             application/json:
-              schema: { $ref: '#/components/schemas/GeoJsonFeatureCollection' }
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/GeoJsonFeatureCollection' }
+                  meta:
+                    type: object
+                    properties:
+                      latestObservationAt: { type: [string, 'null'], format: date-time }
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -1756,6 +1780,47 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '502':
           description: Source météo (Open-Meteo) inaccessible
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /weather/ingest/dgm-maproom:
+    post:
+      tags: [Météo]
+      summary: Ingest de la pluie décadaire officielle DGM (ADMIN / SUPER_ADMIN)
+      description: >
+        Récupère la dernière décade de pluie (grille ~4 km) du maproom de la Direction
+        Générale de la Météo (IRI Data Library, map.meteomadagascar.mg) et l'échantillonne
+        sur chaque commune de Madagascar (source complémentaire historique).
+        Dédoublonnage par date de fin de décade : rejouer l'ingest est sans effet.
+      security:
+        - bearerAuth: []
+      operationId: ingestDgmMaproom
+      responses:
+        '200':
+          description: Ingestion DGM terminée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      dekadLabel: { type: string }
+                      observedAt: { type: string, format: date-time }
+                      gridPoints: { type: integer }
+                      communesSampled: { type: integer }
+                      alreadyPresent: { type: integer }
+                      communesWithoutValue: { type: integer }
+                      saved: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '502':
+          description: Source DGM (maproom) inaccessible ou grille illisible
         '500':
           $ref: '#/components/responses/InternalError'
 

@@ -3,8 +3,10 @@ import { logger } from '../config/logger';
 import { usersRepository } from '../repositories/users.repository';
 import { weatherRepository } from '../repositories/weather.repository';
 import { openMeteoProvider } from './openmeteo.provider';
+import { dgmMaproomProvider } from './weather-maproom.provider';
 import {
   WeatherCurrent,
+  WeatherDgmIngestResult,
   WeatherForecast,
   WeatherMapGeoJson,
   WeatherProvider,
@@ -25,9 +27,16 @@ function getIp(req: RequestContext): string | null {
 }
 
 const MAX_HISTORY_PERIOD_DAYS = 90;
-const REFRESH_CONCURRENCY = 5;
+const REFRESH_CONCURRENCY = 10;
+const REFRESH_REQUEST_DELAY_MS = 150;
 
 let activeProvider: WeatherProvider = openMeteoProvider;
+
+function assertAdmin(actor: { role: UserRole }): void {
+  if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
+    throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent administrer les données météo');
+  }
+}
 
 async function runPool<T>(
   items: T[],
@@ -60,9 +69,7 @@ export const weatherService = {
     actor: { id: string; role: UserRole },
     req: RequestContext,
   ): Promise<WeatherRefreshResult> {
-    if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
-      throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent rafraîchir les données météo');
-    }
+    assertAdmin(actor);
 
     const hasFilter =
       Boolean(input.communeIds?.length) || Boolean(input.districtId) || Boolean(input.eventId);
@@ -109,6 +116,7 @@ export const weatherService = {
               eventId: input.eventId ?? null,
             },
           });
+          await new Promise((resolve) => setTimeout(resolve, REFRESH_REQUEST_DELAY_MS));
         } catch (err) {
           const reason = err instanceof Error ? err.message : 'Erreur inconnue';
           failures.push({ communeId: target.id, reason });
@@ -188,7 +196,49 @@ export const weatherService = {
     districtId?: string;
     eventId?: string;
     observedAt?: Date;
+    metric?: string;
+    date?: string;
+    hour?: number;
   }): Promise<WeatherMapGeoJson> {
-    return weatherRepository.mapPoints(query);
+    let observedAt = query.observedAt;
+    if (query.date) {
+      const hh = query.hour !== undefined ? String(query.hour).padStart(2, '0') : '23';
+      const mm = query.hour !== undefined ? '00' : '59';
+      const ss = query.hour !== undefined ? '00' : '59';
+      observedAt = new Date(`${query.date}T${hh}:${mm}:${ss}.000Z`);
+    }
+    return weatherRepository.mapPoints({
+      districtId: query.districtId,
+      eventId: query.eventId,
+      observedAt,
+    });
+  },
+
+  async latestObservationAt(): Promise<string | null> {
+    return weatherRepository.latestObservationAt();
+  },
+
+  async ingestDgmMaproom(
+    actor: { id: string; role: UserRole },
+    req: RequestContext,
+  ): Promise<WeatherDgmIngestResult> {
+    assertAdmin(actor);
+
+    const result = await dgmMaproomProvider.ingestLatestDekad();
+
+    await usersRepository.writeAudit({
+      userId: actor.id,
+      action: 'WEATHER_DGM_INGESTED',
+      entityType: 'weather_observation',
+      newValue: {
+        dekadLabel: result.dekadLabel,
+        observedAt: result.observedAt,
+        communesSampled: result.communesSampled,
+        saved: result.saved,
+      },
+      ipAddress: getIp(req),
+    });
+
+    return result;
   },
 };

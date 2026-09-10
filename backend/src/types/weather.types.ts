@@ -79,6 +79,16 @@ export interface WeatherRefreshResult {
   failures: { communeId: string; reason: string }[];
 }
 
+export interface WeatherDgmIngestResult {
+  dekadLabel: string;
+  observedAt: string;
+  gridPoints: number;
+  communesSampled: number;
+  alreadyPresent: number;
+  communesWithoutValue: number;
+  saved: number;
+}
+
 export interface WeatherMapGeoJson {
   type: 'FeatureCollection';
   features: {

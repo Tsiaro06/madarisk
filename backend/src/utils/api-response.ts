@@ -2,7 +2,7 @@ export interface ApiResponse<T = unknown> {
   success: boolean;
   message: string;
   data?: T;
-  meta?: PaginationMeta;
+  meta?: PaginationMeta | Record<string, unknown>;
 }
 
 export interface PaginationMeta {
@@ -26,7 +26,7 @@ export interface ApiErrorResponse {
 export function successResponse<T>(
   data: T,
   message = 'Opération réussie',
-  meta?: PaginationMeta,
+  meta?: PaginationMeta | Record<string, unknown>,
 ): ApiResponse<T> {
   const response: ApiResponse<T> = { success: true, message, data };
   if (meta) response.meta = meta;

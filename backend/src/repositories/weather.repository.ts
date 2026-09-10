@@ -1,4 +1,5 @@
 import { db } from '../config/database';
+import { env } from '../config/env';
 import { WeatherMapGeoJson, WeatherMapPoint, WeatherObservation } from '../types/weather.types';
 import { PaginatedResult } from '../types/territory.types';
 
@@ -8,6 +9,36 @@ interface CountRow {
 
 function parseCount(row: CountRow | undefined): number {
   return parseInt(row?.count ?? '0', 10);
+}
+
+async function getOrCreateSource(
+  providerType: string,
+  name: string,
+  baseUrl: string,
+): Promise<string> {
+  const existing = await db.query<{ id: string }>(
+    `SELECT id FROM weather_sources WHERE provider_type = $1 ORDER BY created_at ASC LIMIT 1`,
+    [providerType],
+  );
+  if (existing.rows[0]) return existing.rows[0].id;
+
+  const created = await db.query<{ id: string }>(
+    `INSERT INTO weather_sources (name, provider_type, base_url, refresh_interval_minutes, is_active)
+     VALUES ($1, $2, $3, 60, true)
+     ON CONFLICT (name) DO NOTHING
+     RETURNING id`,
+    [name, providerType, baseUrl],
+  );
+  if (created.rows[0]) return created.rows[0].id;
+
+  const retry = await db.query<{ id: string }>(
+    `SELECT id FROM weather_sources WHERE provider_type = $1 ORDER BY created_at ASC LIMIT 1`,
+    [providerType],
+  );
+  if (!retry.rows[0]) {
+    throw new Error(`Impossible de récupérer la source météo ${name}`);
+  }
+  return retry.rows[0].id;
 }
 
 export interface WeatherInsertData {
@@ -105,27 +136,25 @@ export const weatherRepository = {
   },
 
   async getSourceId(): Promise<string> {
-    const existing = await db.query<{ id: string }>(
-      `SELECT id FROM weather_sources WHERE provider_type = 'OPEN_METEO' ORDER BY created_at ASC LIMIT 1`,
-    );
-    if (existing.rows[0]) return existing.rows[0].id;
+    return getOrCreateSource('OPEN_METEO', 'Open-Meteo', 'https://api.open-meteo.com');
+  },
 
-    const created = await db.query<{ id: string }>(
-      `INSERT INTO weather_sources (name, provider_type, base_url, refresh_interval_minutes, is_active)
-       VALUES ('Open-Meteo', 'OPEN_METEO', $1, 60, true)
-       ON CONFLICT (name) DO NOTHING
-       RETURNING id`,
-      ['https://api.open-meteo.com'],
+  async getDgmSourceId(): Promise<string> {
+    return getOrCreateSource(
+      'DGM_MAPROOM',
+      'Météo Madagascar — Maproom DGM',
+      env.DGM_MAPROOM_BASE_URL,
     );
-    if (created.rows[0]) return created.rows[0].id;
+  },
 
-    const retry = await db.query<{ id: string }>(
-      `SELECT id FROM weather_sources WHERE provider_type = 'OPEN_METEO' ORDER BY created_at ASC LIMIT 1`,
+  async existingCommunesForDate(sourceId: string, date: Date): Promise<Set<string>> {
+    const result = await db.query<{ commune_id: string }>(
+      `SELECT DISTINCT w.commune_id
+       FROM weather_observations w
+       WHERE w.weather_source_id = $1 AND w.observed_at::date = $2::date AND w.commune_id IS NOT NULL`,
+      [sourceId, date.toISOString()],
     );
-    if (!retry.rows[0]) {
-      throw new Error('Impossible de récupérer la source météo Open-Meteo');
-    }
-    return retry.rows[0].id;
+    return new Set(result.rows.map((r) => r.commune_id));
   },
 
   async getCommuneCoordinates(communeId: string): Promise<{
@@ -241,6 +270,13 @@ export const weatherRepository = {
       [communeId],
     );
     return result.rows[0] ? mapObservation(result.rows[0]) : null;
+  },
+
+  async latestObservationAt(): Promise<string | null> {
+    const result = await db.query<{ max: string | null }>(
+      `SELECT MAX(observed_at)::text AS max FROM weather_observations`,
+    );
+    return result.rows[0]?.max ?? null;
   },
 
   async history(
