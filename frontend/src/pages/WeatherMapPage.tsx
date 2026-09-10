@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Info, Settings2, X } from "lucide-react";
@@ -15,7 +15,7 @@ import {
 } from "@/components/weather/WeatherCommuneDetailsPanel";
 import { useWeatherMapLayer } from "@/hooks/useWeatherMapLayer";
 import { canManageOps } from "@/lib/roles";
-import { dateMaxFromLatest, todayISO } from "@/services/weather.service";
+import { addDaysToToday, todayISO } from "@/services/weather.service";
 import { useAuthStore } from "@/stores/authStore";
 import type { WeatherMetric } from "@/types/weather";
 import type { FeatureCollection } from "geojson";
@@ -90,7 +90,25 @@ export function WeatherMapPage() {
     [districtsQ.data],
   );
 
-  const maxDate = dateMaxFromLatest(weather.latestObservationAt);
+  const maxDate = addDaysToToday(3);
+
+  const futureDate = date > todayISO();
+  const hourForecastView = futureDate || (date === todayISO() && hour != null);
+
+  const forecastUnavailable =
+    hourForecastView &&
+    !weather.query.isLoading &&
+    weather.layer !== null &&
+    weather.layer.features.length === 0;
+
+  const layerHadNoData = useRef(true);
+  useEffect(() => {
+    const nowHasData = (weather.layer?.features?.length ?? 0) > 0;
+    if (hourForecastView && nowHasData && layerHadNoData.current) {
+      void qc.invalidateQueries({ queryKey: ["weather", "forecast"] });
+    }
+    layerHadNoData.current = !nowHasData;
+  }, [hourForecastView, weather.layer?.features?.length, qc]);
 
   const communesData = communesQ.data as FeatureCollection | null;
 
@@ -238,6 +256,13 @@ export function WeatherMapPage() {
               onSelectCommune={selectCommune}
             />
           )}
+
+          {forecastUnavailable ? (
+            <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 px-3 py-2 text-sm text-amber-800 shadow-sm">
+              Prévisions momentanément indisponibles : la limite de requêtes
+              Open-Meteo est atteinte. Réessai automatique quelques minutes.
+            </div>
+          ) : null}
 
           {mobileFilters ? (
             <div

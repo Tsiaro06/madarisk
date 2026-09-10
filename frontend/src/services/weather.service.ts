@@ -102,7 +102,12 @@ export function buildForecastSeries(
   }));
 }
 
+export function formatShortDate(dateISO: string): string {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  return `${pad(d)}/${pad(m)}/${y}`;
+}
+
 export function formatForecastTick(time: unknown): string {
   const d = new Date(String(time));
-  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)} ${pad(d.getUTCHours())}h`;
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}h`;
 }

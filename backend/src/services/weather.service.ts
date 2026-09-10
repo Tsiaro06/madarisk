@@ -9,6 +9,7 @@ import {
   WeatherDgmIngestResult,
   WeatherForecast,
   WeatherMapGeoJson,
+  WeatherMapPoint,
   WeatherProvider,
   WeatherRefreshResult,
 } from '../types/weather.types';
@@ -118,6 +119,12 @@ export const weatherService = {
           });
           await new Promise((resolve) => setTimeout(resolve, REFRESH_REQUEST_DELAY_MS));
         } catch (err) {
+          if (err instanceof AppError && err.statusCode === 429) {
+            logger.warn(
+              'Rafraîchissement météo interrompu : limite de requêtes Open-Meteo atteinte',
+            );
+            throw err;
+          }
           const reason = err instanceof Error ? err.message : 'Erreur inconnue';
           failures.push({ communeId: target.id, reason });
           logger.warn(
@@ -200,6 +207,49 @@ export const weatherService = {
     date?: string;
     hour?: number;
   }): Promise<WeatherMapGeoJson> {
+    if (query.date) {
+      const now = new Date();
+      const madagascarOffset = 3 * 60 * 60 * 1000;
+      const today = new Date(now.getTime() + madagascarOffset);
+      const todayStr = today.toISOString().slice(0, 10);
+      const isFuture = query.date > todayStr;
+      const hourSelected = query.hour !== undefined;
+      const useForecast = isFuture || (query.date === todayStr && hourSelected);
+
+      if (useForecast) {
+        const communes = await weatherRepository.allCommunesInfo();
+        const forecastPoints = await openMeteoProvider.getForecastBatch(
+          communes,
+          query.date,
+          query.hour,
+        );
+
+        const infoMap = new Map(communes.map((c) => [c.id, c]));
+
+        return {
+          type: 'FeatureCollection',
+          features: forecastPoints.map((fp) => {
+            const info = infoMap.get(fp.communeId);
+            const props: WeatherMapPoint = {
+              ...fp,
+              communeName: info?.name ?? '',
+              districtId: info?.districtId ?? '',
+              districtName: info?.districtName ?? '',
+            };
+            return {
+              type: 'Feature',
+              id: fp.communeId,
+              geometry: {
+                type: 'Point',
+                coordinates: [fp.longitude, fp.latitude],
+              },
+              properties: props,
+            };
+          }),
+        };
+      }
+    }
+
     let observedAt = query.observedAt;
     if (query.date) {
       const hh = query.hour !== undefined ? String(query.hour).padStart(2, '0') : '23';

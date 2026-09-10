@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { weatherApi } from "@/api";
 import type { WeatherMapFeatureProperties } from "@/types";
 import type { WeatherMetric } from "@/types/weather";
+import { todayISO } from "@/services/weather.service";
 
 export interface WeatherMapLayerParams {
   metric: WeatherMetric;
@@ -17,6 +18,10 @@ export function useWeatherMapLayer({
   hour,
   districtId,
 }: WeatherMapLayerParams) {
+  const needsForecast =
+    Boolean(date && date > todayISO()) ||
+    (date === todayISO() && hour != null);
+
   const query = useQuery({
     queryKey: [
       "weather",
@@ -36,6 +41,15 @@ export function useWeatherMapLayer({
       return { collection: res.data, meta: res.meta };
     },
     staleTime: 30_000,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
+    refetchInterval: (q) =>
+      needsForecast &&
+      (q.state.status === "error" ||
+        !q.state.data ||
+        q.state.data.collection.features.length === 0)
+        ? 60_000
+        : false,
   });
 
   const layer = query.data?.collection ?? null;

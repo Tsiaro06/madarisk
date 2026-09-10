@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   CartesianGrid,
@@ -18,6 +19,7 @@ import { Button } from "@/components/ui/Button";
 import {
   buildForecastSeries,
   formatForecastTick,
+  formatShortDate,
   getWeatherValue,
 } from "@/services/weather.service";
 import { formatDate } from "@/lib/utils";
@@ -52,6 +54,10 @@ function isServiceUnavailable(err: unknown): boolean {
   );
 }
 
+function isRateLimited(err: unknown): boolean {
+  return err instanceof ApiClientError && err.status === 429;
+}
+
 export function WeatherCommuneDetailsPanel({
   commune,
   point,
@@ -65,20 +71,40 @@ export function WeatherCommuneDetailsPanel({
     queryKey: ["weather", "forecast", commune?.id],
     queryFn: () => (commune ? weatherApi.forecast(commune.id) : null),
     enabled: Boolean(commune),
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
+    refetchInterval: (q) =>
+      q.state.status === "error" && isRateLimited(q.state.error)
+        ? 60_000
+        : false,
   });
 
-  const displayDate = date
-    ? new Date(`${date}T00:00:00`).toLocaleDateString("fr-FR", {
-        day: "2-digit",
-        month: "long",
-        year: "numeric",
-      })
-    : "—";
+  const displayDate = date ? formatShortDate(date) : "—";
   const displayHour =
     hour != null ? `${String(hour).padStart(2, "0")}h` : "Toute la journée";
 
-  const mainValue = getWeatherValue(point, metric);
   const config = WEATHER_METRIC_CONFIGS[metric];
+
+  const chartData = forecastQ.data
+    ? buildForecastSeries(forecastQ.data, metric)
+    : [];
+
+  const selectedHourValue = useMemo(() => {
+    if (hour == null || !forecastQ.data) return null;
+    const cfg = WEATHER_METRIC_CONFIGS[metric];
+    const values = forecastQ.data.hourly[cfg.forecastProperty] ?? [];
+    const targetPrefix = `${date}T${String(hour).padStart(2, "0")}:`;
+    const idx = forecastQ.data.hourly.time.findIndex((t) =>
+      t.startsWith(targetPrefix),
+    );
+    const value = idx >= 0 ? values[idx] : null;
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+  }, [date, forecastQ.data, hour, metric]);
+
+  const mainValue =
+    hour != null
+      ? (selectedHourValue ?? getWeatherValue(point, metric))
+      : getWeatherValue(point, metric);
 
   if (!commune) {
     return (
@@ -89,10 +115,6 @@ export function WeatherCommuneDetailsPanel({
       />
     );
   }
-
-  const chartData = forecastQ.data
-    ? buildForecastSeries(forecastQ.data, metric)
-    : [];
 
   return (
     <div className="space-y-3 p-3">
@@ -130,14 +152,20 @@ export function WeatherCommuneDetailsPanel({
       ) : (
         <>
           <Card className="!p-4">
-            <p className="text-xs text-muted">{config.label} sélectionné</p>
+            <p className="text-xs text-muted">
+              {hour != null
+                ? `${config.label} prévu à ${displayHour}`
+                : `${config.label} sélectionné`}
+            </p>
             <p className="font-display text-3xl text-ink">
               {formatWeatherValue(metric, mainValue)}
             </p>
             <p className="mt-1 text-xs text-muted">
-              {point?.observedAt
-                ? `Actualisé le ${formatDate(point.observedAt)}`
-                : "Aucune observation"}
+              {hour != null && selectedHourValue != null
+                ? `Prévision du ${displayDate} · ${displayHour}`
+                : point?.observedAt
+                  ? `Actualisé le ${formatDate(point.observedAt)}`
+                  : "Aucune observation"}
             </p>
             <p className="mt-0.5 text-xs text-muted">Source : Open-Meteo</p>
           </Card>
@@ -167,16 +195,20 @@ export function WeatherCommuneDetailsPanel({
             ) : forecastQ.isError ? (
               <EmptyState
                 title={
-                  isServiceUnavailable(forecastQ.error)
-                    ? "Service météo indisponible"
-                    : "Erreur de chargement"
+                  isRateLimited(forecastQ.error)
+                    ? "Prévisions indisponibles"
+                    : isServiceUnavailable(forecastQ.error)
+                      ? "Service météo indisponible"
+                      : "Erreur de chargement"
                 }
                 description={
-                  isServiceUnavailable(forecastQ.error)
-                    ? "La source de prévisions ne répond pas actuellement. Réessayez plus tard."
-                    : forecastQ.error instanceof Error
-                      ? forecastQ.error.message
-                      : "Vérifiez votre connexion."
+                  isRateLimited(forecastQ.error)
+                    ? "La limite de requêtes Open-Meteo est atteinte. Réessayez dans environ une heure."
+                    : isServiceUnavailable(forecastQ.error)
+                      ? "La source de prévisions ne répond pas actuellement. Réessayez plus tard."
+                      : forecastQ.error instanceof Error
+                        ? forecastQ.error.message
+                        : "Vérifiez votre connexion."
                 }
               />
             ) : chartData.length === 0 ? (

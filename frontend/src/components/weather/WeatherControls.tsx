@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
@@ -5,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { RefreshCw } from "lucide-react";
 import {
   addDaysToToday,
+  formatShortDate,
   HOUR_OPTIONS,
   isAfterMax,
   todayISO,
@@ -51,11 +53,17 @@ export function WeatherControls({
   onRefresh,
 }: WeatherControlsProps) {
   const today = todayISO();
-  const shortcuts = [1, 3, 7].map((days) => ({
+  const shortcuts = [1, 3].map((days) => ({
     days,
     label: `+${days} jour${days > 1 ? "s" : ""}`,
     value: addDaysToToday(days, today),
   }));
+
+  const [dateText, setDateText] = useState(() => isoToFrench(date));
+
+  useEffect(() => {
+    setDateText(isoToFrench(date));
+  }, [date]);
 
   return (
     <div className="space-y-4">
@@ -68,11 +76,26 @@ export function WeatherControls({
 
       <div className="grid grid-cols-2 gap-3">
         <Input
-          type="date"
+          type="text"
+          inputMode="numeric"
           label="Date"
-          value={date}
-          max={maxDate ?? undefined}
-          onChange={(e) => onDateChange(e.target.value)}
+          value={dateText}
+          maxLength={10}
+          placeholder="JJ/MM/AAAA"
+          onChange={(e) => {
+            const masked = maskFrenchDate(e.target.value);
+            setDateText(masked);
+            const iso = frenchToISO(masked);
+            if (iso) onDateChange(iso);
+          }}
+          onBlur={() => {
+            const iso = frenchToISO(dateText);
+            if (iso && maxDate && iso > maxDate) {
+              setDateText(isoToFrench(date));
+              return;
+            }
+            setDateText(iso ? isoToFrench(iso) : isoToFrench(date));
+          }}
         />
         <Select
           label="Heure"
@@ -151,7 +174,37 @@ export function WeatherControls({
   );
 }
 
-function formatShortDate(dateISO: string): string {
-  const [y, m, d] = dateISO.split("-").map(Number);
-  return `${String(d).padStart(2, "0")}/${String(m).padStart(2, "0")}/${y}`;
+function pad2(n: number): string {
+  return String(n).padStart(2, "0");
+}
+
+function isoToFrench(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso ?? "");
+  if (!m) return "";
+  return `${m[3]}/${m[2]}/${m[1]}`;
+}
+
+function maskFrenchDate(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 8);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function frenchToISO(fr: string): string | null {
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(fr ?? "");
+  if (!m) return null;
+  const d = Number(m[1]);
+  const mo = Number(m[2]);
+  const y = Number(m[3]);
+  if (d < 1 || d > 31 || mo < 1 || mo > 12 || y < 1900 || y > 2100) return null;
+  const date = new Date(y, mo - 1, d);
+  if (
+    date.getFullYear() !== y ||
+    date.getMonth() !== mo - 1 ||
+    date.getDate() !== d
+  ) {
+    return null;
+  }
+  return `${y}-${pad2(mo)}-${pad2(d)}`;
 }

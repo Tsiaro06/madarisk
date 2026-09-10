@@ -1,6 +1,11 @@
 import { db } from '../config/database';
 import { env } from '../config/env';
-import { WeatherMapGeoJson, WeatherMapPoint, WeatherObservation } from '../types/weather.types';
+import {
+  CommuneInfo,
+  WeatherMapGeoJson,
+  WeatherMapPoint,
+  WeatherObservation,
+} from '../types/weather.types';
 import { PaginatedResult } from '../types/territory.types';
 
 interface CountRow {
@@ -171,6 +176,22 @@ export const weatherRepository = {
     return row
       ? { latitude: parseFloat(row.latitude), longitude: parseFloat(row.longitude) }
       : null;
+  },
+
+  async allCommunesInfo(): Promise<CommuneInfo[]> {
+    const result = await db.query<CommuneInfo>(
+      `SELECT
+         c.id,
+         c.name,
+         d.id AS "districtId",
+         d.name AS "districtName",
+         ST_Y(c.centroid)::float AS latitude,
+         ST_X(c.centroid)::float AS longitude
+       FROM communes c
+       JOIN districts d ON d.id = c.district_id
+       ORDER BY c.name`,
+    );
+    return result.rows;
   },
 
   async targetCommunes(query: TargetCommunesQuery): Promise<TargetCommune[]> {

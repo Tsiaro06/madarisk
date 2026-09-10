@@ -98,3 +98,12 @@ export interface WeatherMapGeoJson {
     properties: WeatherMapPoint;
   }[];
 }
+
+export interface CommuneInfo {
+  id: string;
+  name: string;
+  districtId: string;
+  districtName: string;
+  latitude: number;
+  longitude: number;
+}
