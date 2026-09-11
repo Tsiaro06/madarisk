@@ -106,6 +106,11 @@ export const eventIdParamsSchema = z.object({
   id: z.string().uuid("Identifiant d'événement invalide"),
 });
 
+export const eventIdAreaIdParamsSchema = z.object({
+  id: z.string().uuid("Identifiant d'événement invalide"),
+  areaId: z.string().uuid('Identifiant de zone invalide'),
+});
+
 export const createTrackSchema = z.object({
   observedAt: z.coerce.date().transform((d) => d.toISOString()),
   forecastFor: z

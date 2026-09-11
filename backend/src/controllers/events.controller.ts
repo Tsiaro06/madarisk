@@ -106,6 +106,13 @@ export const eventsController = {
     res.status(201).json(successResponse(area, 'Zone polygonale définie'));
   },
 
+  deleteArea: async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) throw AppError.unauthorized();
+    const { id, areaId } = req.validatedParams as { id: string; areaId: string };
+    await eventsService.deleteArea(id, areaId, req.user, req);
+    res.status(200).json(successResponse(null, 'Zone supprimée'));
+  },
+
   calculateExposure: async (req: Request, res: Response): Promise<void> => {
     if (!req.user) throw AppError.unauthorized();
     const { id } = req.validatedParams as EventIdParams;

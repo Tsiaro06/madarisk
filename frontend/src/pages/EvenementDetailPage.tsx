@@ -21,7 +21,7 @@ import { Select } from '@/components/ui/Select';
 import { GeoJsonMap } from '@/components/maps/GeoJsonMap';
 import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
 import { useToast } from '@/components/ui/Toast';
-import { Check } from 'lucide-react';
+import { Check, Trash2 } from 'lucide-react';
 import { cn, formatDate, formatNumber } from '@/lib/utils';
 import { canManageOps } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
@@ -192,6 +192,18 @@ export function EvenementDetailPage() {
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
   });
 
+  const deleteAreaM = useMutation({
+    mutationFn: (areaId: string) => eventsApi.deleteArea(id, areaId),
+    onSuccess: () => {
+      toast('Zone supprimée — exposition recalculée', 'success');
+      void qc.invalidateQueries({ queryKey: ['event', id, 'areas'] });
+      void qc.invalidateQueries({ queryKey: ['event', id, 'exposed'] });
+      void qc.invalidateQueries({ queryKey: ['event', id, 'exposed', 'any'] });
+    },
+    onError: (err) =>
+      toast(err instanceof ApiClientError ? err.message : 'Erreur suppression zone', 'error'),
+  });
+
   const risksM = useMutation({
     mutationFn: (phase: RiskPhase) => eventsApi.recalculateRisks(id, { phase }),
     onSuccess: () => toast('Risques recalculés', 'success'),
@@ -227,6 +239,7 @@ export function EvenementDetailPage() {
   const zoneCount = areas?.features?.length ?? 0;
   const hasExposure = (exposedAnyQ.data?.meta?.total ?? 0) > 0;
   const hasRiskScores = exposed.some((r) => Boolean(r.riskLevel));
+  const isTrackRequired = ev.type === 'CYCLONE';
   const nextStatus = STATUSES[STATUSES.indexOf(ev.status) + 1];
   const canResetToDraft =
     role === 'SUPER_ADMIN' && trackCount === 0 && zoneCount === 0 && !hasExposure;
@@ -273,16 +286,28 @@ export function EvenementDetailPage() {
             <WorkflowStep
               step={1}
               label="Trajectoire"
-              note={`${trackCount} point${trackCount > 1 ? 's' : ''} sur la ligne`}
+              note={
+                trackCount >= 2
+                  ? `${trackCount} point${trackCount > 1 ? 's' : ''} sur la ligne`
+                  : isTrackRequired
+                    ? `${trackCount} point${trackCount > 1 ? 's' : ''} — 2 minimum requis`
+                    : 'Optionnelle — utilisez la zone polygonale (étape 2)'
+              }
               done={trackCount >= 2}
-              locked={trackCount < 2}
+              locked={isTrackRequired && trackCount < 2}
             />
             <WorkflowStep
               step={2}
-              label="Zone d'influence"
-              note="Bande tampon ou polygone"
+              label="Zone d’influence"
+              note={
+                zoneCount > 0
+                  ? `${zoneCount} zone${zoneCount > 1 ? 's' : ''} définie${zoneCount > 1 ? 's' : ''}`
+                  : isTrackRequired
+                    ? 'Bande tampon (après trajectoire) ou polygone'
+                    : 'Polygone dessiné (≥ 3 points) ou bande tampon'
+              }
               done={zoneCount > 0}
-              locked={trackCount < 2}
+              locked={isTrackRequired && trackCount < 2 && zoneCount === 0}
             />
             <WorkflowStep
               step={3}
@@ -361,13 +386,13 @@ export function EvenementDetailPage() {
                 </Button>
                 <p className="text-xs text-muted">
                   {trackCount < 2
-                    ? `Nécessite au moins 2 points de trajectoire (actuellement ${trackCount}). Ajoutez-les à l'étape 1.`
+                    ? `Nécessite au moins 2 points de trajectoire (actuellement ${trackCount}). Pour un événement sans trajectoire, utilisez la « Zone polygonale » à côté.`
                     : "Élargit la trajectoire d'un rayon, puis lance automatiquement l'exposition (étape 3) et les risques (étape 4)."}
                 </p>
               </form>
             </Card>
 
-            <Card title="Zone polygonale (dessin)" description="Étape 2 · alternative au tracé automatique">
+            <Card title="Zone polygonale (dessin)" description="Étape 2 · pour les événements sans trajectoire">
               <div className="space-y-2">
                 <Select
                   label="Phase"
@@ -421,8 +446,10 @@ export function EvenementDetailPage() {
                   Définir la zone ({polygonPoints.length} point{polygonPoints.length > 1 ? 's' : ''})
                 </Button>
                 <p className="text-xs text-muted">
-                  Tracez le périmètre touché à la main (≥ 3 points). Fonctionne sans trajectoire et
-                  alimente tout de même les étapes 3 (exposition) et 4 (risques).
+                  Tracez le périmètre touché à la main (≥ 3 points).
+                  {isTrackRequired
+                    ? ' Alternative au tracé automatique sur trajectoire.'
+                    : ' Méthode recommandée car ce type d’événement n’a pas de trajectoire. Alimente les étapes 3 (exposition) et 4 (risques).'}
                 </p>
               </div>
             </Card>
@@ -456,7 +483,7 @@ export function EvenementDetailPage() {
               </div>
             </Card>
 
-            <Card title="Point de trajectoire" description="Étape 1 · le chemin emprunté par le phénomène">
+            <Card title="Point de trajectoire" description={`Étape 1 · ${isTrackRequired ? 'le chemin emprunté par le phénomène' : 'optionnelle — le chemin du phénomène s’il se déplace'}`}>
               <div className="space-y-2">
                 <Input
                   label="Latitude"
@@ -487,7 +514,9 @@ export function EvenementDetailPage() {
                 <p className="text-xs text-muted">
                   {trackCount >= 2
                     ? `${trackCount} point${trackCount > 1 ? 's' : ''} ajouté${trackCount > 1 ? 's' : ''} — la ligne est tracée, vous pouvez passer à l'étape 2.`
-                    : `Ajoutez au moins 2 points (OBSERVEE = passé, PREVUE = prévu) pour tracer la ligne. ${trackCount} point${trackCount > 1 ? 's' : ''} ajouté${trackCount > 1 ? 's' : ''}.`}{' '}
+                    : isTrackRequired
+                      ? `Ajoutez au moins 2 points (OBSERVEE = passé, PREVUE = prévu) pour tracer la ligne. ${trackCount} point${trackCount > 1 ? 's' : ''} ajouté${trackCount > 1 ? 's' : ''}.`
+                      : `Optionnel — vous pouvez tracer une trajectoire si le phénomène se déplace, sinon passez directement à la « Zone polygonale » (étape 2).`}{' '}
                   Astuce : cliquez la carte « Trajectoire / zones » pour préremplir lat/lng.
                 </p>
               </div>
@@ -500,27 +529,72 @@ export function EvenementDetailPage() {
         {tracksQ.isLoading || areasQ.isLoading ? (
           <Spinner />
         ) : (tracks?.features?.length || areas?.features?.length) ? (
-          <GeoJsonMap
-            data={
-              {
-                type: 'FeatureCollection',
-                features: [...(tracks?.features ?? []), ...(areas?.features ?? [])],
-              } as FeatureCollection
-            }
-            height={420}
-            showLegend={false}
-            onFeatureClick={(f) => {
-              const geom = f.geometry;
-              if (geom.type === 'Point') {
-                const [lng, lat] = geom.coordinates;
-                setTrackPoint((p) => ({
-                  ...p,
-                  lat: String(lat),
-                  lng: String(lng),
-                }));
+          <>
+            <GeoJsonMap
+              data={
+                {
+                  type: 'FeatureCollection',
+                  features: [...(tracks?.features ?? []), ...(areas?.features ?? [])],
+                } as FeatureCollection
               }
-            }}
-          />
+              height={420}
+              showLegend={false}
+              onFeatureClick={(f) => {
+                const geom = f.geometry;
+                if (geom.type === 'Point') {
+                  const [lng, lat] = geom.coordinates;
+                  setTrackPoint((p) => ({
+                    ...p,
+                    lat: String(lat),
+                    lng: String(lng),
+                  }));
+                }
+              }}
+            />
+            {areas?.features?.length ? (
+              <div className="mt-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                  Zones d&apos;influence ({areas.features.length})
+                </p>
+                <ul className="space-y-1.5">
+                  {areas.features.map((f) => {
+                    const props = (f.properties ?? {}) as Record<string, unknown>;
+                    const areaId = String(props.areaId ?? '');
+                    const isBuffer = props.radiusKm != null;
+                    return (
+                      <li
+                        key={areaId}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-brand/10 bg-brand-soft/20 px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-ink">
+                            {isBuffer
+                              ? `Bande tampon · ${String(props.radiusKm)} km`
+                              : 'Zone polygonale'}
+                          </p>
+                          <p className="text-xs text-muted">
+                            Phase : {String(props.phase ?? '—')} · Niveau :{' '}
+                            {String(props.riskLevel ?? '—')}
+                          </p>
+                        </div>
+                        {canManageOps(role) ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="shrink-0"
+                            loading={deleteAreaM.isPending && deleteAreaM.variables === areaId}
+                            onClick={() => deleteAreaM.mutate(areaId)}
+                          >
+                            <Trash2 className="size-3.5" /> Supprimer
+                          </Button>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            ) : null}
+          </>
         ) : (
           <EmptyState title="Aucune trajectoire" description="Ajoutez des tracks côté opérationnel." />
         )}

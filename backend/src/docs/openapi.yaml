@@ -1572,6 +1572,41 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /events/{id}/areas/{areaId}:
+    delete:
+      tags: [Événements]
+      summary: Supprimer une zone d'influence (ADMIN / SUPER_ADMIN)
+      description: >-
+        Supprime une zone d'influence (polygone ou bande tampon) de l'événement, puis
+        recalcule automatiquement l'exposition avec les zones restantes.
+      security:
+        - bearerAuth: []
+      operationId: deleteEventArea
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - { $ref: '#/components/parameters/AreaId' }
+      responses:
+        '200':
+          description: Zone supprimée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { type: 'null', example: null }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /events/{id}/exposure/calculate:
     post:
       tags: [Événements]
@@ -2884,6 +2919,11 @@ components:
       schema: { type: string, format: uuid }
     EventId:
       name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AreaId:
+      name: areaId
       in: path
       required: true
       schema: { type: string, format: uuid }

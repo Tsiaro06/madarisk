@@ -10,6 +10,7 @@ import {
   updateEventStatusSchema,
   listEventsQuerySchema,
   eventIdParamsSchema,
+  eventIdAreaIdParamsSchema,
   createTrackSchema,
   listTracksQuerySchema,
   calculateAreaSchema,
@@ -97,6 +98,13 @@ router.post(
   authorize('ADMIN', 'SUPER_ADMIN'),
   validate({ params: eventIdParamsSchema, body: createPolygonAreaSchema }),
   asyncHandler(eventsController.createAreaFromPolygon),
+);
+
+router.delete(
+  '/:id/areas/:areaId',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  validate({ params: eventIdAreaIdParamsSchema }),
+  asyncHandler(eventsController.deleteArea),
 );
 
 router.post(

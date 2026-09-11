@@ -458,6 +458,62 @@ export const eventsService = {
     return { areaId: area.id, geometry: area.geometry, radiusKm: area.radiusKm };
   },
 
+  async deleteArea(
+    id: string,
+    areaId: string,
+    actor: { id: string; role: UserRole },
+    req: RequestContext,
+  ): Promise<void> {
+    if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
+      throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent supprimer une zone');
+    }
+
+    await this.ensureExists(id);
+
+    const deleted = await eventsRepository.deleteArea(id, areaId);
+    if (!deleted) {
+      throw AppError.notFound('Zone introuvable ou n\'appartient pas à cet événement');
+    }
+
+    await usersRepository.writeAudit({
+      userId: actor.id,
+      action: 'EVENT_AREA_DELETED',
+      entityType: 'event_area',
+      entityId: areaId,
+      newValue: { eventId: id },
+      ipAddress: getIp(req),
+    });
+
+    // Nettoyage + recalcul de l'exposition avec les zones restantes.
+    // On purge aussi les évaluations de risque pour ne pas laisser de communes
+    // encore colorées sur la carte après suppression de la zone.
+    await eventsRepository.clearExposedCommunes(id);
+    const hasAreas = await eventsRepository.hasAreas(id);
+    if (!hasAreas) {
+      await eventsRepository.deleteRiskAssessments(id);
+      return;
+    }
+
+    try {
+      await eventsRepository.calculateExposure(id, null);
+    } catch (err) {
+      logger.warn({ err, eventId: id }, "Recalcul automatique de l'exposition échoué après suppression de zone");
+    }
+
+    await eventsRepository.deleteRiskAssessments(id);
+    const phase = await eventsRepository.latestAreaPhase(id);
+    if (phase) {
+      try {
+        await risksService.recalculateEvent(id, phase, actor, req);
+      } catch (err) {
+        logger.warn(
+          { err, eventId: id, phase },
+          'Recalcul automatique des risques échoué après suppression de zone',
+        );
+      }
+    }
+  },
+
   async calculateExposure(
     id: string,
     query: CalculateExposureInput,
