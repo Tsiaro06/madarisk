@@ -1723,6 +1723,43 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /events/{id}/exposed-communes/{communeId}:
+    delete:
+      tags: [Événements]
+      summary: Retirer une commune de l'exposition d'un événement
+      description: >
+        Retire la commune de la liste des communes exposées et efface ses
+        évaluations de risque pour cet événement. La commune ne s'affiche plus
+        sur la carte salle de crise ni dans le tableau. Réservé ADMIN/SUPER_ADMIN.
+      security:
+        - bearerAuth: []
+      operationId: removeExposedCommune
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - name: communeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Commune retirée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { type: 'null' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /weather/map-layer:
     get:
       tags: [Météo]

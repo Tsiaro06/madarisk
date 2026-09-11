@@ -21,11 +21,12 @@ import { Select } from '@/components/ui/Select';
 import { GeoJsonMap } from '@/components/maps/GeoJsonMap';
 import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
 import { useToast } from '@/components/ui/Toast';
-import { Check, Trash2 } from 'lucide-react';
+import { Check, Trash2, XCircle } from 'lucide-react';
 import { cn, formatDate, formatNumber } from '@/lib/utils';
 import { canManageOps } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
 import { useCrisisStore } from '@/stores/crisisStore';
+import { useActiveEvent } from '@/stores/activeEvent';
 
 const STATUSES: EventStatus[] = ['BROUILLON', 'PREVISION', 'ACTIF', 'SUIVI', 'CLOTURE'];
 const PHASES: RiskPhase[] = ['AVANT', 'PENDANT', 'APRES', 'RETABLISSEMENT'];
@@ -97,6 +98,7 @@ export function EvenementDetailPage() {
   const { toast } = useToast();
   const role = useAuthStore((s) => s.user?.role);
   const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
+  const { activeEventId } = useActiveEvent();
   const [trackPoint, setTrackPoint] = useState({ lat: '', lng: '', trackType: 'PREVUE' });
   const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
   const [exposedPhase, setExposedPhase] = useState('');
@@ -209,6 +211,20 @@ export function EvenementDetailPage() {
     mutationFn: (phase: RiskPhase) => eventsApi.recalculateRisks(id, { phase }),
     onSuccess: () => toast('Risques recalculés', 'success'),
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
+  });
+
+  const removeExposedM = useMutation({
+    mutationFn: (communeId: string) => eventsApi.removeExposedCommune(id, communeId),
+    onSuccess: () => {
+      toast('Commune retirée de l\'exposition', 'success');
+      void qc.invalidateQueries({ queryKey: ['event', id, 'exposed'] });
+      void qc.invalidateQueries({ queryKey: ['event', id, 'exposed', 'any'] });
+      if (activeEventId === id) {
+        void qc.invalidateQueries({ queryKey: ['crisis', 'risk-map'] });
+      }
+    },
+    onError: (err) =>
+      toast(err instanceof ApiClientError ? err.message : 'Erreur retrait commune', 'error'),
   });
 
   const trackM = useMutation({
@@ -655,6 +671,7 @@ export function EvenementDetailPage() {
                   <th className="px-2 py-2">Distance</th>
                   <th className="px-2 py-2">Score</th>
                   <th className="px-2 py-2">Niveau</th>
+                  {canManageOps(role) && <th className="px-2 py-2">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -684,6 +701,22 @@ export function EvenementDetailPage() {
                         '—'
                       )}
                     </td>
+                    {canManageOps(role) && (
+                      <td className="px-2 py-2">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          disabled={removeExposedM.isPending}
+                          onClick={() => {
+                            if (!window.confirm(`Retirer ${row.communeName} de l'exposition ?`)) return;
+                            removeExposedM.mutate(row.communeId);
+                          }}
+                        >
+                          <XCircle className="size-3.5" />
+                          Retirer
+                        </button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

@@ -689,8 +689,23 @@ export const eventsRepository = {
     await db.query(`DELETE FROM exposed_communes WHERE event_id = $1`, [eventId]);
   },
 
+  async removeExposedCommune(eventId: string, communeId: string): Promise<boolean> {
+    const result = await db.query<CountRow>(
+      `DELETE FROM exposed_communes WHERE event_id = $1 AND commune_id = $2 RETURNING id`,
+      [eventId, communeId],
+    );
+    return result.rowCount !== null && result.rowCount > 0;
+  },
+
   async deleteRiskAssessments(eventId: string): Promise<void> {
     await db.query(`DELETE FROM risk_assessments WHERE event_id = $1`, [eventId]);
+  },
+
+  async deleteRiskAssessmentsForCommune(eventId: string, communeId: string): Promise<void> {
+    await db.query(
+      `DELETE FROM risk_assessments WHERE event_id = $1 AND commune_id = $2`,
+      [eventId, communeId],
+    );
   },
 
   async countTracks(eventId: string): Promise<number> {

@@ -96,6 +96,8 @@ export const eventsApi = {
   createPolygonArea: (id: string, body: unknown) =>
     apiPost(`/events/${id}/areas/polygon`, body),
   deleteArea: (id: string, areaId: string) => apiDelete(`/events/${id}/areas/${areaId}`),
+  removeExposedCommune: (id: string, communeId: string) =>
+    apiDelete(`/events/${id}/exposed-communes/${communeId}`),
   calculateExposure: (
     id: string,
     params?: Record<string, string | undefined>,

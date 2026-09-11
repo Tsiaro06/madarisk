@@ -11,6 +11,7 @@ import {
   listEventsQuerySchema,
   eventIdParamsSchema,
   eventIdAreaIdParamsSchema,
+  eventIdCommuneIdParamsSchema,
   createTrackSchema,
   listTracksQuerySchema,
   calculateAreaSchema,
@@ -125,6 +126,13 @@ router.get(
   '/:id/exposed-communes',
   validate({ params: eventIdParamsSchema, query: listExposedCommunesQuerySchema }),
   asyncHandler(eventsController.listExposedCommunes),
+);
+
+router.delete(
+  '/:id/exposed-communes/:communeId',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  validate({ params: eventIdCommuneIdParamsSchema }),
+  asyncHandler(eventsController.removeExposedCommune),
 );
 
 export default router;

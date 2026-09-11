@@ -514,6 +514,35 @@ export const eventsService = {
     }
   },
 
+  async removeExposedCommune(
+    id: string,
+    communeId: string,
+    actor: { id: string; role: UserRole },
+    req: RequestContext,
+  ): Promise<void> {
+    if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
+      throw AppError.forbidden("Seuls ADMIN et SUPER_ADMIN peuvent retirer une commune exposée");
+    }
+
+    await this.ensureExists(id);
+
+    const removed = await eventsRepository.removeExposedCommune(id, communeId);
+    if (!removed) {
+      throw AppError.notFound("Cette commune n'est pas exposée pour cet événement");
+    }
+
+    await eventsRepository.deleteRiskAssessmentsForCommune(id, communeId);
+
+    await usersRepository.writeAudit({
+      userId: actor.id,
+      action: 'EVENT_EXPOSED_COMMUNE_REMOVED',
+      entityType: 'event_exposure',
+      entityId: communeId,
+      newValue: { eventId: id },
+      ipAddress: getIp(req),
+    });
+  },
+
   async calculateExposure(
     id: string,
     query: CalculateExposureInput,
