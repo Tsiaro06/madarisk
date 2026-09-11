@@ -318,6 +318,7 @@ export const risksRepository = {
       insideArea: boolean;
       distanceKm: string | null;
       severity: string | null;
+      areaRadiusKm: string | null;
     }>(
       `SELECT
          t.id AS "communeId",
@@ -331,7 +332,8 @@ export const risksRepository = {
            WHERE a.event_id = $2 AND ST_Intersects(c.geom, a.geom)
          ) AS "insideArea",
          d.distance_km AS "distanceKm",
-         (SELECT he.severity FROM hazard_events he WHERE he.id = $2) AS "severity"
+         (SELECT he.severity FROM hazard_events he WHERE he.id = $2) AS "severity",
+         (SELECT a.radius_km::text FROM event_areas a WHERE a.event_id = $2 ORDER BY a.created_at DESC LIMIT 1) AS "areaRadiusKm"
        FROM communes c
        JOIN unnest($1::uuid[]) AS t(id) ON t.id = c.id
        LEFT JOIN LATERAL (
@@ -368,6 +370,7 @@ export const risksRepository = {
       insideArea: r.insideArea,
       distanceKm: r.distanceKm !== null ? parseFloat(r.distanceKm) : null,
       severity: (r.severity ?? null) as SeverityLevel | null,
+      areaRadiusKm: r.areaRadiusKm !== null ? parseFloat(r.areaRadiusKm) : null,
     }));
   },
 

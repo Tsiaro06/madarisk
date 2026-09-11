@@ -21,7 +21,8 @@ import { Select } from '@/components/ui/Select';
 import { GeoJsonMap } from '@/components/maps/GeoJsonMap';
 import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
 import { useToast } from '@/components/ui/Toast';
-import { formatDate, formatNumber } from '@/lib/utils';
+import { Check } from 'lucide-react';
+import { cn, formatDate, formatNumber } from '@/lib/utils';
 import { canManageOps } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
 import { useCrisisStore } from '@/stores/crisisStore';
@@ -39,6 +40,57 @@ function tone(level: RiskLevel) {
 
 type AreaForm = z.infer<typeof calculateAreaSchema>;
 
+function WorkflowStep({
+  step,
+  label,
+  note,
+  done,
+  locked,
+}: {
+  step: number;
+  label: string;
+  note: string;
+  done: boolean;
+  locked: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'flex items-center gap-2.5 rounded-lg border px-3 py-2',
+        done
+          ? 'border-emerald-300 bg-emerald-50'
+          : locked
+            ? 'border-brand/10 bg-white'
+            : 'border-brand/40 bg-brand-soft/40',
+      )}
+    >
+      <span
+        className={cn(
+          'flex size-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
+          done
+            ? 'bg-emerald-600 text-white'
+            : locked
+              ? 'bg-slate-200 text-slate-500'
+              : 'bg-brand text-white',
+        )}
+      >
+        {done ? <Check className="size-3.5" /> : step}
+      </span>
+      <div className="min-w-0">
+        <p
+          className={cn(
+            'truncate text-sm font-medium',
+            locked && !done ? 'text-muted' : 'text-ink',
+          )}
+        >
+          {label}
+        </p>
+        <p className="truncate text-xs text-muted">{note}</p>
+      </div>
+    </div>
+  );
+}
+
 export function EvenementDetailPage() {
   const { id = '' } = useParams();
   const qc = useQueryClient();
@@ -47,6 +99,7 @@ export function EvenementDetailPage() {
   const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
   const [trackPoint, setTrackPoint] = useState({ lat: '', lng: '', trackType: 'PREVUE' });
   const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
+  const [exposedPhase, setExposedPhase] = useState('');
   const [polyForm, setPolyForm] = useState<{ phase: RiskPhase; riskLevel: RiskLevel }>({
     phase: 'PENDANT',
     riskLevel: 'ELEVE',
@@ -76,8 +129,19 @@ export function EvenementDetailPage() {
   });
 
   const exposedQ = useQuery({
-    queryKey: ['event', id, 'exposed'],
-    queryFn: () => eventsApi.exposedCommunes(id, { page: 1, limit: 50 }),
+    queryKey: ['event', id, 'exposed', exposedPhase],
+    queryFn: () =>
+      eventsApi.exposedCommunes(id, {
+        page: 1,
+        limit: 50,
+        ...(exposedPhase ? { phase: exposedPhase } : {}),
+      }),
+    enabled: Boolean(id),
+  });
+
+  const exposedAnyQ = useQuery({
+    queryKey: ['event', id, 'exposed', 'any'],
+    queryFn: () => eventsApi.exposedCommunes(id, { page: 1, limit: 1 }),
     enabled: Boolean(id),
   });
 
@@ -159,6 +223,15 @@ export function EvenementDetailPage() {
   const exposed = exposedQ.data?.data ?? [] as ExposedCommuneRow[];
   const tracks = tracksQ.data as FeatureCollection | undefined;
   const areas = areasQ.data as FeatureCollection | undefined;
+  const trackCount = tracks?.features?.length ?? 0;
+  const zoneCount = areas?.features?.length ?? 0;
+  const hasExposure = (exposedAnyQ.data?.meta?.total ?? 0) > 0;
+  const hasRiskScores = exposed.some((r) => Boolean(r.riskLevel));
+  const nextStatus = STATUSES[STATUSES.indexOf(ev.status) + 1];
+  const canResetToDraft =
+    role === 'SUPER_ADMIN' && trackCount === 0 && zoneCount === 0 && !hasExposure;
+  const isStatusTransitionAllowed = (s: EventStatus) =>
+    s !== ev.status && (s === nextStatus || (s === 'BROUILLON' && canResetToDraft));
 
   return (
     <div className="space-y-5">
@@ -196,7 +269,47 @@ export function EvenementDetailPage() {
 
       {canManageOps(role) ? (
         <>
-          <Card title="Actions de statut" description="Réservé ADMIN / SUPER_ADMIN">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <WorkflowStep
+              step={1}
+              label="Trajectoire"
+              note={`${trackCount} point${trackCount > 1 ? 's' : ''} sur la ligne`}
+              done={trackCount >= 2}
+              locked={trackCount < 2}
+            />
+            <WorkflowStep
+              step={2}
+              label="Zone d'influence"
+              note="Bande tampon ou polygone"
+              done={zoneCount > 0}
+              locked={trackCount < 2}
+            />
+            <WorkflowStep
+              step={3}
+              label="Exposition"
+              note={
+                hasExposure ? `${exposed.length} communes exposées` : 'Communes intersectées par les zones'
+              }
+              done={hasExposure}
+              locked={zoneCount === 0}
+            />
+            <WorkflowStep
+              step={4}
+              label="Risques"
+              note={hasRiskScores ? 'Niveaux par commune' : 'Scores après exposition'}
+              done={hasRiskScores}
+              locked={!hasExposure}
+            />
+          </div>
+
+          <Card
+            title="Actions de statut"
+            description={
+              nextStatus
+                ? `Statut actuel : ${ev.status} · prochaine étape : ${nextStatus}`
+                : `Statut actuel : ${ev.status} · cycle terminé`
+            }
+          >
             <div className="flex flex-wrap gap-2">
               {STATUSES.map((s) => (
                 <Button
@@ -204,16 +317,23 @@ export function EvenementDetailPage() {
                   size="sm"
                   variant={ev.status === s ? 'primary' : 'outline'}
                   loading={statusM.isPending}
+                  disabled={!isStatusTransitionAllowed(s)}
                   onClick={() => statusM.mutate(s)}
                 >
                   {s}
                 </Button>
               ))}
             </div>
+            <p className="mt-3 text-xs text-muted">
+              Avance uniquement dans l&apos;ordre BROUILLON → PREVISION → ACTIF → SUIVI → CLOTURE.
+              {role === 'SUPER_ADMIN'
+                ? ' Retour à BROUILLON possible seulement si l’événement n’a aucune donnée (trajectoire, zones, exposition, alertes, risques, rapports).'
+                : ' Le retour en arrière est réservé aux SUPER_ADMIN.'}
+            </p>
           </Card>
 
           <div className="grid gap-5 xl:grid-cols-3">
-            <Card title="Zone d’influence">
+            <Card title="Zone d’influence" description="Étape 2 · bande tampon autour de la trajectoire">
               <form
                 className="space-y-2"
                 onSubmit={areaForm.handleSubmit((v) => areaM.mutate(v))}
@@ -236,13 +356,18 @@ export function EvenementDetailPage() {
                   {...areaForm.register('radiusKm')}
                   error={areaForm.formState.errors.radiusKm?.message}
                 />
-                <Button type="submit" loading={areaM.isPending} className="w-full">
+                <Button type="submit" loading={areaM.isPending} disabled={trackCount < 2} className="w-full">
                   Calculer
                 </Button>
+                <p className="text-xs text-muted">
+                  {trackCount < 2
+                    ? `Nécessite au moins 2 points de trajectoire (actuellement ${trackCount}). Ajoutez-les à l'étape 1.`
+                    : "Élargit la trajectoire d'un rayon, puis lance automatiquement l'exposition (étape 3) et les risques (étape 4)."}
+                </p>
               </form>
             </Card>
 
-            <Card title="Zone polygonale (dessin)">
+            <Card title="Zone polygonale (dessin)" description="Étape 2 · alternative au tracé automatique">
               <div className="space-y-2">
                 <Select
                   label="Phase"
@@ -296,17 +421,19 @@ export function EvenementDetailPage() {
                   Définir la zone ({polygonPoints.length} point{polygonPoints.length > 1 ? 's' : ''})
                 </Button>
                 <p className="text-xs text-muted">
-                  Cliquez la carte pour tracer la zone (≥ 3 points). Aucune trajectoire requise.
+                  Tracez le périmètre touché à la main (≥ 3 points). Fonctionne sans trajectoire et
+                  alimente tout de même les étapes 3 (exposition) et 4 (risques).
                 </p>
               </div>
             </Card>
 
-            <Card title="Exposition & risques">
+            <Card title="Exposition & risques" description="Étapes 3 et 4 · après la création d'une zone">
               <div className="space-y-2">
                 <Button
                   className="w-full"
                   variant="secondary"
                   loading={exposureM.isPending}
+                  disabled={zoneCount === 0}
                   onClick={() => exposureM.mutate()}
                 >
                   Calculer exposition (toutes zones)
@@ -315,13 +442,21 @@ export function EvenementDetailPage() {
                   label="Phase recalcul risques"
                   id="risk-phase"
                   defaultValue="PENDANT"
+                  disabled={zoneCount === 0}
                   options={PHASES.map((p) => ({ value: p, label: p }))}
                   onChange={(e) => risksM.mutate(e.target.value as RiskPhase)}
                 />
+                <p className="text-xs text-muted">
+                  {zoneCount === 0
+                    ? "Étape 3 · calculez d'abord une zone d'influence ou tracez une zone polygonale."
+                    : hasExposure
+                      ? 'Recalcul risques : scores puis niveaux par commune pour la phase choisie.'
+                      : 'Exposition pas encore calculée — lancez « Calculer exposition » puis choisissez la phase.'}
+                </p>
               </div>
             </Card>
 
-            <Card title="Point de trajectoire">
+            <Card title="Point de trajectoire" description="Étape 1 · le chemin emprunté par le phénomène">
               <div className="space-y-2">
                 <Input
                   label="Latitude"
@@ -349,7 +484,12 @@ export function EvenementDetailPage() {
                 >
                   Ajouter le point
                 </Button>
-                <p className="text-xs text-muted">Astuce : cliquez la carte pour préremplir lat/lng.</p>
+                <p className="text-xs text-muted">
+                  {trackCount >= 2
+                    ? `${trackCount} point${trackCount > 1 ? 's' : ''} ajouté${trackCount > 1 ? 's' : ''} — la ligne est tracée, vous pouvez passer à l'étape 2.`
+                    : `Ajoutez au moins 2 points (OBSERVEE = passé, PREVUE = prévu) pour tracer la ligne. ${trackCount} point${trackCount > 1 ? 's' : ''} ajouté${trackCount > 1 ? 's' : ''}.`}{' '}
+                  Astuce : cliquez la carte « Trajectoire / zones » pour préremplir lat/lng.
+                </p>
               </div>
             </Card>
           </div>
@@ -386,11 +526,38 @@ export function EvenementDetailPage() {
         )}
       </Card>
 
-      <Card title="Communes exposées">
+      <Card
+        title="Communes exposées"
+        description={
+          exposedPhase
+            ? `Scores et niveaux pour la phase ${exposedPhase}`
+            : 'Dernière évaluation pour chaque commune (toutes phases confondues)'
+        }
+      >
+        <div className="mb-3 max-w-xs">
+          <Select
+            label="Phase"
+            value={exposedPhase}
+            onChange={(e) => setExposedPhase(e.target.value)}
+            options={[
+              { value: '', label: 'Dernière évaluation (toutes phases)' },
+              ...PHASES.map((p) => ({ value: p, label: p })),
+            ]}
+          />
+        </div>
         {exposedQ.isLoading ? (
           <Spinner />
         ) : exposed.length === 0 ? (
-          <EmptyState title="Aucune exposition calculée" />
+          <EmptyState
+            title="Aucune exposition calculée"
+            description={
+              exposedPhase
+                ? `Aucune évaluation pour la phase ${exposedPhase} — lancez « Phase recalcul risques » avec cette phase.`
+                : zoneCount > 0
+                  ? 'Lancez « Calculer exposition (toutes zones) » — étape 3.'
+                  : 'Créez d\'abord une zone d\'influence ou tracez une zone polygonale (étape 2).'
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">

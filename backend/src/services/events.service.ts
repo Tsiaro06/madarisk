@@ -506,6 +506,7 @@ export const eventsService = {
       page: query.page,
       limit: query.limit,
       districtId: query.districtId,
+      phase: query.phase,
       riskLevel: query.riskLevel,
       minDistanceKm: query.minDistanceKm,
       maxDistanceKm: query.maxDistanceKm,

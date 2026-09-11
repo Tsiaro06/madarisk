@@ -1663,6 +1663,7 @@ paths:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Limit' }
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: phase, in: query, required: false, schema: { $ref: '#/components/schemas/RiskPhase' } }
         - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
         - { name: minDistanceKm, in: query, required: false, schema: { type: number, minimum: 0 } }
         - { name: maxDistanceKm, in: query, required: false, schema: { type: number, minimum: 0 } }

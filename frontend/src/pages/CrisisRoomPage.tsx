@@ -32,6 +32,7 @@ function CrisisRoomView() {
   const [selectedCommuneId, setSelectedCommuneId] = useState<string | null>(null);
   const [focusReq, setFocusReq] = useState(0);
   const [urgentDismissed, setUrgentDismissed] = useState(false);
+  const [mapPhase, setMapPhase] = useState('');
 
   const role = useAuthStore((s) => s.user?.role);
   const canCreate = canManageOps(role);
@@ -47,14 +48,23 @@ function CrisisRoomView() {
   const focusTarget: FocusTarget | null = focusReq && focusGeometry ? { geometry: focusGeometry, nonce: focusReq } : null;
 
   const risksQ = useQuery({
-    queryKey: ['risks', 'map-layer', activeEventId],
-    queryFn: () => risksApi.mapLayer(activeEventId ? { eventId: activeEventId } : {}),
+    queryKey: ['risks', 'map-layer', activeEventId, mapPhase],
+    queryFn: () =>
+      risksApi.mapLayer(
+        activeEventId
+          ? { eventId: activeEventId, ...(mapPhase ? { phase: mapPhase } : {}) }
+          : {},
+      ),
   });
 
   const communesQ = useQuery({
     queryKey: ['communes', 'map-layer', activeEventId],
     queryFn: () => territoriesApi.mapCommunes(activeEventId ? { eventId: activeEventId } : {}),
   });
+
+  const hasEventCommunes = Boolean(communesQ.data?.features?.length);
+  const riskLayer = risksQ.data?.features?.length ? (risksQ.data ?? null) : null;
+  const communeLayer = hasEventCommunes ? (communesQ.data ?? null) : null;
 
   const weatherQ = useQuery({
     queryKey: ['weather', 'map-layer', activeEventId],
@@ -150,8 +160,8 @@ function CrisisRoomView() {
 
         <main className="relative min-w-0 flex-1">
           <CrisisMap
-            riskLayer={risksQ.data ?? null}
-            communeLayer={communesQ.data ?? null}
+            riskLayer={riskLayer}
+            communeLayer={communeLayer}
             weatherLayer={weatherQ.data ?? null}
             trackLayer={trackQ.data ?? null}
             areasLayer={areasQ.data ?? null}
@@ -160,6 +170,8 @@ function CrisisRoomView() {
             selectedCommuneId={selectedCommuneId}
             onCommuneClick={(id) => selectCommune(id, false)}
             focusTarget={focusTarget}
+            mapPhase={mapPhase}
+            onMapPhaseChange={setMapPhase}
           />
 
           {mobileLeft ? (

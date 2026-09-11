@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { Link } from 'react-router-dom';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { Layer, PathOptions } from 'leaflet';
 import L from 'leaflet';
@@ -22,6 +23,8 @@ interface CrisisMapProps {
   selectedCommuneId: string | null;
   onCommuneClick: CommuneClickHandler;
   focusTarget: { geometry: unknown; nonce: number } | null;
+  mapPhase: string;
+  onMapPhaseChange: (phase: string) => void;
 }
 
 function isRiskLevel(v: unknown): v is RiskLevel {
@@ -100,12 +103,12 @@ function bindFeatureClick(layer: Layer, feature: Feature, handler: CommuneClickH
   });
 }
 
-function CrisisMapOverlay({ children, position }: { children: ReactNode; position: 'bottom-left' | 'top-right' }) {
+function CrisisMapOverlay({ children, position }: { children: ReactNode; position: 'bottom-left' | 'top-right' | 'top-left' }) {
   return (
     <div
       className={cn(
         'pointer-events-none absolute z-[500]',
-        position === 'bottom-left' ? 'bottom-3 left-3' : 'right-3 top-3',
+        position === 'bottom-left' ? 'bottom-3 left-3' : position === 'top-left' ? 'left-3 top-3' : 'right-3 top-3',
       )}
     >
       {children}
@@ -198,6 +201,8 @@ export function CrisisMap({
   selectedCommuneId,
   onCommuneClick,
   focusTarget,
+  mapPhase,
+  onMapPhaseChange,
 }: CrisisMapProps) {
   const [showRisks, setShowRisks] = useState(true);
   const [showCommunes, setShowCommunes] = useState(false);
@@ -218,6 +223,10 @@ export function CrisisMap({
   const resetView = () => {
     window.dispatchEvent(new Event('madarisk-reset-view'));
   };
+
+  const eventWithoutData =
+    Boolean(activeEvent) &&
+    (riskLayer?.features?.length ?? 0) + (communeLayer?.features?.length ?? 0) === 0;
 
   return (
     <MapContainer
@@ -354,7 +363,41 @@ export function CrisisMap({
           hasEvent={Boolean(activeEvent)}
           onChange={handleToggle}
         />
+        {activeEvent ? (
+          <div className="pointer-events-auto mt-2 rounded-xl border border-white/60 bg-white/95 px-3 py-2 text-xs shadow-md backdrop-blur">
+            <p className="mb-1.5 font-semibold text-ink">Phase affichée</p>
+            <select
+              value={mapPhase}
+              onChange={(e) => onMapPhaseChange(e.target.value)}
+              className="w-full rounded-lg border border-brand/20 bg-white px-2 py-1.5 text-xs text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
+            >
+              <option value="">Dernière évaluation</option>
+              <option value="AVANT">AVANT</option>
+              <option value="PENDANT">PENDANT</option>
+              <option value="APRES">APRÈS</option>
+              <option value="RETABLISSEMENT">RÉTABLISSEMENT</option>
+            </select>
+          </div>
+        ) : null}
       </CrisisMapOverlay>
+
+      {eventWithoutData ? (
+        <CrisisMapOverlay position="top-left">
+          <div className="pointer-events-auto w-64 rounded-xl border border-white/60 bg-white/95 px-3 py-2.5 text-xs shadow-md backdrop-blur">
+            <p className="font-semibold text-ink">Aucun risque calculé</p>
+            <p className="mt-1 text-muted">
+              Cet événement n&apos;a pas encore de zone d&apos;influence ni d&apos;exposition
+              calculées. Lancez le calcul pour afficher les communes et leurs niveaux de risque.
+            </p>
+            <Link
+              to={`/evenements/${activeEvent?.id}`}
+              className="mt-2 inline-block font-medium text-brand hover:underline"
+            >
+              Ouvrir l&apos;événement →
+            </Link>
+          </div>
+        </CrisisMapOverlay>
+      ) : null}
 
       <div className="pointer-events-none absolute bottom-3 right-3 z-[500]">
         <button

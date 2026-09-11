@@ -179,6 +179,7 @@ export const listExposedCommunesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   districtId: z.string().uuid('District invalide').optional(),
+  phase: riskPhaseEnum.optional(),
   riskLevel: riskLevelEnum.optional(),
   minDistanceKm: z.coerce.number().min(0).optional(),
   maxDistanceKm: z.coerce.number().min(0).optional(),

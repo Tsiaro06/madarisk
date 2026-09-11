@@ -104,6 +104,7 @@ export interface RiskContext {
   insideArea: boolean;
   distanceKm: number | null;
   severity: SeverityLevel | null;
+  areaRadiusKm: number | null;
 }
 
 export interface RiskMapProperties {

@@ -79,13 +79,12 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
   });
 
   const events = listQ.data?.data ?? [];
+  const communeResults = searchQ.data ?? [];
 
   const apply = () => {
     setPage(1);
     setApplied(draft);
   };
-
-  const communeResults = searchQ.data ?? [];
 
   return (
     <div className="flex h-full flex-col">

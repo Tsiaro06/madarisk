@@ -763,6 +763,7 @@ export const eventsRepository = {
     page: number;
     limit: number;
     districtId?: string;
+    phase?: RiskPhase;
     riskLevel?: RiskLevel;
     minDistanceKm?: number;
     maxDistanceKm?: number;
@@ -770,6 +771,7 @@ export const eventsRepository = {
     const conditions: string[] = ['ec.event_id = $1'];
     const values: unknown[] = [query.eventId];
     let idx = 2;
+    const phaseFilter = query.phase ? ` AND ra.phase = $${idx++}::risk_phase` : '';
 
     if (query.districtId) {
       conditions.push(`c.district_id = $${idx++}`);
@@ -798,7 +800,7 @@ export const eventsRepository = {
        LEFT JOIN LATERAL (
          SELECT ra.risk_level, ra.risk_score
          FROM risk_assessments ra
-         WHERE ra.commune_id = ec.commune_id AND ra.event_id = ec.event_id
+         WHERE ra.commune_id = ec.commune_id AND ra.event_id = ec.event_id${phaseFilter}
          ORDER BY ra.assessed_at DESC
          LIMIT 1
        ) latest_risk ON true
@@ -841,7 +843,7 @@ export const eventsRepository = {
        LEFT JOIN LATERAL (
          SELECT ra.risk_level, ra.risk_score
          FROM risk_assessments ra
-         WHERE ra.commune_id = ec.commune_id AND ra.event_id = ec.event_id
+         WHERE ra.commune_id = ec.commune_id AND ra.event_id = ec.event_id${phaseFilter}
          ORDER BY ra.assessed_at DESC
          LIMIT 1
        ) latest_risk ON true

@@ -37,6 +37,7 @@ function context(overrides: Partial<RiskContext> = {}): RiskContext {
     insideArea: false,
     distanceKm: null,
     severity: null,
+    areaRadiusKm: null,
     ...overrides,
   };
 }
@@ -91,28 +92,45 @@ describe('scoreWind', () => {
 
 describe('scoreProximity', () => {
   it('est neutre sans événement hôte', () => {
-    expect(scoreProximity({ hasEvent: false, insideArea: true, distanceKm: 0 })).toBe(50);
+    expect(scoreProximity({ hasEvent: false, insideArea: true, distanceKm: 0, areaRadiusKm: null })).toBe(50);
   });
 
   it('retourne 100 dans la zone d influence', () => {
-    expect(scoreProximity({ hasEvent: true, insideArea: true, distanceKm: 5 })).toBe(100);
+    expect(scoreProximity({ hasEvent: true, insideArea: true, distanceKm: 5, areaRadiusKm: 50 })).toBe(100);
   });
 
-  it('retourne 85 à moins de 50 km', () => {
-    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 10 })).toBe(85);
+  it('retourne 90 à moins de 30% du rayon (très proche)', () => {
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 10, areaRadiusKm: 100 })).toBe(90);
   });
 
-  it('retourne 60 entre 50 et 100 km', () => {
-    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 75 })).toBe(60);
+  it('retourne 75 entre 30% et 60% du rayon', () => {
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 40, areaRadiusKm: 100 })).toBe(75);
   });
 
-  it('retourne 35 entre 100 et 200 km', () => {
-    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 150 })).toBe(35);
+  it('retourne 55 entre 60% et 100% du rayon', () => {
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 75, areaRadiusKm: 100 })).toBe(55);
   });
 
-  it('retourne 10 au-delà de 200 km ou sans distance', () => {
-    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 300 })).toBe(10);
-    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: null })).toBe(10);
+  it('retourne 35 entre 100% et 150% du rayon (bord extérieur)', () => {
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 120, areaRadiusKm: 100 })).toBe(35);
+  });
+
+  it('retourne 20 entre 150% et 200% du rayon', () => {
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 170, areaRadiusKm: 100 })).toBe(20);
+  });
+
+  it('retourne 10 au-delà de 200% du rayon ou sans distance', () => {
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 250, areaRadiusKm: 100 })).toBe(10);
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: null, areaRadiusKm: 100 })).toBe(10);
+  });
+
+  it('utilise les seuils fixes sans rayon', () => {
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 25, areaRadiusKm: null })).toBe(90);
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 50, areaRadiusKm: null })).toBe(75);
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 80, areaRadiusKm: null })).toBe(55);
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 120, areaRadiusKm: null })).toBe(35);
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 180, areaRadiusKm: null })).toBe(20);
+    expect(scoreProximity({ hasEvent: true, insideArea: false, distanceKm: 250, areaRadiusKm: null })).toBe(10);
   });
 });
 
@@ -271,8 +289,55 @@ describe('computeRiskAssessment - score total et réponse explicable', () => {
       '2026-09-07T06:00:00.000Z',
     );
 
-    expect(extreme.riskScore).toBe(Math.min(100, Math.round(base.riskScore * 1.5)));
+    expect(extreme.riskScore).toBe(Math.min(100, Math.round(base.riskScore * 2)));
     expect(faible.riskScore).toBe(base.riskScore);
     expect(extreme.explanation.join(' ')).toContain("L'intensité exceptionnelle");
+  });
+
+  it('ajuste le score selon la phase (PENDANT > AVANT > APRES)', () => {
+    const pendant = computeRiskAssessment(
+      context({
+        insideArea: true,
+        distanceKm: 0,
+        vulnerabilityScore: 50,
+        population: 100_000,
+        severity: 'EXTREME' as const,
+      }),
+      DEFAULT_CFG,
+      '2026-09-07T06:00:00.000Z',
+      true,
+      'PENDANT',
+    );
+
+    const avant = computeRiskAssessment(
+      context({
+        insideArea: true,
+        distanceKm: 0,
+        vulnerabilityScore: 50,
+        population: 100_000,
+        severity: 'EXTREME' as const,
+      }),
+      DEFAULT_CFG,
+      '2026-09-07T06:00:00.000Z',
+      true,
+      'AVANT',
+    );
+
+    const apres = computeRiskAssessment(
+      context({
+        insideArea: true,
+        distanceKm: 0,
+        vulnerabilityScore: 50,
+        population: 100_000,
+        severity: 'EXTREME' as const,
+      }),
+      DEFAULT_CFG,
+      '2026-09-07T06:00:00.000Z',
+      true,
+      'APRES',
+    );
+
+    expect(pendant.riskScore).toBeGreaterThan(avant.riskScore);
+    expect(avant.riskScore).toBeGreaterThan(apres.riskScore);
   });
 });

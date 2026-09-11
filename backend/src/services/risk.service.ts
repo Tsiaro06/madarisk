@@ -45,9 +45,19 @@ const EXPOSURE_MAX_POPULATION = 200_000;
 // lourd qu'un événement FAIBLE pour un même niveau de proximité/exposition.
 const SEVERITY_INTENSITY_FACTOR: Record<SeverityLevel, number> = {
   FAIBLE: 1,
-  MODEREE: 1.1,
-  ELEVEE: 1.25,
-  EXTREME: 1.5,
+  MODEREE: 1.25,
+  ELEVEE: 1.5,
+  EXTREME: 2,
+};
+
+// Multiplicateur de phase : le risque varie selon le moment du cycle de vie
+// AVANT = anticipation (risque modéré), PENDANT = crise (risque maximal),
+// APRES = après-coup (risque diminué), RETABLISSEMENT = reprise (risque faible).
+const PHASE_INTENSITY_FACTOR: Record<string, number> = {
+  AVANT: 0.7,
+  PENDANT: 1.0,
+  APRES: 0.5,
+  RETABLISSEMENT: 0.3,
 };
 
 const DEFAULT_THRESHOLDS: RiskThresholds = {
@@ -86,13 +96,32 @@ export function scoreProximity(input: {
   hasEvent: boolean;
   insideArea: boolean;
   distanceKm: number | null;
+  areaRadiusKm: number | null;
 }): number {
   if (!input.hasEvent) return DEFAULT_NEUTRAL_PROXIMITY_SCORE;
   if (input.insideArea) return 100;
-  if (input.distanceKm === null) return 10;
-  if (input.distanceKm < 50) return 85;
-  if (input.distanceKm < 100) return 60;
-  if (input.distanceKm < 200) return 35;
+
+  const radius = input.areaRadiusKm;
+  const distance = input.distanceKm;
+
+  if (distance === null) return 10;
+
+  // Radius-aware scoring: scale thresholds relative to the event's influence zone
+  if (radius && radius > 0) {
+    if (distance < radius * 0.3) return 90;
+    if (distance < radius * 0.6) return 75;
+    if (distance < radius) return 55;
+    if (distance < radius * 1.5) return 35;
+    if (distance < radius * 2) return 20;
+    return 10;
+  }
+
+  // Fallback: fixed thresholds when no radius is available
+  if (distance < 30) return 90;
+  if (distance < 60) return 75;
+  if (distance < 100) return 55;
+  if (distance < 150) return 35;
+  if (distance < 200) return 20;
   return 10;
 }
 
@@ -132,6 +161,7 @@ function computeFactors(context: RiskContext, hasEvent: boolean): RiskFactors {
       hasEvent,
       insideArea: context.insideArea,
       distanceKm: context.distanceKm,
+      areaRadiusKm: context.areaRadiusKm,
     }),
     vulnerabilityScore: scoreVulnerability(context.vulnerabilityScore),
     exposureScore: scoreExposure(context.population),
@@ -197,6 +227,7 @@ export function computeRiskAssessment(
   config: { weights: RiskWeights; thresholds: RiskThresholds },
   assessedAt: string,
   hasEvent = true,
+  phase?: RiskPhase,
 ): RiskAssessmentResult {
   const factors = computeFactors(context, hasEvent);
 
@@ -208,10 +239,11 @@ export function computeRiskAssessment(
     config.weights.exposureWeight * factors.exposureScore;
 
   const severity = hasEvent ? context.severity : null;
-  const intensity =
+  const severityIntensity =
     severity === null || severity === undefined ? 1 : SEVERITY_INTENSITY_FACTOR[severity];
+  const phaseIntensity = phase ? (PHASE_INTENSITY_FACTOR[phase] ?? 1) : 1;
 
-  const riskScore = Math.min(100, Math.round(totalScore * intensity));
+  const riskScore = Math.min(100, Math.round(totalScore * severityIntensity * phaseIntensity));
   const presentation = presentationFor(riskScore, config.thresholds);
 
   return {
@@ -429,6 +461,7 @@ export const risksService = {
         { weights, thresholds },
         assessedAt,
         eventId !== null,
+        phase,
       );
       return {
         communeId: context.communeId,
