@@ -104,6 +104,7 @@ export function EvenementDetailPage() {
     phase: 'PENDANT',
     riskLevel: 'ELEVE',
   });
+  const [riskPhase, setRiskPhase] = useState<RiskPhase>('PENDANT');
 
   const areaForm = useForm<AreaForm>({
     resolver: zodResolver(calculateAreaSchema),
@@ -465,20 +466,31 @@ export function EvenementDetailPage() {
                 >
                   Calculer exposition (toutes zones)
                 </Button>
-                <Select
-                  label="Phase recalcul risques"
-                  id="risk-phase"
-                  defaultValue="PENDANT"
-                  disabled={zoneCount === 0}
-                  options={PHASES.map((p) => ({ value: p, label: p }))}
-                  onChange={(e) => risksM.mutate(e.target.value as RiskPhase)}
-                />
+                <div className="flex items-end gap-2">
+                  <Select
+                    label="Phase"
+                    value={riskPhase}
+                    disabled={zoneCount === 0}
+                    onChange={(e) => setRiskPhase(e.target.value as RiskPhase)}
+                    options={PHASES.map((p) => ({ value: p, label: p }))}
+                    className="flex-1 [&>select]:h-9"
+                  />
+                  <Button
+                    className="shrink-0"
+                    variant="outline"
+                    loading={risksM.isPending}
+                    disabled={zoneCount === 0}
+                    onClick={() => risksM.mutate(riskPhase)}
+                  >
+                    Recalculer les risques
+                  </Button>
+                </div>
                 <p className="text-xs text-muted">
                   {zoneCount === 0
                     ? "Étape 3 · calculez d'abord une zone d'influence ou tracez une zone polygonale."
                     : hasExposure
                       ? 'Recalcul risques : scores puis niveaux par commune pour la phase choisie.'
-                      : 'Exposition pas encore calculée — lancez « Calculer exposition » puis choisissez la phase.'}
+                      : 'Exposition pas encore calculée — lancez « Calculer exposition » puis « Recalculer les risques ». Sélectionnez la phase phare (PENDANT = au plus fort de la crise).'}
                 </p>
               </div>
             </Card>
