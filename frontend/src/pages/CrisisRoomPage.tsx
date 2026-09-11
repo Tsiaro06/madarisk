@@ -55,6 +55,7 @@ function CrisisRoomView() {
           ? { eventId: activeEventId, ...(mapPhase ? { phase: mapPhase } : {}) }
           : {},
       ),
+    enabled: Boolean(activeEventId),
   });
 
   const communesQ = useQuery({
@@ -206,6 +207,7 @@ function CrisisRoomView() {
                   communeId={selectedCommuneId}
                   detail={detailQ.data ?? null}
                   detailLoading={detailQ.isLoading}
+                  hasEvent={Boolean(activeEventId)}
                   onClose={() => setMobileRight(false)}
                   onSelectEvent={handleSelectEvent}
                 />
@@ -224,6 +226,7 @@ function CrisisRoomView() {
             communeId={selectedCommuneId}
             detail={detailQ.data ?? null}
             detailLoading={detailQ.isLoading}
+            hasEvent={Boolean(activeEventId)}
             onClose={() => setRightOpen(false)}
             onSelectEvent={handleSelectEvent}
           />

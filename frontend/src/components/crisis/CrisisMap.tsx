@@ -58,16 +58,20 @@ function riskStyle(
   };
 }
 
-function communeStyle(feature?: Feature, selectedId?: string | null): PathOptions {
+function communeStyle(
+  feature?: Feature,
+  selectedId?: string | null,
+  hasEvent?: boolean,
+): PathOptions {
   const p = (feature?.properties ?? {}) as Record<string, unknown>;
-  const level = p.riskLevel ?? p.risk_level;
-  const color = isRiskLevel(level) ? RISK_COLORS[level] : '#0a6b6e';
+  const level = hasEvent ? (p.riskLevel ?? p.risk_level) : undefined;
+  const color = hasEvent && isRiskLevel(level) ? RISK_COLORS[level] : '#0a6b6e';
   const selected = selectedId != null && featureId(p) === String(selectedId);
   return {
     color: selected ? '#0f2a2e' : '#0a6b6e',
     weight: selected ? 3 : 1,
     fillColor: color,
-    fillOpacity: isRiskLevel(level) ? 0.3 : 0.08,
+    fillOpacity: hasEvent && isRiskLevel(level) ? 0.3 : 0.08,
   };
 }
 
@@ -162,7 +166,7 @@ function LayerControls({
   onChange: (key: 'risks' | 'communes' | 'weather' | 'event', value: boolean) => void;
 }) {
   const items: Array<{ key: 'risks' | 'communes' | 'weather' | 'event'; label: string; checked: boolean; disabled?: boolean }> = [
-    { key: 'risks', label: 'Risques', checked: showRisks },
+    { key: 'risks', label: 'Risques', checked: showRisks, disabled: !hasEvent },
     { key: 'communes', label: hasEvent ? 'Communes exposées' : 'Limites communes', checked: showCommunes },
     { key: 'weather', label: 'Météo', checked: showWeather },
     { key: 'event', label: 'Événement actif', checked: showEvent, disabled: !hasEvent },
@@ -211,6 +215,7 @@ export function CrisisMap({
 
   useEffect(() => {
     setShowCommunes(Boolean(activeEvent));
+    if (!activeEvent) setShowRisks(false);
   }, [activeEvent]);
 
   const handleToggle = (key: 'risks' | 'communes' | 'weather' | 'event', value: boolean) => {
@@ -269,14 +274,25 @@ export function CrisisMap({
       {showCommunes && communeLayer ? (
         <GeoJSON
           data={communeLayer}
-          style={(feature) => communeStyle(feature, selectedCommuneId)}
+          style={(feature) =>
+            communeStyle(feature, selectedCommuneId, Boolean(activeEvent))
+          }
           onEachFeature={(feature: Feature<Geometry>, layer: Layer) => {
             const p = (feature.properties ?? {}) as Record<string, unknown>;
             const level = p.riskLevel ?? p.risk_level;
+            const hasEvent = Boolean(activeEvent);
             layer.bindPopup(
               [
                 `<strong>${featureName(p)}</strong>`,
-                level ? `Risque : ${isRiskLevel(level) ? RISK_LABELS[level] : String(level)}` : null,
+                hasEvent && isRiskLevel(level)
+                  ? `Risque : ${RISK_LABELS[level]}`
+                  : null,
+                !hasEvent && p.precipitationMm != null
+                  ? `Pluie : ${String(p.precipitationMm)} mm`
+                  : null,
+                !hasEvent && p.windSpeedKmh != null
+                  ? `Vent : ${String(p.windSpeedKmh)} km/h`
+                  : null,
               ]
                 .filter(Boolean)
                 .join('<br/>'),

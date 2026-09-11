@@ -61,6 +61,7 @@ interface RightPanelProps {
   communeId: string | null;
   detail: CommuneDetail | null;
   detailLoading: boolean;
+  hasEvent: boolean;
   onClose: () => void;
   onSelectEvent: (id: string) => void;
 }
@@ -137,7 +138,7 @@ function FactorBar({ label, value, color }: FactorBarProps) {
   );
 }
 
-export function RightPanel({ communeId, detail, detailLoading, onClose, onSelectEvent }: RightPanelProps) {
+export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose, onSelectEvent }: RightPanelProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
@@ -175,7 +176,7 @@ export function RightPanel({ communeId, detail, detailLoading, onClose, onSelect
   const riskQ = useQuery<RiskAssessment | null>({
     queryKey: ['risks-commune', communeId],
     queryFn: () => (communeId ? risksApi.commune(communeId, { latest: true }) : null),
-    enabled: Boolean(communeId),
+    enabled: Boolean(communeId) && hasEvent,
   });
 
   const refreshM = useMutation({
@@ -253,8 +254,8 @@ export function RightPanel({ communeId, detail, detailLoading, onClose, onSelect
   const latest = latestQ.data;
   const forecast = forecastQ.data;
   const forecastDays = buildForecastDays(forecast);
-  const risk = riskQ.data;
-  const riskLevel = risk?.riskLevel ?? detail.risk?.riskLevel;
+  const risk = hasEvent ? riskQ.data : null;
+  const riskLevel = hasEvent ? (risk?.riskLevel ?? detail.risk?.riskLevel) : null;
 
   const weatherMetrics = latest
     ? [
@@ -281,24 +282,26 @@ export function RightPanel({ communeId, detail, detailLoading, onClose, onSelect
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
         {/* En-tête risque */}
-        <div className="flex items-center justify-between gap-2 rounded-xl border border-brand/15 bg-white p-3 shadow-sm">
-          <div className="flex items-center gap-2">
-            <span
-              className="size-3.5 rounded-full ring-2 ring-white/60"
-              style={{ background: riskLevel ? RISK_COLORS[riskLevel] : '#94a3b8' }}
-            />
-            <div>
-              <p className="text-xs text-muted">Risque actuel</p>
-              <p className="text-lg font-semibold text-ink" style={{ color: riskLevel ? RISK_COLORS[riskLevel] : undefined }}>
-                {riskLevel ? RISK_LABELS[riskLevel] : 'Non évalué'}
-              </p>
+        {hasEvent ? (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-brand/15 bg-white p-3 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span
+                className="size-3.5 rounded-full ring-2 ring-white/60"
+                style={{ background: riskLevel ? RISK_COLORS[riskLevel] : '#94a3b8' }}
+              />
+              <div>
+                <p className="text-xs text-muted">Risque actuel</p>
+                <p className="text-lg font-semibold text-ink" style={{ color: riskLevel ? RISK_COLORS[riskLevel] : undefined }}>
+                  {riskLevel ? RISK_LABELS[riskLevel] : 'Non évalué'}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted">Score</p>
+              <p className="font-display text-xl text-ink">{formatNumber(risk?.riskScore ?? detail.risk?.riskScore)}</p>
             </div>
           </div>
-          <div className="text-right">
-            <p className="text-xs text-muted">Score</p>
-            <p className="font-display text-xl text-ink">{formatNumber(risk?.riskScore ?? detail.risk?.riskScore)}</p>
-          </div>
-        </div>
+        ) : null}
 
         {/* Résumé */}
         <Card className="!p-4">
@@ -389,56 +392,58 @@ export function RightPanel({ communeId, detail, detailLoading, onClose, onSelect
         </Card>
 
         {/* Risque détaillé */}
-        <Card title="Évaluation du risque" className="!p-4">
-          {riskQ.isLoading ? (
-            <Spinner label="Chargement du risque…" />
-          ) : risk ? (
-            <>
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge tone="brand">Phase : {PHASE_LABELS[risk.phase] ?? risk.phase}</Badge>
-                <span className="text-[11px] text-muted">
-                  Évalué le {formatDate(risk.assessedAt)} · modèle {risk.modelVersion}
-                </span>
+        {hasEvent ? (
+          <Card title="Évaluation du risque" className="!p-4">
+            {riskQ.isLoading ? (
+              <Spinner label="Chargement du risque…" />
+            ) : risk ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="brand">Phase : {PHASE_LABELS[risk.phase] ?? risk.phase}</Badge>
+                  <span className="text-[11px] text-muted">
+                    Évalué le {formatDate(risk.assessedAt)} · modèle {risk.modelVersion}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  <FactorBar label="Pluie" value={risk.factors.rainScore} color="#2F9E44" />
+                  <FactorBar label="Vent" value={risk.factors.windScore} color="#4aa8ba" />
+                  <FactorBar label="Proximité" value={risk.factors.proximityScore} color="#F08C00" />
+                  <FactorBar label="Vulnérabilité" value={risk.factors.vulnerabilityScore} color="#7048e8" />
+                  <FactorBar label="Exposition" value={risk.factors.exposureScore} color="#E03131" />
+                </div>
+                {risk.explanation.length > 0 ? (
+                  <ul className="mt-3 space-y-1">
+                    {risk.explanation.map((line, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-xs text-muted">
+                        <ArrowRight className="mt-0.5 size-3 shrink-0 text-brand" />
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            ) : (
+              <p className="flex items-center gap-1.5 text-sm text-muted">
+                <AlertTriangle className="size-4" />
+                Aucune évaluation de risque enregistrée.
+              </p>
+            )}
+            {canOps ? (
+              <div className="mt-3 flex items-end gap-2 border-t border-brand/10 pt-3">
+                <Select
+                  label="Phase"
+                  value={recalcPhase}
+                  onChange={(e) => setRecalcPhase(e.target.value as RiskPhase)}
+                  options={PHASES.map((p) => ({ value: p, label: PHASE_LABELS[p] }))}
+                  className="flex-1 [&>select]:h-9"
+                />
+                <Button size="sm" variant="outline" onClick={() => recalcM.mutate()} loading={recalcM.isPending}>
+                  Recalculer
+                </Button>
               </div>
-              <div className="mt-3 space-y-2">
-                <FactorBar label="Pluie" value={risk.factors.rainScore} color="#2F9E44" />
-                <FactorBar label="Vent" value={risk.factors.windScore} color="#4aa8ba" />
-                <FactorBar label="Proximité" value={risk.factors.proximityScore} color="#F08C00" />
-                <FactorBar label="Vulnérabilité" value={risk.factors.vulnerabilityScore} color="#7048e8" />
-                <FactorBar label="Exposition" value={risk.factors.exposureScore} color="#E03131" />
-              </div>
-              {risk.explanation.length > 0 ? (
-                <ul className="mt-3 space-y-1">
-                  {risk.explanation.map((line, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-xs text-muted">
-                      <ArrowRight className="mt-0.5 size-3 shrink-0 text-brand" />
-                      {line}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </>
-          ) : (
-            <p className="flex items-center gap-1.5 text-sm text-muted">
-              <AlertTriangle className="size-4" />
-              Aucune évaluation de risque enregistrée.
-            </p>
-          )}
-          {canOps ? (
-            <div className="mt-3 flex items-end gap-2 border-t border-brand/10 pt-3">
-              <Select
-                label="Phase"
-                value={recalcPhase}
-                onChange={(e) => setRecalcPhase(e.target.value as RiskPhase)}
-                options={PHASES.map((p) => ({ value: p, label: PHASE_LABELS[p] }))}
-                className="flex-1 [&>select]:h-9"
-              />
-              <Button size="sm" variant="outline" onClick={() => recalcM.mutate()} loading={recalcM.isPending}>
-                Recalculer
-              </Button>
-            </div>
-          ) : null}
-        </Card>
+            ) : null}
+          </Card>
+        ) : null}
 
         {/* Événements liés */}
         <Card title="Événements liés" className="!p-4">

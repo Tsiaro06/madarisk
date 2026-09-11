@@ -9,10 +9,12 @@ import {
   PanelLeft,
   PanelRight,
   Plus,
+  Settings,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
 import { ROLE_LABELS } from "@/lib/roles";
 import { EventSelector } from "@/components/crisis/EventSelector";
+import { useActiveEvent } from "@/stores/activeEvent";
 import { cn } from "@/lib/utils";
 
 interface CrisisHeaderProps {
@@ -35,6 +37,7 @@ export function CrisisHeader({
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  const { activeEventId } = useActiveEvent();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -79,6 +82,17 @@ export function CrisisHeader({
       </Link>
 
       <EventSelector className="ml-1 hidden sm:block lg:ml-3" />
+
+      {activeEventId ? (
+        <Link
+          to={`/evenements/${activeEventId}`}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/15 px-3 text-sm font-medium text-white transition hover:bg-white/10"
+          title="Gérer le paramétrage de l'événement actif (trajectoire, zones, risques)"
+        >
+          <Settings className="size-4 text-teal-200" />
+          <span className="hidden lg:inline">Paramètres</span>
+        </Link>
+      ) : null}
 
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
         {/* Mobile event selector is accessible via the left drawer; desktop toggles */}
