@@ -9,6 +9,7 @@ import {
   PanelLeft,
   PanelRight,
   Plus,
+  RefreshCw,
   Settings,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
@@ -24,6 +25,8 @@ interface CrisisHeaderProps {
   onToggleLeft: () => void;
   rightOpen: boolean;
   onToggleRight: () => void;
+  refreshing: boolean;
+  onRefresh: () => void;
 }
 
 export function CrisisHeader({
@@ -33,6 +36,8 @@ export function CrisisHeader({
   onToggleLeft,
   rightOpen,
   onToggleRight,
+  refreshing,
+  onRefresh,
 }: CrisisHeaderProps) {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
@@ -141,6 +146,16 @@ export function CrisisHeader({
             <span className="md:hidden">Créer</span>
           </button>
         ) : null}
+
+        <button
+          type="button"
+          onClick={onRefresh}
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink transition hover:bg-gray-50"
+          title="Actualiser immédiatement la salle de crise (météo, événements, risques, alertes)"
+        >
+          <RefreshCw className={cn('size-4 text-brand', refreshing && 'animate-spin')} />
+          <span className="hidden md:inline">Actualiser maintenant</span>
+        </button>
 
         <button
           type="button"

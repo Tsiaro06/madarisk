@@ -112,6 +112,27 @@ export interface ExposedCommuneRow {
   population: number | null;
   riskLevel: RiskLevel | null;
   riskScore: number | null;
+  overlapPercent: number | null;
+  sourceType: 'SEUIL' | 'ZONE' | 'TRAJECTOIRE' | 'MANUEL' | null;
+  dataType: 'REEL' | 'ESTIME' | null;
+  updatedAt: string | null;
+}
+
+export interface ExposedCommuneInfo {
+  communeId: string;
+  communeCode: string | null;
+  communeName: string | null;
+  districtName: string | null;
+  population: number | null;
+  exposedPopulation: number | null;
+  overlapPercent: number | null;
+  distanceToTrackKm: number | null;
+  isInsideInfluenceArea: boolean | null;
+  sourceType: 'SEUIL' | 'ZONE' | 'TRAJECTOIRE' | 'MANUEL' | null;
+  dataType: 'REEL' | 'ESTIME' | null;
+  riskLevel: RiskLevel | null;
+  riskScore: number | null;
+  updatedAt: string | null;
 }
 
 export interface RiskDistribution {
@@ -167,6 +188,16 @@ export interface EventListItem {
   createdBy: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface EventTrack {
+  id: string;
+  eventId: string;
+  observedAt: string;
+  forecastFor: string | null;
+  trackType: 'OBSERVEE' | 'PREVUE';
+  latitude: number;
+  longitude: number;
 }
 
 export interface AlertListRow {

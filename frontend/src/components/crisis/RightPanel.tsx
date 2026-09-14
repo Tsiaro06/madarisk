@@ -32,6 +32,7 @@ import type {
   CommuneDetail,
   EventStatus,
   EventType,
+  ExposedCommuneInfo,
   RiskAssessment,
   RiskPhase,
   WeatherForecastData,
@@ -46,6 +47,12 @@ import {
   PHASES,
   PHASE_LABELS,
 } from '@/lib/eventMeta';
+import {
+  buildForecastDays,
+  buildHistoryDays,
+  exposureDataLabel,
+  exposureSourceLabel,
+} from '@/lib/crisisData';
 import { canManageOps } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
 import { Badge } from '@/components/ui/Badge';
@@ -62,6 +69,7 @@ interface RightPanelProps {
   detail: CommuneDetail | null;
   detailLoading: boolean;
   hasEvent: boolean;
+  exposure: ExposedCommuneInfo | null;
   onClose: () => void;
   onSelectEvent: (id: string) => void;
 }
@@ -73,38 +81,6 @@ function downloadBlob(blob: Blob, filename: string) {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
-}
-
-interface ForecastDay {
-  date: string;
-  tempMax: number | null;
-  tempMin: number | null;
-  precip: number | null;
-}
-
-function buildForecastDays(forecast: WeatherForecastData | null | undefined): ForecastDay[] {
-  if (!forecast) return [];
-  const days = new Map<string, { tempMax: number; tempMin: number; precip: number }>();
-  forecast.hourly.time.forEach((t, i) => {
-    const day = t.slice(0, 10);
-    const cur = days.get(day) ?? { tempMax: -Infinity, tempMin: Infinity, precip: 0 };
-    const tc = forecast.hourly.temperatureC[i];
-    const pr = forecast.hourly.precipitationMm[i];
-    if (tc != null) {
-      if (tc > cur.tempMax) cur.tempMax = tc;
-      if (tc < cur.tempMin) cur.tempMin = tc;
-    }
-    if (pr != null) cur.precip += pr;
-    days.set(day, cur);
-  });
-  return [...days.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([date, d]) => ({
-      date: date.slice(5),
-      tempMax: Number.isFinite(d.tempMax) ? Number(d.tempMax.toFixed(1)) : null,
-      tempMin: Number.isFinite(d.tempMin) ? Number(d.tempMin.toFixed(1)) : null,
-      precip: Number(d.precip.toFixed(1)),
-    }));
 }
 
 function StatItem({ label, value, unit }: { label: string; value: string | number | null; unit?: string }) {
@@ -138,7 +114,15 @@ function FactorBar({ label, value, color }: FactorBarProps) {
   );
 }
 
-export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose, onSelectEvent }: RightPanelProps) {
+export function RightPanel({
+  communeId,
+  detail,
+  detailLoading,
+  hasEvent,
+  exposure,
+  onClose,
+  onSelectEvent,
+}: RightPanelProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const role = useAuthStore((s) => s.user?.role);
@@ -167,6 +151,25 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
         return await weatherApi.forecast(communeId);
       } catch (err) {
         if (err instanceof ApiClientError && (err.status === 502 || err.status === 503)) return null;
+        throw err;
+      }
+    },
+    enabled: Boolean(communeId),
+  });
+
+  const historyQ = useQuery<WeatherObservation[]>({
+    queryKey: ['weather', 'history', communeId],
+    queryFn: async () => {
+      if (!communeId) return [];
+      try {
+        const res = await weatherApi.history(communeId, {
+          page: 1,
+          limit: 100,
+          dateFrom: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+        return res.data;
+      } catch (err) {
+        if (err instanceof ApiClientError) return [];
         throw err;
       }
     },
@@ -254,6 +257,7 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
   const latest = latestQ.data;
   const forecast = forecastQ.data;
   const forecastDays = buildForecastDays(forecast);
+  const historyDays = buildHistoryDays(historyQ.data ?? []);
   const risk = hasEvent ? riskQ.data : null;
   const riskLevel = hasEvent ? (risk?.riskLevel ?? detail.risk?.riskLevel) : null;
 
@@ -311,6 +315,47 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
             <StatItem label="Vulnérabilité" value={formatNumber(c.vulnerabilityScore)} />
           </div>
         </Card>
+
+        {/* Exposition */}
+        {hasEvent ? (
+          <Card title="Exposition à l'événement" className="!p-4">
+            {exposure ? (
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <StatItem
+                    label="Population exposée"
+                    value={exposure.exposedPopulation != null ? formatNumber(exposure.exposedPopulation) : null}
+                  />
+                  <StatItem
+                    label="Distance trajectoire"
+                    value={exposure.distanceToTrackKm != null ? formatNumber(exposure.distanceToTrackKm) : null}
+                    unit="km"
+                  />
+                  <StatItem
+                    label="Recouvrement"
+                    value={exposure.overlapPercent != null ? formatNumber(exposure.overlapPercent) : null}
+                    unit="%"
+                  />
+                </div>
+                {exposure.isInsideInfluenceArea ? (
+                  <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-brand">
+                    <MapPin className="size-3.5" /> Dans la zone d&apos;influence
+                  </p>
+                ) : null}
+                <p className="mt-2 text-[11px] text-muted">
+                  {exposureSourceLabel(exposure.sourceType) ?? 'Source d\'exposition inconnue'}
+                  {exposureDataLabel(exposure.dataType) ? ` · ${exposureDataLabel(exposure.dataType)}` : ''}
+                  {exposure.updatedAt ? ` · Maj. ${formatDate(exposure.updatedAt)}` : ''}
+                </p>
+              </>
+            ) : (
+              <p className="flex items-center gap-1.5 text-sm text-muted">
+                <MapPin className="size-4" />
+                Cette commune n&apos;est pas exposée à l&apos;événement sélectionné.
+              </p>
+            )}
+          </Card>
+        ) : null}
 
         {/* Météo */}
         <Card
@@ -389,6 +434,52 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
               {forecast && <p className="mt-1 text-right text-[11px] text-muted">Fuseau {forecast.timezone}</p>}
             </div>
           ) : forecast ? null : null}
+
+          {historyDays.length > 0 ? (
+            <div className="mt-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                Évolution observée (7 derniers jours)
+              </p>
+              <div className="h-36">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={historyDays} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                    <YAxis yAxisId="temp" tick={{ fontSize: 10 }} domain={['auto', 'auto']} width={26} />
+                    <YAxis yAxisId="precip" orientation="right" tick={{ fontSize: 10 }} width={26} />
+                    <Tooltip />
+                    <Bar
+                      yAxisId="precip"
+                      dataKey="precip"
+                      name="Précip. (mm)"
+                      fill="#60a5fa"
+                      radius={[3, 3, 0, 0]}
+                      barSize={12}
+                    />
+                    <Line
+                      yAxisId="temp"
+                      type="monotone"
+                      dataKey="tempMax"
+                      name="Max °C"
+                      stroke="#047857"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      yAxisId="temp"
+                      type="monotone"
+                      dataKey="tempMin"
+                      name="Min °C"
+                      stroke="#d97706"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="mt-1 text-right text-[11px] text-muted">Source : observations locales</p>
+            </div>
+          ) : null}
         </Card>
 
         {/* Risque détaillé */}

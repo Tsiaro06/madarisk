@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle } from 'lucide-react';
+import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, CloudSun } from 'lucide-react';
 import { alertsApi, eventsApi, risksApi, territoriesApi, weatherApi } from '@/api';
-import type { CommuneDetail } from '@/types';
+import type { CommuneDetail, EventTrack, ExposedCommuneInfo } from '@/types';
 import { canManageOps } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
 import { ActiveEventProvider, useActiveEvent } from '@/stores/activeEvent';
@@ -14,7 +14,17 @@ import { LeftPanel } from '@/components/crisis/LeftPanel';
 import { RightPanel } from '@/components/crisis/RightPanel';
 import { CrisisMap } from '@/components/crisis/CrisisMap';
 import { CreateEventModal } from '@/components/crisis/CreateEventModal';
-import { cn } from '@/lib/utils';
+import { buildExposureIndex } from '@/lib/crisisData';
+import { cn, formatDate } from '@/lib/utils';
+
+const REFRESH_INTERVAL_MS = 5 * 60_000;
+
+function syncStatusLabel(status?: string): string {
+  if (status === 'FRESH') return 'Fraîches';
+  if (status === 'STALE') return 'Périmées';
+  if (status === 'NEVER') return 'Jamais synchronisées';
+  return 'Indisponibles';
+}
 
 interface FocusTarget {
   geometry: unknown;
@@ -22,7 +32,9 @@ interface FocusTarget {
 }
 
 function CrisisRoomView() {
-  const { activeEvent, activeEventId, setActiveEventId } = useActiveEvent();
+  const { activeEvent, activeEventId, setActiveEventId, activeEventLoading } = useActiveEvent();
+  const queryClient = useQueryClient();
+  const isFetchingAny = useIsFetching();
 
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
@@ -33,6 +45,7 @@ function CrisisRoomView() {
   const [focusReq, setFocusReq] = useState(0);
   const [urgentDismissed, setUrgentDismissed] = useState(false);
   const [mapPhase, setMapPhase] = useState('');
+  const [districtId, setDistrictId] = useState('');
 
   const role = useAuthStore((s) => s.user?.role);
   const canCreate = canManageOps(role);
@@ -42,10 +55,12 @@ function CrisisRoomView() {
     queryFn: () => (selectedCommuneId ? territoriesApi.commune(selectedCommuneId) : null),
     enabled: Boolean(selectedCommuneId),
     staleTime: 60_000,
+    refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const focusGeometry = detailQ.data?.geometry ?? detailQ.data?.commune.centroid ?? null;
-  const focusTarget: FocusTarget | null = focusReq && focusGeometry ? { geometry: focusGeometry, nonce: focusReq } : null;
+  const focusTarget: FocusTarget | null =
+    focusReq && focusGeometry ? { geometry: focusGeometry, nonce: focusReq } : null;
 
   const risksQ = useQuery({
     queryKey: ['risks', 'map-layer', activeEventId, mapPhase],
@@ -56,11 +71,27 @@ function CrisisRoomView() {
           : {},
       ),
     enabled: Boolean(activeEventId),
+    refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const communesQ = useQuery({
-    queryKey: ['communes', 'map-layer', activeEventId],
-    queryFn: () => territoriesApi.mapCommunes(activeEventId ? { eventId: activeEventId } : {}),
+    queryKey: ['communes', 'map-layer', activeEventId, districtId],
+    queryFn: () =>
+      territoriesApi.mapCommunes(
+        activeEventId || districtId
+          ? {
+              ...(activeEventId ? { eventId: activeEventId } : {}),
+              ...(districtId ? { districtId } : {}),
+            }
+          : {},
+      ),
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+
+  const districtsQ = useQuery({
+    queryKey: ['territories', 'map-districts'],
+    queryFn: () => territoriesApi.mapDistricts({}),
+    refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const hasEventCommunes = Boolean(communesQ.data?.features?.length);
@@ -68,35 +99,73 @@ function CrisisRoomView() {
   const communeLayer = hasEventCommunes ? (communesQ.data ?? null) : null;
 
   const weatherQ = useQuery({
-    queryKey: ['weather', 'map-layer', activeEventId],
-    queryFn: () => weatherApi.mapLayer(activeEventId ? { eventId: activeEventId } : {}),
+    queryKey: ['weather', 'map-layer', activeEventId, districtId],
+    queryFn: () =>
+      weatherApi.mapLayer(
+        activeEventId || districtId
+          ? {
+              ...(activeEventId ? { eventId: activeEventId } : {}),
+              ...(districtId ? { districtId } : {}),
+            }
+          : {},
+      ),
+    refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const trackQ = useQuery({
     queryKey: ['event', 'track', activeEventId],
     queryFn: () => (activeEventId ? eventsApi.trackGeoJson(activeEventId) : null),
     enabled: Boolean(activeEventId),
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+
+  const trackPointsQ = useQuery<EventTrack[]>({
+    queryKey: ['event', 'track-points', activeEventId],
+    queryFn: () => (activeEventId ? eventsApi.tracks(activeEventId) : []),
+    enabled: Boolean(activeEventId),
+    refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const areasQ = useQuery({
     queryKey: ['event', 'areas', activeEventId],
     queryFn: () => (activeEventId ? eventsApi.areas(activeEventId) : null),
     enabled: Boolean(activeEventId),
+    refetchInterval: REFRESH_INTERVAL_MS,
   });
 
-  const exposedQ = useQuery({
-    queryKey: ['event', 'exposed', activeEventId],
-    queryFn: () => (activeEventId ? eventsApi.exposedCommunesIds(activeEventId) : null),
+  const exposureQ = useQuery({
+    queryKey: ['event', 'exposure', activeEventId],
+    queryFn: () => (activeEventId ? eventsApi.exposureGeoJson(activeEventId) : null),
     enabled: Boolean(activeEventId),
     staleTime: 30_000,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  });
+
+  const exposureIndex = buildExposureIndex(exposureQ.data ?? null);
+  const selectedExposure: ExposedCommuneInfo | null = selectedCommuneId
+    ? (exposureIndex.info.get(selectedCommuneId) ?? null)
+    : null;
+
+  const monitoringQ = useQuery({
+    queryKey: ['weather', 'monitoring'],
+    queryFn: () => weatherApi.monitoring(),
+    refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const urgentQ = useQuery({
     queryKey: ['alerts', 'urgent-banner'],
     queryFn: () => alertsApi.list({ activeOnly: true, limit: 5, page: 1 }),
     staleTime: 30_000,
+    refetchInterval: REFRESH_INTERVAL_MS,
   });
-  const urgentAlerts = (urgentQ.data?.data ?? []).filter((a) => a.status === 'PUBLIEE').slice(0, 4);
+  const urgentAlerts = (urgentQ.data?.data ?? [])
+    .filter((a) => a.status === 'PUBLIEE')
+    .slice(0, 4);
+
+  const observationSync = monitoringQ.data?.sync?.observations;
+  const weatherStale = observationSync
+    ? observationSync.status === 'STALE' || observationSync.status === 'NEVER'
+    : false;
 
   const selectCommune = (id: string, focus: boolean) => {
     setSelectedCommuneId(id);
@@ -107,6 +176,15 @@ function CrisisRoomView() {
 
   const handleSelectEvent = (id: string) => {
     setActiveEventId(id);
+  };
+
+  const handleRefresh = async () => {
+    await queryClient.refetchQueries({ type: 'active' });
+  };
+
+  const handleDistrictChange = (id: string) => {
+    setDistrictId(id);
+    setSelectedCommuneId(null);
   };
 
   return (
@@ -124,7 +202,30 @@ function CrisisRoomView() {
           setRightOpen((v) => !v);
           setMobileRight(false);
         }}
+        refreshing={isFetchingAny > 0}
+        onRefresh={() => void handleRefresh()}
       />
+
+      {activeEvent && !activeEventLoading ? (
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface px-3 py-1.5 text-xs text-muted">
+          <span>
+            Dernière mise à jour :{' '}
+            <span className="font-medium text-ink">{formatDate(activeEvent.updatedAt)}</span>
+            {' · '}Source : {activeEvent.sourceName ?? 'Système'}
+          </span>
+          <span className={cn('flex items-center gap-1.5', weatherStale && 'text-amber-600')}>
+            {weatherStale ? (
+              <AlertTriangle className="size-3.5" />
+            ) : (
+              <CloudSun className="size-3.5 text-brand" />
+            )}
+            Données météo {syncStatusLabel(observationSync?.status)}
+            {observationSync?.lastDataAt
+              ? ` · ${formatDate(observationSync.lastDataAt)}`
+              : ''}
+          </span>
+        </div>
+      ) : null}
 
       {urgentAlerts.length > 0 && !urgentDismissed ? (
         <div className="px-3 pt-3">
@@ -156,6 +257,8 @@ function CrisisRoomView() {
             onSelectEvent={handleSelectEvent}
             onSelectCommune={(r) => selectCommune(r.id, true)}
             onClose={() => setLeftOpen(false)}
+            districtId={districtId}
+            onDistrictChange={handleDistrictChange}
           />
         </aside>
 
@@ -163,10 +266,12 @@ function CrisisRoomView() {
           <CrisisMap
             riskLayer={riskLayer}
             communeLayer={communeLayer}
+            districtLayer={districtsQ.data ?? null}
             weatherLayer={weatherQ.data ?? null}
             trackLayer={trackQ.data ?? null}
+            trackPoints={trackPointsQ.data ?? []}
             areasLayer={areasQ.data ?? null}
-            exposedCommuneIds={exposedQ.data ?? new Set<string>()}
+            exposedCommuneIds={exposureIndex.exposedIds}
             activeEvent={activeEvent}
             selectedCommuneId={selectedCommuneId}
             onCommuneClick={(id) => selectCommune(id, false)}
@@ -174,6 +279,45 @@ function CrisisRoomView() {
             mapPhase={mapPhase}
             onMapPhaseChange={setMapPhase}
           />
+
+          {!activeEventId ? (
+            <div className="pointer-events-none absolute left-3 top-3 z-[600] w-72 max-w-[calc(100%-1.5rem)]">
+              <div className="pointer-events-auto rounded-xl border border-white/60 bg-white/95 p-4 shadow-md backdrop-blur">
+                <p className="font-display text-sm font-semibold text-ink">
+                  Aucun événement actif actuellement
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  La salle de crise affiche la météo nationale et les vigilances en continu.
+                  Créez ou activez un événement (PREVISION, ACTIF, SUIVI) pour superposer
+                  trajectoires, zones d&apos;influence et niveaux de risque.
+                </p>
+                <div className="mt-3 space-y-1.5 text-xs text-ink">
+                  <p className="flex items-start gap-1.5">
+                    <CloudSun className="mt-0.5 size-3.5 shrink-0 text-brand" />
+                    <span>
+                      Météo : {syncStatusLabel(observationSync?.status)}
+                      {observationSync?.communesData != null
+                        ? ` · ${observationSync.communesData} communes`
+                        : ''}
+                      {observationSync?.lastDataAt
+                        ? ` · Obs. ${formatDate(observationSync.lastDataAt)}`
+                        : ''}
+                    </span>
+                  </p>
+                  <p className="flex items-start gap-1.5">
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-risk-extreme" />
+                    Alertes actives : {urgentAlerts.length}
+                  </p>
+                </div>
+                <Link
+                  to="/meteo"
+                  className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-deep"
+                >
+                  <CloudSun className="size-4" /> Voir la météo
+                </Link>
+              </div>
+            </div>
+          ) : null}
 
           {mobileLeft ? (
             <div
@@ -189,6 +333,8 @@ function CrisisRoomView() {
                   onSelectEvent={handleSelectEvent}
                   onSelectCommune={(r) => selectCommune(r.id, true)}
                   onClose={() => setMobileLeft(false)}
+                  districtId={districtId}
+                  onDistrictChange={handleDistrictChange}
                 />
               </div>
             </div>
@@ -208,6 +354,7 @@ function CrisisRoomView() {
                   detail={detailQ.data ?? null}
                   detailLoading={detailQ.isLoading}
                   hasEvent={Boolean(activeEventId)}
+                  exposure={selectedExposure}
                   onClose={() => setMobileRight(false)}
                   onSelectEvent={handleSelectEvent}
                 />
@@ -227,6 +374,7 @@ function CrisisRoomView() {
             detail={detailQ.data ?? null}
             detailLoading={detailQ.isLoading}
             hasEvent={Boolean(activeEventId)}
+            exposure={selectedExposure}
             onClose={() => setRightOpen(false)}
             onSelectEvent={handleSelectEvent}
           />

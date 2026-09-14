@@ -14,6 +14,7 @@ import type {
   DashboardSummary,
   DistrictListItem,
   EventListItem,
+  EventTrack,
   EventsTimelineEntry,
   ExposedCommuneRow,
   PriorityCommune,
@@ -24,7 +25,7 @@ import type {
   WeatherForecastData,
   WeatherObservation,
 } from "@/types";
-import type { WeatherMapLayerMeta } from "@/types/weather";
+import type { WeatherMapLayerMeta, WeatherMonitoring } from "@/types/weather";
 import type { FeatureCollection } from "geojson";
 
 export const authApi = {
@@ -85,7 +86,7 @@ export const eventsApi = {
   updateStatus: (id: string, status: string) =>
     apiPatch(`/events/${id}/status`, { status }),
   remove: (id: string) => apiDelete(`/events/${id}`),
-  tracks: (id: string) => apiGet(`/events/${id}/tracks`),
+  tracks: (id: string) => apiGet<EventTrack[]>(`/events/${id}/tracks`),
   trackGeoJson: (id: string) =>
     apiGet<FeatureCollection>(`/events/${id}/track-geojson`),
   addTrack: (id: string, body: unknown) =>
@@ -115,6 +116,8 @@ export const eventsApi = {
     const ids = await apiGet<string[]>(`/events/${id}/exposed-communes/ids`);
     return new Set(ids);
   },
+  exposureGeoJson: (id: string) =>
+    apiGet<FeatureCollection>(`/events/${id}/exposure-geojson`),
 };
 
 export const alertsApi = {
@@ -136,7 +139,7 @@ export const weatherApi = {
   history: (
     communeId: string,
     params?: Record<string, string | number | undefined>,
-  ) => apiGetPage(`/weather/communes/${communeId}/history`, { params }),
+  ) => apiGetPage<WeatherObservation[]>(`/weather/communes/${communeId}/history`, { params }),
   mapLayer: (params?: Record<string, string | undefined>) =>
     apiGet<FeatureCollection>("/weather/map-layer", { params }),
   mapLayerDetailed: async (
@@ -154,6 +157,7 @@ export const weatherApi = {
     };
   },
   refresh: (body: unknown) => apiPost("/weather/refresh/communes", body),
+  monitoring: () => apiGet<WeatherMonitoring>("/weather/monitoring"),
 };
 
 export const risksApi = {

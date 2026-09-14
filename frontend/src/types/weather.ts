@@ -39,6 +39,31 @@ export interface WeatherMapLayerMeta {
   latestObservationAt: string | null;
 }
 
+export interface WeatherSyncStatusSnapshot {
+  lastSuccessAt: string | null;
+  lastDataAt: string | null;
+  lagMinutes: number | null;
+  status: 'FRESH' | 'STALE' | 'NEVER';
+  communesData: number;
+  maxForecastDay: string | null;
+}
+
+export interface WeatherMonitoring {
+  generatedAt: string;
+  sources: Array<{
+    name: string;
+    providerType: string;
+    baseUrl: string | null;
+    isActive: boolean;
+    refreshIntervalMinutes: number;
+    keyConfigured: boolean;
+  }>;
+  sync: {
+    observations: WeatherSyncStatusSnapshot;
+    forecasts: WeatherSyncStatusSnapshot;
+  };
+}
+
 const percipitationStart = "#d6d6d6";
 const coldBlue = "#2b7ce8";
 const mediumBlue = "#2f80ed";

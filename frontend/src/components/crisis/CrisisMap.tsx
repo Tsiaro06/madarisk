@@ -1,13 +1,30 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { GeoJSON, MapContainer, TileLayer, useMap } from 'react-leaflet';
+import {
+  CircleMarker,
+  GeoJSON,
+  MapContainer,
+  TileLayer,
+  Tooltip,
+  useMap,
+} from 'react-leaflet';
 import { Link } from 'react-router-dom';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
-import type { Layer, PathOptions } from 'leaflet';
+import type { Layer } from 'leaflet';
 import L from 'leaflet';
 import { Layers, LocateFixed, Snowflake, Waves } from 'lucide-react';
-import type { EventListItem, RiskLevel } from '@/types';
+import type { EventListItem, EventTrack } from '@/types';
 import { RISK_COLORS, RISK_LABELS } from '@/types';
 import { RISK_LEVELS } from '@/lib/eventMeta';
+import {
+  communeStyle,
+  districtStyle,
+  featureId,
+  featureName,
+  isRiskLevel,
+  riskStyle,
+  trackPointStyle,
+  trackStyle,
+} from '@/lib/crisisStyles';
 import { cn } from '@/lib/utils';
 
 type CommuneClickHandler = (communeId: string, name: string) => void;
@@ -15,8 +32,10 @@ type CommuneClickHandler = (communeId: string, name: string) => void;
 interface CrisisMapProps {
   riskLayer: FeatureCollection | null;
   communeLayer: FeatureCollection | null;
+  districtLayer: FeatureCollection | null;
   weatherLayer: FeatureCollection | null;
   trackLayer: FeatureCollection | null;
+  trackPoints: EventTrack[];
   areasLayer: FeatureCollection | null;
   exposedCommuneIds: Set<string>;
   activeEvent: EventListItem | null;
@@ -25,54 +44,6 @@ interface CrisisMapProps {
   focusTarget: { geometry: unknown; nonce: number } | null;
   mapPhase: string;
   onMapPhaseChange: (phase: string) => void;
-}
-
-function isRiskLevel(v: unknown): v is RiskLevel {
-  return v === 'FAIBLE' || v === 'MODERE' || v === 'ELEVE' || v === 'EXTREME';
-}
-
-function featureId(p: Record<string, unknown>): string {
-  return String(p.communeId ?? p.id ?? p.commune_id ?? '');
-}
-
-function featureName(p: Record<string, unknown>): string {
-  return String(p.communeName ?? p.commune ?? p.nom ?? p.name ?? '');
-}
-
-function riskStyle(
-  feature?: Feature,
-  selectedId?: string | null,
-  exposedCommuneIds?: Set<string>,
-): PathOptions {
-  const p = (feature?.properties ?? {}) as Record<string, unknown>;
-  const level = p.riskLevel ?? p.risk_level;
-  const color = isRiskLevel(level) ? RISK_COLORS[level] : '#047857';
-  const communeId = featureId(p);
-  const isExposed = exposedCommuneIds ? exposedCommuneIds.has(communeId) : false;
-  const selected = selectedId != null && communeId === String(selectedId);
-  return {
-    color: selected ? '#065f46' : isExposed ? '#111827' : '#9ca3af',
-    weight: selected ? 3 : isExposed ? 3 : 1.5,
-    fillColor: color,
-    fillOpacity: selected ? 0.8 : isExposed ? 0.85 : 0.55,
-  };
-}
-
-function communeStyle(
-  feature?: Feature,
-  selectedId?: string | null,
-  hasEvent?: boolean,
-): PathOptions {
-  const p = (feature?.properties ?? {}) as Record<string, unknown>;
-  const level = hasEvent ? (p.riskLevel ?? p.risk_level) : undefined;
-  const color = hasEvent && isRiskLevel(level) ? RISK_COLORS[level] : '#047857';
-  const selected = selectedId != null && featureId(p) === String(selectedId);
-  return {
-    color: selected ? '#065f46' : '#047857',
-    weight: selected ? 3 : 1,
-    fillColor: color,
-    fillOpacity: hasEvent && isRiskLevel(level) ? 0.3 : 0.08,
-  };
 }
 
 function MapFocus({ target }: { target: { geometry: unknown; nonce: number } | null }) {
@@ -136,14 +107,22 @@ function Legend() {
       <p className="mb-1 mt-2 text-[10px] uppercase tracking-wide text-muted">Autres couches</p>
       <ul className="space-y-1 text-muted">
         <li className="flex items-center gap-2">
-          <Waves className="size-3.5 text-brand" /> Trajectoire événement
+          <span className="inline-block h-0.5 w-4 rounded bg-[#047857]" />
+          Trajectoire observée
+        </li>
+        <li className="flex items-center gap-2">
+          <span className="inline-block h-0.5 w-4 rounded border-t-2 border-dashed border-[#ea580c]" />
+          Trajectoire prévue
+        </li>
+        <li className="flex items-center gap-2">
+          <Waves className="size-3.5 text-brand" /> Zone d&apos;influence
         </li>
         <li className="flex items-center gap-2">
           <Snowflake className="size-3.5 text-accent" /> Observation météo
         </li>
         <li className="flex items-center gap-2">
-          <span className="inline-block size-3 rounded-sm border-2 border-[#111827]" />
-          Commune touchée par l’événement actif
+          <span className="inline-block size-3 rounded-sm border-2 border-[#111827] bg-white/40" />
+          Commune exposée à l&apos;événement sélectionné
         </li>
       </ul>
     </div>
@@ -153,6 +132,7 @@ function Legend() {
 function LayerControls({
   showRisks,
   showCommunes,
+  showDistricts,
   showWeather,
   showEvent,
   hasEvent,
@@ -160,14 +140,24 @@ function LayerControls({
 }: {
   showRisks: boolean;
   showCommunes: boolean;
+  showDistricts: boolean;
   showWeather: boolean;
   showEvent: boolean;
   hasEvent: boolean;
-  onChange: (key: 'risks' | 'communes' | 'weather' | 'event', value: boolean) => void;
+  onChange: (
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event',
+    value: boolean,
+  ) => void;
 }) {
-  const items: Array<{ key: 'risks' | 'communes' | 'weather' | 'event'; label: string; checked: boolean; disabled?: boolean }> = [
+  const items: Array<{
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event';
+    label: string;
+    checked: boolean;
+    disabled?: boolean;
+  }> = [
     { key: 'risks', label: 'Risques', checked: showRisks, disabled: !hasEvent },
     { key: 'communes', label: hasEvent ? 'Communes exposées' : 'Limites communes', checked: showCommunes },
+    { key: 'districts', label: 'Districts', checked: showDistricts },
     { key: 'weather', label: 'Météo', checked: showWeather },
     { key: 'event', label: 'Événement actif', checked: showEvent, disabled: !hasEvent },
   ];
@@ -197,8 +187,10 @@ function LayerControls({
 export function CrisisMap({
   riskLayer,
   communeLayer,
+  districtLayer,
   weatherLayer,
   trackLayer,
+  trackPoints,
   areasLayer,
   exposedCommuneIds,
   activeEvent,
@@ -210,6 +202,7 @@ export function CrisisMap({
 }: CrisisMapProps) {
   const [showRisks, setShowRisks] = useState(true);
   const [showCommunes, setShowCommunes] = useState(false);
+  const [showDistricts, setShowDistricts] = useState(false);
   const [showWeather, setShowWeather] = useState(false);
   const [showEvent, setShowEvent] = useState(true);
 
@@ -218,9 +211,13 @@ export function CrisisMap({
     if (!activeEvent) setShowRisks(false);
   }, [activeEvent]);
 
-  const handleToggle = (key: 'risks' | 'communes' | 'weather' | 'event', value: boolean) => {
+  const handleToggle = (
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event',
+    value: boolean,
+  ) => {
     if (key === 'risks') setShowRisks(value);
     else if (key === 'communes') setShowCommunes(value);
+    else if (key === 'districts') setShowDistricts(value);
     else if (key === 'weather') setShowWeather(value);
     else setShowEvent(value);
   };
@@ -267,6 +264,17 @@ export function CrisisMap({
                 .join('<br/>'),
             );
             bindFeatureClick(layer, feature, onCommuneClick);
+          }}
+        />
+      ) : null}
+
+      {showDistricts && districtLayer ? (
+        <GeoJSON
+          data={districtLayer}
+          style={districtStyle}
+          onEachFeature={(feature: Feature<Geometry>, layer: Layer) => {
+            const p = (feature.properties ?? {}) as Record<string, unknown>;
+            layer.bindPopup(`<strong>${featureName(p) || 'District'}</strong>`);
           }}
         />
       ) : null}
@@ -344,25 +352,21 @@ export function CrisisMap({
             />
           ) : null}
           {trackLayer ? (
-            <GeoJSON
-              data={trackLayer}
-              pointToLayer={(_, latlng) =>
-                L.circleMarker(latlng, {
-                  radius: 5,
-                  color: '#065f46',
-                  weight: 2,
-                  fillColor: '#047857',
-                  fillOpacity: 1,
-                })
-              }
-              style={(feature) => {
-                const g = feature?.geometry;
-                const isLine = g?.type !== 'Point';
-                return isLine
-                  ? { color: '#047857', weight: 3, opacity: 0.9 }
-                  : { color: 'transparent' };
-              }}
-            />
+            <GeoJSON data={trackLayer} style={trackStyle} />
+          ) : null}
+          {trackPoints.length > 0 ? (
+            trackPoints.map((pt) => (
+              <CircleMarker
+                key={pt.id}
+                center={[pt.latitude, pt.longitude]}
+                pathOptions={trackPointStyle(pt.trackType)}
+              >
+                <Tooltip>
+                  {pt.trackType === 'OBSERVEE' ? 'Observé' : 'Prévu'} le{' '}
+                  {pt.observedAt ? new Date(pt.observedAt).toLocaleString('fr-FR') : '—'}
+                </Tooltip>
+              </CircleMarker>
+            ))
           ) : null}
         </>
       ) : null}
@@ -374,6 +378,7 @@ export function CrisisMap({
         <LayerControls
           showRisks={showRisks}
           showCommunes={showCommunes}
+          showDistricts={showDistricts}
           showWeather={showWeather}
           showEvent={showEvent}
           hasEvent={Boolean(activeEvent)}

@@ -1,8 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Calendar, Cpu, Search, X, Zap } from 'lucide-react';
-import { eventsApi, territoriesApi } from '@/api';
-import type { EventStatus, EventType, SeverityLevel, TerritorySearchResult } from '@/types';
+import { Calendar, Cpu, MapPin, Search, X, Zap } from 'lucide-react';
+import { eventsApi, territoriesApi, weatherApi } from '@/api';
+import type {
+  EventListItem,
+  EventStatus,
+  EventType,
+  SeverityLevel,
+  TerritorySearchResult,
+} from '@/types';
 import { useToast } from '@/components/ui/Toast';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -22,7 +28,7 @@ import {
   SEVERITY_LABELS,
   SEVERITY_TONE,
 } from '@/lib/eventMeta';
-import { formatDate, cn } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 
 export interface EventFilters {
   type: string;
@@ -42,19 +48,47 @@ const EMPTY_FILTERS: EventFilters = {
   search: '',
 };
 
+const ACTIVE_STATUS_GROUP = 'ACTIVE';
+const ACTIVE_STATUSES: readonly EventStatus[] = ['PREVISION', 'ACTIF', 'SUIVI'];
+
 interface LeftPanelProps {
   activeEventId: string | null;
   onSelectEvent: (id: string) => void;
   onSelectCommune: (result: TerritorySearchResult) => void;
   onClose: () => void;
+  districtId: string;
+  onDistrictChange: (id: string) => void;
 }
 
-export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClose }: LeftPanelProps) {
+export function LeftPanel({
+  activeEventId,
+  onSelectEvent,
+  onSelectCommune,
+  onClose,
+  districtId,
+  onDistrictChange,
+}: LeftPanelProps) {
   const { toast } = useToast();
-  const [draft, setDraft] = useState<EventFilters>(EMPTY_FILTERS);
-  const [applied, setApplied] = useState<EventFilters>(EMPTY_FILTERS);
+  const [draft, setDraft] = useState<EventFilters>({
+    ...EMPTY_FILTERS,
+    status: ACTIVE_STATUS_GROUP,
+  });
+  const [applied, setApplied] = useState<EventFilters>({
+    ...EMPTY_FILTERS,
+    status: ACTIVE_STATUS_GROUP,
+  });
   const [page, setPage] = useState(1);
   const [communeQuery, setCommuneQuery] = useState('');
+
+  const districtsQ = useQuery({
+    queryKey: ['territories', 'districts', 'options'],
+    queryFn: () => territoriesApi.districts({ page: 1, limit: 100 }),
+  });
+
+  const monitoringQ = useQuery({
+    queryKey: ['weather', 'monitoring'],
+    queryFn: () => weatherApi.monitoring(),
+  });
 
   const searchQ = useQuery({
     queryKey: ['territories', 'search', communeQuery],
@@ -69,7 +103,10 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
         page,
         limit: 12,
         type: applied.type || undefined,
-        status: applied.status || undefined,
+        status:
+          applied.status && applied.status !== ACTIVE_STATUS_GROUP
+            ? applied.status
+            : undefined,
         severity: applied.severity || undefined,
         startedAfter: applied.startedAfter ? new Date(applied.startedAfter).toISOString() : undefined,
         startedBefore: applied.startedBefore ? new Date(applied.startedBefore).toISOString() : undefined,
@@ -78,13 +115,39 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
     placeholderData: (prev) => prev,
   });
 
-  const events = listQ.data?.data ?? [];
+  const allEvents = listQ.data?.data ?? [];
+  const events =
+    applied.status === ACTIVE_STATUS_GROUP
+      ? allEvents.filter((e) => (ACTIVE_STATUSES as readonly string[]).includes(e.status))
+      : allEvents;
   const communeResults = searchQ.data ?? [];
 
   const apply = () => {
     setPage(1);
     setApplied(draft);
   };
+
+  const lastEventUpdate = events.reduce<EventListItem | null>(
+    (latest, e) =>
+      latest == null || (e.updatedAt ?? '') > (latest.updatedAt ?? '') ? e : latest,
+    null,
+  );
+  const observations = monitoringQ.data?.sync?.observations;
+  const weatherLine = observations
+    ? `${
+        observations.status === 'FRESH'
+          ? 'Fraîches'
+          : observations.status === 'STALE'
+            ? 'Périmées'
+            : observations.status === 'NEVER'
+              ? 'Jamais synchronisées'
+              : 'Indisponibles'
+      }${observations.lastDataAt ? ` · Obs. ${formatDate(observations.lastDataAt)}` : ''}`
+    : null;
+  const lastUpdateLine = lastEventUpdate
+    ? formatDate(lastEventUpdate.updatedAt) +
+      (lastEventUpdate.sourceName ? ` · ${lastEventUpdate.sourceName}` : '')
+    : null;
 
   return (
     <div className="flex h-full flex-col">
@@ -164,10 +227,13 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
           value={draft.status}
           onChange={(e) => setDraft((d) => ({ ...d, status: e.target.value }))}
           placeholder="Tous les statuts"
-          options={EVENT_STATUSES.map((s: EventStatus) => ({
-            value: s,
-            label: EVENT_STATUS_LABELS[s],
-          }))}
+          options={[
+            { value: ACTIVE_STATUS_GROUP, label: 'En cours (PREVISION / ACTIF / SUIVI)' },
+            ...EVENT_STATUSES.map((s: EventStatus) => ({
+              value: s,
+              label: EVENT_STATUS_LABELS[s],
+            })),
+          ]}
           className="[&>select]:h-9"
         />
         <Select
@@ -177,6 +243,19 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
           options={SEVERITIES.map((s: SeverityLevel) => ({ value: s, label: SEVERITY_LABELS[s] }))}
           className="[&>select]:h-9"
         />
+        <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
+          <MapPin className="size-3.5" /> Zone
+        </div>
+        <Select
+          value={districtId}
+          onChange={(e) => onDistrictChange(e.target.value)}
+          placeholder="Toutes les zones"
+          options={(districtsQ.data?.data ?? []).map((d) => ({ value: d.id, label: d.name }))}
+          className="[&>select]:h-9"
+        />
+        <p className="text-[11px] text-muted">
+          La zone sélectionnée restreint la carte aux communes et observations de ce district.
+        </p>
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
           <Calendar className="size-3.5" /> Période
         </div>
@@ -209,10 +288,24 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center justify-between px-3 py-2">
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">
-            Événements ({listQ.data?.meta?.total ?? '…'})
+            Événements ({applied.status === ACTIVE_STATUS_GROUP ? events.length : listQ.data?.meta?.total ?? '…'})
           </p>
           <span className="text-[11px] text-muted">clic = contexte actif</span>
         </div>
+        {lastUpdateLine || weatherLine ? (
+          <div className="mx-2 mb-2 rounded-lg border border-brand/10 bg-white px-2.5 py-2 text-[11px] text-muted">
+            {lastUpdateLine ? (
+              <p>
+                <span className="font-medium text-ink">Dernière mise à jour :</span> {lastUpdateLine}
+              </p>
+            ) : null}
+            {weatherLine ? (
+              <p className="mt-0.5">
+                <span className="font-medium text-ink">Météo :</span> {weatherLine}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
           {listQ.isLoading ? (
             <Spinner label="Chargement des événements…" />
