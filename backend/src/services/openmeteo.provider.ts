@@ -6,6 +6,9 @@ import {
   WeatherForecast,
   WeatherMapPoint,
   WeatherProvider,
+  BatchCommuneInput,
+  WeatherCurrentBatchItem,
+  WeatherForecastDailyItem,
 } from '../types/weather.types';
 import { AppError } from '../utils/app-error';
 
@@ -16,9 +19,23 @@ interface OpenMeteoCurrentResponse {
   rain: number | null;
   wind_speed_10m: number | null;
   wind_direction_10m: number | null;
+  wind_gusts_10m: number | null;
   surface_pressure: number | null;
   weather_code: number | null;
   time: string;
+}
+
+interface OpenMeteoDailyResponse {
+  time: string[];
+  temperature_2m_max: (number | null)[];
+  temperature_2m_min: (number | null)[];
+  precipitation_sum: (number | null)[];
+  wind_speed_10m_max: (number | null)[];
+  wind_gusts_10m_max: (number | null)[];
+  wind_direction_10m_dominant: (number | null)[];
+  relative_humidity_2m_mean: (number | null)[];
+  surface_pressure_mean: (number | null)[];
+  weather_code: (number | null)[];
 }
 
 interface OpenMeteoResponse {
@@ -27,10 +44,7 @@ interface OpenMeteoResponse {
   timezone: string;
   current: OpenMeteoCurrentResponse;
   current_units?: Record<string, string>;
-  daily?: {
-    time: string[];
-    precipitation_sum: (number | null)[];
-  };
+  daily?: OpenMeteoDailyResponse;
   hourly?: {
     time: string[];
     temperature_2m: (number | null)[];
@@ -39,6 +53,7 @@ interface OpenMeteoResponse {
     rain: (number | null)[];
     wind_speed_10m: (number | null)[];
     wind_direction_10m: (number | null)[];
+    wind_gusts_10m: (number | null)[];
     surface_pressure: (number | null)[];
     weather_code: (number | null)[];
   };
@@ -51,6 +66,7 @@ const CURRENT_VARIABLES = [
   'rain',
   'wind_speed_10m',
   'wind_direction_10m',
+  'wind_gusts_10m',
   'surface_pressure',
   'weather_code',
 ].join(',');
@@ -62,7 +78,20 @@ const HOURLY_VARIABLES = [
   'rain',
   'wind_speed_10m',
   'wind_direction_10m',
+  'wind_gusts_10m',
   'surface_pressure',
+  'weather_code',
+].join(',');
+
+const DAILY_VARIABLES = [
+  'temperature_2m_max',
+  'temperature_2m_min',
+  'precipitation_sum',
+  'wind_speed_10m_max',
+  'wind_gusts_10m_max',
+  'wind_direction_10m_dominant',
+  'relative_humidity_2m_mean',
+  'surface_pressure_mean',
   'weather_code',
 ].join(',');
 
@@ -168,8 +197,7 @@ export class OpenMeteoProvider implements WeatherProvider {
         const status = axiosErr?.response?.status;
         if (status === 429) {
           const reason = String(
-            (axiosErr?.response?.data as { reason?: unknown } | undefined)
-              ?.reason ?? '',
+            (axiosErr?.response?.data as { reason?: unknown } | undefined)?.reason ?? '',
           ).toLowerCase();
           const hourlyLimit = reason.includes('hour') || reason.includes('next hour');
           if (hourlyLimit) {
@@ -194,8 +222,7 @@ export class OpenMeteoProvider implements WeatherProvider {
           await sleep(burstBackoff);
           continue;
         }
-        const retriable =
-          status === undefined || (status !== undefined && status >= 500);
+        const retriable = status === undefined || (status !== undefined && status >= 500);
         logger.debug({ attempt: attempt + 1, status }, 'Tentative Open-Meteo échouée');
         if (!retriable || attempt >= retries) break;
         await sleep(500 * (attempt + 1) ** 2);
@@ -212,6 +239,7 @@ export class OpenMeteoProvider implements WeatherProvider {
       precipitationMm: current.precipitation,
       rainfall24hMm: null,
       windSpeedKmh: current.wind_speed_10m,
+      windGustsKmh: current.wind_gusts_10m,
       windDirectionDeg: current.wind_direction_10m,
       pressureHpa: current.surface_pressure,
       weatherCode: current.weather_code !== null ? String(current.weather_code) : null,
@@ -234,6 +262,170 @@ export class OpenMeteoProvider implements WeatherProvider {
     logger.debug({ latitude, longitude, rainfall24hMm }, 'Données météo actuelles récupérées');
 
     return { ...this.mapCurrent(current), rainfall24hMm };
+  }
+
+  async getCurrentBatch(communes: BatchCommuneInput[]): Promise<WeatherCurrentBatchItem[]> {
+    const BATCH_SIZE = 400;
+
+    const chunks: BatchCommuneInput[][] = [];
+    for (let i = 0; i < communes.length; i += BATCH_SIZE) {
+      chunks.push(communes.slice(i, i + BATCH_SIZE));
+    }
+
+    const results: WeatherCurrentBatchItem[] = [];
+    const fetchChunk = async (chunk: BatchCommuneInput[]): Promise<boolean> => {
+      try {
+        const lats = chunk.map((c) => c.latitude.toFixed(3));
+        const lons = chunk.map((c) => c.longitude.toFixed(3));
+
+        const data = await this.request<OpenMeteoResponse | OpenMeteoResponse[]>(
+          {
+            latitude: lats.join(','),
+            longitude: lons.join(','),
+            current: CURRENT_VARIABLES,
+            daily: 'precipitation_sum',
+            timezone: 'auto',
+            forecast_days: 2,
+          },
+          this.batchMaxRetries,
+        );
+
+        const responses = Array.isArray(data) ? data : [data];
+
+        responses.forEach((resp, idx) => {
+          const commune = chunk[idx];
+          if (!commune || !resp.current) return;
+          const rainfall24hMm = resp.daily?.precipitation_sum?.[0] ?? null;
+          results.push({
+            communeId: commune.id,
+            latitude: commune.latitude,
+            longitude: commune.longitude,
+            current: { ...this.mapCurrent(resp.current), rainfall24hMm },
+          });
+        });
+        logger.debug(
+          { chunk: chunk.length, points: responses.length },
+          'Lot d observations Open-Meteo obtenu',
+        );
+        return true;
+      } catch (err) {
+        logger.warn(
+          { err, chunk: chunk.length },
+          "Échec d'un lot du batch observations Open-Meteo",
+        );
+        return false;
+      }
+    };
+
+    let pending = chunks;
+    for (let pass = 0; pass < 2 && pending.length > 0; pass += 1) {
+      if (pass > 0) await sleep(3000);
+      const failedChunks: typeof chunks = [];
+      await runPool(
+        pending,
+        async (chunk) => {
+          const ok = await fetchChunk(chunk);
+          if (!ok) failedChunks.push(chunk);
+        },
+        1,
+      );
+      pending = failedChunks;
+    }
+
+    logger.info(
+      { communes: communes.length, points: results.length, pending: pending.length },
+      'Batch observations Open-Meteo traité',
+    );
+    return results;
+  }
+
+  async getForecastDailyBatch(communes: BatchCommuneInput[]): Promise<WeatherForecastDailyItem[]> {
+    const BATCH_SIZE = 400;
+    const FORECAST_DAYS = 4;
+
+    const chunks: BatchCommuneInput[][] = [];
+    for (let i = 0; i < communes.length; i += BATCH_SIZE) {
+      chunks.push(communes.slice(i, i + BATCH_SIZE));
+    }
+
+    const results: WeatherForecastDailyItem[] = [];
+    const fetchChunk = async (chunk: BatchCommuneInput[]): Promise<boolean> => {
+      try {
+        const lats = chunk.map((c) => c.latitude.toFixed(3));
+        const lons = chunk.map((c) => c.longitude.toFixed(3));
+
+        const data = await this.request<OpenMeteoResponse | OpenMeteoResponse[]>(
+          {
+            latitude: lats.join(','),
+            longitude: lons.join(','),
+            daily: DAILY_VARIABLES,
+            timezone: 'auto',
+            forecast_days: FORECAST_DAYS,
+          },
+          this.batchMaxRetries,
+        );
+
+        const responses = Array.isArray(data) ? data : [data];
+
+        responses.forEach((resp, idx) => {
+          const commune = chunk[idx];
+          const daily = resp.daily;
+          if (!commune || !daily || !daily.time) return;
+
+          const days = daily.time.map((day, di) => ({
+            day,
+            temperatureMinC: daily.temperature_2m_min?.[di] ?? null,
+            temperatureMaxC: daily.temperature_2m_max?.[di] ?? null,
+            relativeHumidityAvg: daily.relative_humidity_2m_mean?.[di] ?? null,
+            precipitationSumMm: daily.precipitation_sum?.[di] ?? null,
+            windSpeedMaxKmh: daily.wind_speed_10m_max?.[di] ?? null,
+            windGustsMaxKmh: daily.wind_gusts_10m_max?.[di] ?? null,
+            windDirectionDeg: daily.wind_direction_10m_dominant?.[di] ?? null,
+            pressureAvgHpa: daily.surface_pressure_mean?.[di] ?? null,
+            weatherCode:
+              daily.weather_code?.[di] !== null && daily.weather_code?.[di] !== undefined
+                ? String(daily.weather_code[di])
+                : null,
+          }));
+
+          results.push({
+            communeId: commune.id,
+            latitude: commune.latitude,
+            longitude: commune.longitude,
+            days,
+          });
+        });
+        logger.debug(
+          { chunk: chunk.length, communes: responses.length },
+          'Lot du batch prévisions quotidiennes Open-Meteo obtenu',
+        );
+        return true;
+      } catch (err) {
+        logger.warn({ err, chunk: chunk.length }, "Échec d'un lot du batch prévisions Open-Meteo");
+        return false;
+      }
+    };
+
+    let pending = chunks;
+    for (let pass = 0; pass < 2 && pending.length > 0; pass += 1) {
+      if (pass > 0) await sleep(3000);
+      const failedChunks: typeof chunks = [];
+      await runPool(
+        pending,
+        async (chunk) => {
+          const ok = await fetchChunk(chunk);
+          if (!ok) failedChunks.push(chunk);
+        },
+        1,
+      );
+      pending = failedChunks;
+    }
+
+    logger.info(
+      { communes: communes.length, results: results.length, pending: pending.length },
+      'Batch prévisions quotidiennes Open-Meteo mis en cache',
+    );
+    return results;
   }
 
   async getForecast(latitude: number, longitude: number): Promise<WeatherForecast> {
@@ -336,10 +528,7 @@ export class OpenMeteoProvider implements WeatherProvider {
         );
         return true;
       } catch (err) {
-        logger.warn(
-          { err, chunk: chunk.length },
-          "Échec d'un lot du batch forecast Open-Meteo",
-        );
+        logger.warn({ err, chunk: chunk.length }, "Échec d'un lot du batch forecast Open-Meteo");
         return false;
       }
     };
@@ -406,12 +595,11 @@ export class OpenMeteoProvider implements WeatherProvider {
           precipitationMm: hourly.precipitation[timeIdx],
           rainfall24hMm: null,
           windSpeedKmh: hourly.wind_speed_10m[timeIdx],
+          windGustsKmh: hourly.wind_gusts_10m?.[timeIdx] ?? null,
           windDirectionDeg: hourly.wind_direction_10m[timeIdx],
           pressureHpa: hourly.surface_pressure[timeIdx],
           weatherCode:
-            hourly.weather_code[timeIdx] !== null
-              ? String(hourly.weather_code[timeIdx])
-              : null,
+            hourly.weather_code[timeIdx] !== null ? String(hourly.weather_code[timeIdx]) : null,
         },
       ];
     }
@@ -441,10 +629,13 @@ export class OpenMeteoProvider implements WeatherProvider {
 
     const dailyRainIdx = resp.daily?.time?.indexOf(date) ?? -1;
     const dailyRain =
-      dailyRainIdx >= 0 ? resp.daily?.precipitation_sum?.[dailyRainIdx] ?? null : null;
+      dailyRainIdx >= 0 ? (resp.daily?.precipitation_sum?.[dailyRainIdx] ?? null) : null;
 
-    const maxWindIdx =
-      winds.length > 0 ? dayIndices[winds.indexOf(Math.max(...winds))] : -1;
+    const maxWindIdx = winds.length > 0 ? dayIndices[winds.indexOf(Math.max(...winds))] : -1;
+
+    const gusts = dayIndices
+      .map((i) => hourly.wind_gusts_10m?.[i])
+      .filter((v): v is number => v !== null && v !== undefined);
 
     return [
       {
@@ -458,6 +649,7 @@ export class OpenMeteoProvider implements WeatherProvider {
         precipitationMm: dailyRain,
         rainfall24hMm: dailyRain,
         windSpeedKmh: winds.length > 0 ? Math.max(...winds) : null,
+        windGustsKmh: gusts.length > 0 ? Math.max(...gusts) : null,
         windDirectionDeg: maxWindIdx >= 0 ? hourly.wind_direction_10m[maxWindIdx] : null,
         pressureHpa:
           pressures.length > 0

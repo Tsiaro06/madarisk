@@ -57,8 +57,27 @@ export interface WeatherInsertData {
   precipitationMm: number | null;
   rainfall24hMm: number | null;
   windSpeedKmh: number | null;
+  windGustsKmh: number | null;
   windDirectionDeg: number | null;
   pressureHpa: number | null;
+  weatherCode: string | null;
+  rawData: unknown;
+}
+
+export interface WeatherForecastInsertData {
+  communeId: string;
+  forecastDay: string;
+  generatedAt: string;
+  latitude: number;
+  longitude: number;
+  temperatureMinC: number | null;
+  temperatureMaxC: number | null;
+  relativeHumidityAvg: number | null;
+  precipitationSumMm: number | null;
+  windSpeedMaxKmh: number | null;
+  windGustsMaxKmh: number | null;
+  windDirectionDeg: number | null;
+  pressureAvgHpa: number | null;
   weatherCode: string | null;
   rawData: unknown;
 }
@@ -87,6 +106,7 @@ interface ObservationRow {
   precipitation_mm: string | null;
   rainfall_24h_mm: string | null;
   wind_speed_kmh: string | null;
+  wind_gusts_kmh: string | null;
   wind_direction_deg: string | null;
   pressure_hpa: string | null;
   weather_code: string | null;
@@ -106,6 +126,7 @@ function mapObservation(row: ObservationRow): WeatherObservation {
     precipitationMm: row.precipitation_mm !== null ? parseFloat(row.precipitation_mm) : null,
     rainfall24hMm: row.rainfall_24h_mm !== null ? parseFloat(row.rainfall_24h_mm) : null,
     windSpeedKmh: row.wind_speed_kmh !== null ? parseFloat(row.wind_speed_kmh) : null,
+    windGustsKmh: row.wind_gusts_kmh !== null ? parseFloat(row.wind_gusts_kmh) : null,
     windDirectionDeg: row.wind_direction_deg !== null ? parseFloat(row.wind_direction_deg) : null,
     pressureHpa: row.pressure_hpa !== null ? parseFloat(row.pressure_hpa) : null,
     weatherCode: row.weather_code,
@@ -125,6 +146,7 @@ const OBSERVATION_COLUMNS = `
   w.precipitation_mm,
   w.rainfall_24h_mm,
   w.wind_speed_kmh,
+  w.wind_gusts_kmh,
   w.wind_direction_deg,
   w.pressure_hpa,
   w.weather_code,
@@ -248,6 +270,7 @@ export const weatherRepository = {
       placeholders.push(
         `($${n}, $${n + 1}, $${n + 2}, $${n + 3}, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7}` +
           `, $${n + 8}, $${n + 9}, $${n + 10}, $${n + 11}, $${n + 12}, $${n + 13}, $${n + 14}` +
+          `, $${n + 15}, $${n + 16}` +
           `, ST_SetSRID(ST_MakePoint($${n + 5}::numeric, $${n + 4}::numeric), 4326))`,
       );
       values.push(
@@ -262,23 +285,108 @@ export const weatherRepository = {
         r.temperatureC,
         r.humidityPercent,
         r.windSpeedKmh,
+        r.windGustsKmh,
         r.windDirectionDeg,
         r.pressureHpa,
         r.weatherCode,
+        'OBSERVE',
         JSON.stringify(r.rawData),
       );
-      idx += 15;
+      idx += 17;
     }
 
     const result = await db.query(
       `INSERT INTO weather_observations
          (weather_source_id, commune_id, event_id, observed_at, latitude, longitude,
           precipitation_mm, rainfall_24h_mm, temperature_c, humidity_percent,
-          wind_speed_kmh, wind_direction_deg, pressure_hpa, weather_code, raw_data, geom)
-       VALUES ${placeholders.join(', ')}`,
+          wind_speed_kmh, wind_gusts_kmh, wind_direction_deg, pressure_hpa, weather_code,
+          data_kind, raw_data, geom)
+       VALUES ${placeholders.join(', ')}
+       ON CONFLICT DO NOTHING`,
       values,
     );
     return result.rowCount ?? 0;
+  },
+
+  async existingObservationKeys(
+    sourceId: string,
+    keys: { communeId: string; observedAt: string }[],
+  ): Promise<Set<string>> {
+    if (keys.length === 0) return new Set();
+    const result = await db.query<{ commune_id: string; observed_at: string }>(
+      `SELECT w.commune_id, to_char(w.observed_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS') AS observed_at
+       FROM weather_observations w
+       WHERE w.weather_source_id = $1
+         AND w.commune_id = ANY($2::uuid[])
+         AND w.observed_at = ANY($3::timestamptz[])`,
+      [sourceId, keys.map((k) => k.communeId), keys.map((k) => k.observedAt)],
+    );
+    return new Set(result.rows.map((r) => `${r.commune_id}|${r.observed_at}`));
+  },
+
+  async insertForecasts(rows: WeatherForecastInsertData[], sourceId: string): Promise<number> {
+    if (rows.length === 0) return 0;
+
+    const placeholders: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+
+    for (const r of rows) {
+      const n = idx;
+      placeholders.push(
+        `($${n}, $${n + 1}, $${n + 2}, $${n + 3}, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7}` +
+          `, $${n + 8}, $${n + 9}, $${n + 10}, $${n + 11}, $${n + 12}, $${n + 13}, $${n + 14}` +
+          `, $${n + 15}, $${n + 16})`,
+      );
+      values.push(
+        sourceId,
+        r.communeId,
+        r.forecastDay,
+        r.generatedAt,
+        r.latitude,
+        r.longitude,
+        r.temperatureMinC,
+        r.temperatureMaxC,
+        r.relativeHumidityAvg,
+        r.precipitationSumMm,
+        r.windSpeedMaxKmh,
+        r.windGustsMaxKmh,
+        r.windDirectionDeg,
+        r.pressureAvgHpa,
+        r.weatherCode,
+        'PREVU',
+        JSON.stringify(r.rawData),
+      );
+      idx += 17;
+    }
+
+    const result = await db.query(
+      `INSERT INTO weather_forecasts
+         (weather_source_id, commune_id, forecast_day, generated_at, latitude, longitude,
+          temperature_min_c, temperature_max_c, relative_humidity_avg, precipitation_sum_mm,
+          wind_speed_max_kmh, wind_gusts_max_kmh, wind_direction_deg, pressure_avg_hpa,
+          weather_code, data_kind, raw_data)
+       VALUES ${placeholders.join(', ')}
+       ON CONFLICT DO NOTHING`,
+      values,
+    );
+    return result.rowCount ?? 0;
+  },
+
+  async existingForecastKeys(
+    sourceId: string,
+    keys: { communeId: string; forecastDay: string }[],
+  ): Promise<Set<string>> {
+    if (keys.length === 0) return new Set();
+    const result = await db.query<{ commune_id: string; forecast_day: string }>(
+      `SELECT f.commune_id, f.forecast_day::text
+       FROM weather_forecasts f
+       WHERE f.weather_source_id = $1
+         AND f.commune_id = ANY($2::uuid[])
+         AND f.forecast_day = ANY($3::date[])`,
+      [sourceId, keys.map((k) => k.communeId), keys.map((k) => k.forecastDay)],
+    );
+    return new Set(result.rows.map((r) => `${r.commune_id}|${r.forecast_day}`));
   },
 
   async findLatest(communeId: string): Promise<WeatherObservation | null> {
@@ -298,6 +406,82 @@ export const weatherRepository = {
       `SELECT MAX(observed_at)::text AS max FROM weather_observations`,
     );
     return result.rows[0]?.max ?? null;
+  },
+
+  async weatherSources(): Promise<
+    {
+      name: string;
+      providerType: string;
+      baseUrl: string | null;
+      isActive: boolean;
+      refreshIntervalMinutes: number;
+    }[]
+  > {
+    const result = await db.query<{
+      name: string;
+      provider_type: string;
+      base_url: string | null;
+      is_active: boolean;
+      refresh_interval_minutes: string;
+    }>(
+      `SELECT name, provider_type, base_url, is_active, refresh_interval_minutes
+       FROM weather_sources
+       ORDER BY name`,
+    );
+    return result.rows.map((r) => ({
+      name: r.name,
+      providerType: r.provider_type,
+      baseUrl: r.base_url,
+      isActive: r.is_active,
+      refreshIntervalMinutes: parseInt(r.refresh_interval_minutes, 10),
+    }));
+  },
+
+  async latestObservationAtForSource(sourceId: string): Promise<string | null> {
+    const result = await db.query<{ max: string | null }>(
+      `SELECT MAX(w.observed_at)::text AS max
+       FROM weather_observations w
+       WHERE w.weather_source_id = $1`,
+      [sourceId],
+    );
+    return result.rows[0]?.max ?? null;
+  },
+
+  async observationCommuneCoverage(sourceId: string): Promise<number> {
+    const result = await db.query<CountRow>(
+      `SELECT COUNT(DISTINCT w.commune_id)::text AS count
+       FROM weather_observations w
+       WHERE w.weather_source_id = $1
+         AND w.commune_id IS NOT NULL
+         AND w.observed_at >= now() - interval '26 hours'`,
+      [sourceId],
+    );
+    return parseCount(result.rows[0]);
+  },
+
+  async forecastDataInfo(sourceId: string): Promise<{
+    lastGeneratedAt: string | null;
+    maxForecastDay: string | null;
+    communesData: number;
+  }> {
+    const result = await db.query<{
+      last_generated_at: string | null;
+      max_day: string | null;
+      communes: string;
+    }>(
+      `SELECT MAX(f.generated_at)::text AS last_generated_at,
+              MAX(f.forecast_day)::text AS max_day,
+              COUNT(DISTINCT f.commune_id)::text AS communes
+       FROM weather_forecasts f
+       WHERE f.weather_source_id = $1`,
+      [sourceId],
+    );
+    const row = result.rows[0];
+    return {
+      lastGeneratedAt: row.last_generated_at ?? null,
+      maxForecastDay: row.max_day ?? null,
+      communesData: parseInt(row.communes ?? '0', 10),
+    };
   },
 
   async history(

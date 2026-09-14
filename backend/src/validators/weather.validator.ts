@@ -69,3 +69,10 @@ export type RefreshWeatherInput = z.infer<typeof refreshWeatherSchema>;
 export type WeatherHistoryQuery = z.infer<typeof weatherHistoryQuerySchema>;
 export type WeatherMapQuery = z.infer<typeof weatherMapQuerySchema>;
 export type WeatherMetric = z.infer<typeof weatherMetricSchema>;
+export type WeatherSyncTriggerInput = z.infer<typeof weatherSyncTriggerSchema>;
+
+export const weatherSyncTriggerSchema = z.object({
+  scope: z
+    .enum(['OBSERVATIONS', 'FORECASTS', 'OBSERVATIONS_AND_FORECASTS'])
+    .default('OBSERVATIONS_AND_FORECASTS'),
+});

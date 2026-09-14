@@ -84,10 +84,11 @@ Requêtes SQL paramétrées sur PostgreSQL / PostGIS (agrégeats typés `Pg`), u
 ## Tâches planifiées (cron)
 
 Optionnellement, le serveur planifie des tâches récurrentes pilotées par `ENABLE_SCHEDULED_JOBS` (désactivées par défaut) :
-- `WEATHER_REFRESH_CRON` (par défaut `0 * * * *`) : rafraîchit les observations météo.
+- `WEATHER_OBSERVATION_CRON` (par défaut `0 * * * *`, 60 min) : synchronise les observations météo (lot Open-Meteo, batch ≤ 400 communes).
+- `WEATHER_FORECAST_CRON` (par défaut `0 */3 * * *`, 3 h) : synchronise les prévisions quotidiennes persistées.
 - `RISK_RECALCULATION_CRON` (par défaut `10 * * * *`) : recalculation des risques.
 
-Chaque exécution est loggée via Pino et les échecs sont repris à l'itération suivante.
+Chaque exécution est journalisée dans `weather_sync_runs` (statut RUNNING/SUCCESS/PARTIAL/FAILED), les erreurs fournisseur dans `provider_errors`, et une exécution déjà en cours empêche tout chevauchement (coordination en mémoire + déduplication par clé `(commune, source, timestamp/jour)`).
 
 ## Décisions clés
 

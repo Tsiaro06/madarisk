@@ -1,11 +1,13 @@
 import { Request, Response } from 'express';
 import { weatherService } from '../services/weather.service';
+import { weatherSyncService } from '../services/weather-sync.service';
 import { successResponse, paginate } from '../utils/api-response';
 import { AppError } from '../utils/app-error';
 import {
   RefreshWeatherInput,
   WeatherHistoryQuery,
   WeatherMapQuery,
+  WeatherSyncTriggerInput,
 } from '../validators/weather.validator';
 
 interface CommuneIdParams {
@@ -53,5 +55,21 @@ export const weatherController = {
     if (!req.user) throw AppError.unauthorized();
     const result = await weatherService.ingestDgmMaproom(req.user, req);
     res.status(200).json(successResponse(result, 'Ingestion DGM (maproom) terminée'));
+  },
+
+  syncRun: async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) throw AppError.unauthorized();
+    const body = req.validatedBody as WeatherSyncTriggerInput;
+    const result = await weatherSyncService.trigger(
+      { scope: body.scope },
+      { id: req.user.id, role: req.user.role },
+      { ip: req.ip },
+    );
+    res.status(200).json(successResponse(result, 'Synchronisation météo déclenchée'));
+  },
+
+  monitoring: async (_req: Request, res: Response): Promise<void> => {
+    const info = await weatherSyncService.monitoring();
+    res.status(200).json(successResponse(info, 'État de la synchronisation météo'));
   },
 };

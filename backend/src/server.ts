@@ -2,7 +2,7 @@ import app from './app';
 import { env } from './config/env';
 import { logger } from './config/logger';
 import { db } from './config/database';
-import { startWeatherRefreshJob } from './jobs/weather-refresh.job';
+import { startWeatherSyncJobs } from './jobs/weather-refresh.job';
 import { startRiskRecalculationJob } from './jobs/risk-recalculation.job';
 import { startDgmMaproomIngestJob } from './jobs/dgm-maproom-ingest.job';
 
@@ -14,7 +14,7 @@ async function main(): Promise<void> {
     logger.info('Connexion PostgreSQL établie.');
   }
 
-  startWeatherRefreshJob();
+  startWeatherSyncJobs();
   startRiskRecalculationJob();
   startDgmMaproomIngestJob();
 

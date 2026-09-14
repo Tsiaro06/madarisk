@@ -4,6 +4,7 @@ import { usersRepository } from '../repositories/users.repository';
 import { weatherRepository } from '../repositories/weather.repository';
 import { openMeteoProvider } from './openmeteo.provider';
 import { dgmMaproomProvider } from './weather-maproom.provider';
+import { getWeatherProvider, setWeatherProvider } from './weather-provider';
 import {
   WeatherCurrent,
   WeatherDgmIngestResult,
@@ -31,8 +32,6 @@ const MAX_HISTORY_PERIOD_DAYS = 90;
 const REFRESH_CONCURRENCY = 10;
 const REFRESH_REQUEST_DELAY_MS = 150;
 
-let activeProvider: WeatherProvider = openMeteoProvider;
-
 function assertAdmin(actor: { role: UserRole }): void {
   if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
     throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent administrer les données météo');
@@ -57,7 +56,7 @@ async function runPool<T>(
 
 export const weatherService = {
   setProvider(provider: WeatherProvider): void {
-    activeProvider = provider;
+    setWeatherProvider(provider);
   },
 
   async refresh(
@@ -96,7 +95,7 @@ export const weatherService = {
       targets,
       async (target) => {
         try {
-          const weather = await activeProvider.getCurrent(target.latitude, target.longitude);
+          const weather = await getWeatherProvider().getCurrent(target.latitude, target.longitude);
           rows.push({
             communeId: target.id,
             eventId: input.eventId ?? null,
@@ -108,6 +107,7 @@ export const weatherService = {
             precipitationMm: weather.precipitationMm,
             rainfall24hMm: weather.rainfall24hMm,
             windSpeedKmh: weather.windSpeedKmh,
+            windGustsKmh: weather.windGustsKmh ?? null,
             windDirectionDeg: weather.windDirectionDeg,
             pressureHpa: weather.pressureHpa,
             weatherCode: weather.weatherCode,
@@ -175,7 +175,7 @@ export const weatherService = {
     if (!coordinates) {
       throw AppError.notFound('Commune introuvable');
     }
-    return activeProvider.getForecast(coordinates.latitude, coordinates.longitude);
+    return getWeatherProvider().getForecast(coordinates.latitude, coordinates.longitude);
   },
 
   async history(

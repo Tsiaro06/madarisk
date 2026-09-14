@@ -57,6 +57,10 @@ const envSchema = z.object({
     .transform((v) => v === 'true')
     .default('false'),
   WEATHER_REFRESH_CRON: z.string().default('0 */4 * * *'),
+  WEATHER_OBSERVATION_CRON: z.string().default(process.env.WEATHER_REFRESH_CRON ?? '0 * * * *'),
+  WEATHER_FORECAST_CRON: z.string().default('0 */3 * * *'),
+  WEATHER_OBSERVATION_STALE_MINUTES: z.coerce.number().default(150),
+  WEATHER_FORECAST_STALE_HOURS: z.coerce.number().default(6),
   RISK_RECALCULATION_CRON: z.string().default('10 * * * *'),
 
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),

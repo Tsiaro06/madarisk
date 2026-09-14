@@ -235,6 +235,7 @@ export class DgmMaproomProvider {
         precipitationMm: Number(value.toFixed(2)),
         rainfall24hMm: null,
         windSpeedKmh: null,
+        windGustsKmh: null,
         windDirectionDeg: null,
         pressureHpa: null,
         weatherCode: null,

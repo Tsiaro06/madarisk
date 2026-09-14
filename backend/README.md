@@ -178,7 +178,10 @@ Le fichier `.env.example` liste toutes les variables. Les plus importantes :
 | `UPLOAD_DIR` / `MAX_FILE_SIZE_MB` | `uploads` / `50` | Dossier racine des uploads et taille max |
 | `IMPORTS_DIR` / `REPORTS_DIR` | `uploads/imports` / `uploads/reports` | Sous-répertoires des fichiers SIG et rapports |
 | `ENABLE_SCHEDULED_JOBS` | `false` | Activer les tâches planifiées |
-| `WEATHER_REFRESH_CRON` / `RISK_RECALCULATION_CRON` | `0 * * * *` / `10 * * * *` | Plannings crontab (météo, risques) |
+| `WEATHER_OBSERVATION_CRON` / `WEATHER_FORECAST_CRON` | `0 * * * *` / `0 */3 * * *` | Synchronisations météo : observations (60 min) et prévisions (3 h) |
+| `WEATHER_REFRESH_CRON` | `0 */4 * * *` | Rétrocompatibilité (défaut de `WEATHER_OBSERVATION_CRON` si non défini) |
+| `WEATHER_OBSERVATION_STALE_MINUTES` / `WEATHER_FORECAST_STALE_HOURS` | `150` / `6` | Seuils de fraîcheur exposés par `/weather/monitoring` |
+| `RISK_RECALCULATION_CRON` | `10 * * * *` | Planning crontab (risques) |
 | `OPEN_METEO_BASE_URL` / `OPEN_METEO_TIMEOUT_MS` | `https://api.open-meteo.com` / `10000` | API et timeout météo |
 | `LOG_LEVEL` | `info` | Niveau des logs Pino |
 

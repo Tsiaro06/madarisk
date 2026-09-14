@@ -9,11 +9,21 @@ import {
   communeIdParamsSchema,
   weatherHistoryQuerySchema,
   weatherMapQuerySchema,
+  weatherSyncTriggerSchema,
 } from '../validators/weather.validator';
 
 const router = Router();
 
 router.use(authenticate);
+
+router.get('/monitoring', asyncHandler(weatherController.monitoring));
+
+router.post(
+  '/sync/run',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  validate({ body: weatherSyncTriggerSchema }),
+  asyncHandler(weatherController.syncRun),
+);
 
 router.get(
   '/map-layer',

@@ -44,6 +44,8 @@ tags:
     description: Moteur de calcul des risques par commune (Phase 8)
   - name: Configurations
     description: Paramétrage des poids et seuils du moteur de risque
+  - name: Détection automatique
+    description: Règles de détection automatique des aléas météo (SUPER_ADMIN)
   - name: Alertes
     description: Alertes publiques et communications de crise (Phase 9)
   - name: Tableau de bord
@@ -1889,6 +1891,78 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /weather/monitoring:
+    get:
+      tags: [Météo]
+      summary: État de la synchronisation météo (source, statut, fraîcheur)
+      description: >
+        Lisible par tout utilisateur authentifié (aucun secret exposé). Renvoie la source
+        météo réellement configurée, la dernière exécution de synchronisation par type
+        (observations / prévisions), son statut, une éventuelle erreur et la fraîcheur
+        des données (FRESH / STALE / NEVER).
+      security:
+        - bearerAuth: []
+      operationId: weatherMonitoring
+      responses:
+        '200':
+          description: État de la synchronisation
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/WeatherMonitoring' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /weather/sync/run:
+    post:
+      tags: [Météo]
+      summary: Déclencher manuellement la synchronisation météo (ADMIN / SUPER_ADMIN)
+      description: >
+        Lance la synchronisation des observations et/ou prévisions via le fournisseur
+        configuré (requêtes par lots, jamais une requête par commune). Une exécution déjà
+        en cours pour le même périmètre n'est pas redémarrée : la réponse renvoie alors un
+        run rejoint (status RUNNING). Chaque exécution est journalisée dans
+        weather_sync_runs et les erreurs fournisseur dans provider_errors.
+      security:
+        - bearerAuth: []
+      operationId: runWeatherSync
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scope:
+                  type: string
+                  enum: [OBSERVATIONS, FORECASTS, OBSERVATIONS_AND_FORECASTS]
+                  default: OBSERVATIONS_AND_FORECASTS
+      responses:
+        '200':
+          description: Statut du déclenchement
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/WeatherSyncTriggerResult' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /weather/ingest/dgm-maproom:
     post:
       tags: [Météo]
@@ -2268,6 +2342,78 @@ paths:
           $ref: '#/components/responses/NotFound'
         '422':
           $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /detection-rules:
+    get:
+      tags: [Détection automatique]
+      summary: Liste des règles de détection actives (SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: listDetectionRules
+      parameters:
+        - name: isActive
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: Filtre par statut actif/inactif (défaut actives uniquement)
+        - name: hazardType
+          in: query
+          required: false
+          schema: { $ref: '#/components/schemas/HazardType' }
+          description: Filtrer par type d'aléa
+        - name: metric
+          in: query
+          required: false
+          schema: { type: string, maxLength: 60 }
+          description: Filtrer par métrique
+      responses:
+        '200':
+          description: Règles de détection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/HazardDetectionRule' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /detection-rules/{id}:
+    get:
+      tags: [Détection automatique]
+      summary: Détail d'une règle de détection (SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: getDetectionRule
+      parameters:
+        - { $ref: '#/components/parameters/DetectionRuleId' }
+      responses:
+        '200':
+          description: Règle de détection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/HazardDetectionRule' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -3007,6 +3153,11 @@ components:
       in: path
       required: true
       schema: { type: string, format: uuid }
+    DetectionRuleId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
   responses:
     BadRequest:
       description: Requête invalide
@@ -3211,7 +3362,10 @@ components:
       enum: [SUPER_ADMIN, ADMIN, ANALYSTE_SIG, CLIENT]
     HazardType:
       type: string
-      enum: [CYCLONE, INONDATION, SECHERESSE, FORTE_PLUIE, VENT_VIOLENT, GLISSEMENT_TERRAIN, FEU_VEGETATION, AUTRE]
+      enum: [CYCLONE, INONDATION, SECHERESSE, FORTE_PLUIE, VENT_VIOLENT, GLISSEMENT_TERRAIN, FEU_VEGETATION, VAGUE_DE_CHALEUR, AUTRE]
+    DetectionOperator:
+      type: string
+      enum: [GT, GE, LT, LE, EQ, BETWEEN]
     EventStatus:
       type: string
       enum: [BROUILLON, PREVISION, ACTIF, SUIVI, CLOTURE]
@@ -3535,10 +3689,77 @@ components:
         precipitationMm: { type: number }
         humidityPct: { type: number }
         windSpeedKmh: { type: number }
+        windGustsKmh: { type: [number, 'null'] }
         windDirectionDeg: { type: integer }
         pressureHpa: { type: number }
+        weatherCode: { type: [string, 'null'] }
+        dataKind: { type: string, default: OBSERVE }
         source: { type: string }
         createdAt: { type: string, format: date-time }
+    WeatherSyncRunInfo:
+      type: object
+      description: Exécution d'une synchronisation météo
+      properties:
+        runId: { type: string, format: uuid }
+        startedAt: { type: [string, 'null'], format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+        status: { type: [string, 'null'], enum: [RUNNING, SUCCESS, FAILED, PARTIAL] }
+        scope: { type: string }
+        source: { type: string }
+        recordsProcessed: { type: integer }
+        communesProcessed: { type: integer }
+        errorsCount: { type: integer }
+        errorMessage: { type: [string, 'null'] }
+    WeatherSyncTriggerResult:
+      type: object
+      description: Résultat d'un déclenchement de synchronisation
+      properties:
+        status: { type: string, enum: [RUNNING, SUCCESS, FAILED, PARTIAL] }
+        started: { type: boolean }
+        joinedExisting: { type: boolean, description: true si une exécution identique était déjà en cours }
+        runs:
+          type: array
+          items:
+            type: object
+            properties:
+              scope: { type: string, enum: [OBSERVATIONS, FORECASTS] }
+              runId: { type: string, format: uuid }
+              status: { type: string, enum: [RUNNING, SUCCESS, FAILED, PARTIAL] }
+    WeatherMonitoring:
+      type: object
+      description: État global de la synchronisation météo pour la source configurée
+      properties:
+        generatedAt: { type: string, format: date-time }
+        sources:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              providerType: { type: string }
+              baseUrl: { type: [string, 'null'] }
+              isActive: { type: boolean }
+              refreshIntervalMinutes: { type: integer }
+              keyConfigured: { type: boolean }
+        sync:
+          type: object
+          properties:
+            observations:
+              $ref: '#/components/schemas/WeatherSyncStatusSnapshot'
+            forecasts:
+              $ref: '#/components/schemas/WeatherSyncStatusSnapshot'
+    WeatherSyncStatusSnapshot:
+      type: object
+      description: Statut et fraîcheur d'un type de synchronisation
+      properties:
+        lastRun: { $ref: '#/components/schemas/WeatherSyncRunInfo' }
+        lastSuccessAt: { type: [string, 'null'], format: date-time }
+        lastDataAt: { type: [string, 'null'], format: date-time }
+        lagMinutes: { type: [integer, 'null'] }
+        lagHours: { type: [integer, 'null'] }
+        status: { type: string, enum: [FRESH, STALE, NEVER] }
+        communesData: { type: integer }
+        maxForecastDay: { type: [string, 'null'], format: date }
     WeatherForecast:
       type: object
       description: Prévisions quotidiennes sur 7 jours
@@ -3627,6 +3848,54 @@ components:
         highThreshold: { type: number, minimum: 0, maximum: 100 }
         extremeThreshold: { type: number, minimum: 0, maximum: 100 }
         isActive: { type: boolean }
+    HazardDetectionRule:
+      type: object
+      description: Règle de détection automatique d'un aléa météo
+      properties:
+        id: { type: string, format: uuid }
+        hazardType: { $ref: '#/components/schemas/HazardType' }
+        metric:
+          type: string
+          description: Métrique évaluée (ex. wind_speed_10m, precipitation, temperature_2m)
+        operator:
+          type: string
+          description: Opérateur de comparaison
+          enum: [GT, GE, LT, LE, EQ, BETWEEN]
+        threshold:
+          type: number
+          description: Valeur du seuil pour l'opérateur
+        thresholdMax:
+          type: number
+          nullable: true
+          description: Borne haute (opérateur BETWEEN)
+        durationMinutes:
+          type: integer
+          default: 0
+          minimum: 0
+        aggregationWindowMinutes:
+          type: integer
+          default: 0
+          minimum: 0
+        forecastHorizonHours:
+          type: integer
+          default: 0
+          minimum: 0
+          description: 0 = observation seule, >0 = prévision
+        severityRules:
+          type: array
+          description: Règles de sévérité (seuils de score vers un niveau FAIBLE/MODEREE/ELEVEE/EXTREME)
+          items:
+            type: object
+            properties:
+              level: { $ref: '#/components/schemas/SeverityLevel' }
+              min: { type: number, minimum: 0, maximum: 100 }
+        isActive: { type: boolean }
+        regionId: { type: string, format: uuid, nullable: true }
+        districtId: { type: string, format: uuid, nullable: true }
+        communeId: { type: string, format: uuid, nullable: true }
+        createdBy: { type: string, format: uuid, nullable: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     Alert:
       type: object
       description: Alerte (brouillon, publiée, archivée ou expirée)
