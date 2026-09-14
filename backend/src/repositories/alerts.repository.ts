@@ -1,5 +1,12 @@
 import { db } from '../config/database';
-import { Alert, AlertListRow, AlertStatus, AlertType } from '../types/alert.types';
+import {
+  Alert,
+  AlertBasis,
+  AlertListRow,
+  AlertStatus,
+  AlertType,
+  AlertUpdateEntry,
+} from '../types/alert.types';
 import { SeverityLevel } from '../types/event.types';
 import { PaginatedResult } from '../types/territory.types';
 
@@ -16,11 +23,17 @@ interface AlertRow {
   event_id: string | null;
   district_id: string | null;
   commune_id: string | null;
+  region_id: string | null;
   type: string;
   severity: string;
   status: string;
   title: string;
   message: string;
+  source: string | null;
+  basis: string | null;
+  valid_from: string | null;
+  is_automatic: boolean;
+  update_count: number;
   created_by: string | null;
   published_at: string | null;
   expires_at: string | null;
@@ -32,6 +45,26 @@ interface AlertListRaw extends AlertRow {
   event_name: string | null;
   district_name: string | null;
   commune_name: string | null;
+  region_name: string | null;
+}
+
+interface UpdateEntryRow {
+  id: string;
+  alert_id: string;
+  kind: string;
+  from_status: string | null;
+  to_status: string | null;
+  trigger: string;
+  auto_publish: boolean;
+  old_title: string | null;
+  new_title: string | null;
+  old_message: string | null;
+  new_message: string | null;
+  old_severity: string | null;
+  new_severity: string | null;
+  old_basis: string | null;
+  new_basis: string | null;
+  recorded_at: string;
 }
 
 function mapAlert(row: AlertRow): Alert {
@@ -40,11 +73,17 @@ function mapAlert(row: AlertRow): Alert {
     eventId: row.event_id,
     districtId: row.district_id,
     communeId: row.commune_id,
+    regionId: row.region_id,
     type: row.type as AlertType,
     severity: row.severity as SeverityLevel,
     status: row.status as AlertStatus,
     title: row.title,
     message: row.message,
+    source: row.source,
+    basis: row.basis as AlertBasis | null,
+    validFrom: row.valid_from,
+    isAutomatic: row.is_automatic,
+    updateCount: row.update_count,
     createdBy: row.created_by,
     publishedAt: row.published_at,
     expiresAt: row.expires_at,
@@ -59,23 +98,50 @@ function mapAlertList(row: AlertListRaw): AlertListRow {
     eventName: row.event_name,
     districtName: row.district_name,
     communeName: row.commune_name,
+    regionName: row.region_name,
+  };
+}
+
+function mapUpdateEntry(row: UpdateEntryRow): AlertUpdateEntry {
+  return {
+    id: row.id,
+    alertId: row.alert_id,
+    kind: row.kind as AlertUpdateEntry['kind'],
+    fromStatus: row.from_status as AlertStatus | null,
+    toStatus: row.to_status as AlertStatus | null,
+    trigger: row.trigger as AlertUpdateEntry['trigger'],
+    autoPublish: row.auto_publish,
+    oldTitle: row.old_title,
+    newTitle: row.new_title,
+    oldMessage: row.old_message,
+    newMessage: row.new_message,
+    oldSeverity: row.old_severity as SeverityLevel | null,
+    newSeverity: row.new_severity as SeverityLevel | null,
+    oldBasis: row.old_basis as AlertBasis | null,
+    newBasis: row.new_basis as AlertBasis | null,
+    recordedAt: row.recorded_at,
   };
 }
 
 const ALERT_COLUMNS = `
-  a.id, a.event_id, a.district_id, a.commune_id, a.type, a.severity, a.status,
-  a.title, a.message, a.created_by, a.published_at, a.expires_at, a.created_at, a.updated_at
+  a.id, a.event_id, a.district_id, a.commune_id, a.region_id, a.type, a.severity,
+  a.status, a.title, a.message, a.source, a.basis, a.valid_from,
+  a.is_automatic, a.update_count,
+  a.created_by, a.published_at, a.expires_at, a.created_at, a.updated_at
 `;
 
 const ALERT_COLUMNS_RETURNING = `
-  id, event_id, district_id, commune_id, type, severity, status,
-  title, message, created_by, published_at, expires_at, created_at, updated_at
+  id, event_id, district_id, commune_id, region_id, type, severity,
+  status, title, message, source, basis, valid_from,
+  is_automatic, update_count,
+  created_by, published_at, expires_at, created_at, updated_at
 `;
 
 const LIST_JOINS = `
   LEFT JOIN hazard_events he ON he.id = a.event_id
   LEFT JOIN districts d ON d.id = a.district_id
   LEFT JOIN communes cm ON cm.id = a.commune_id
+  LEFT JOIN regions r ON r.id = a.region_id
 `;
 
 export interface AlertListQuery {
@@ -89,12 +155,15 @@ export interface AlertListQuery {
   communeId?: string;
   activeOnly: boolean;
   clientOnly: boolean;
+  automatic?: boolean;
+  basis?: AlertBasis;
 }
 
 export interface AlertUpdateData {
   eventId?: string | null;
   districtId?: string | null;
   communeId?: string | null;
+  regionId?: string | null;
   type?: AlertType;
   severity?: SeverityLevel;
   title?: string;
@@ -107,30 +176,44 @@ export const alertsRepository = {
     eventId?: string | null;
     districtId?: string | null;
     communeId?: string | null;
+    regionId?: string | null;
     type: AlertType;
     severity: SeverityLevel;
     status?: AlertStatus;
     title: string;
     message: string;
+    source?: string | null;
+    basis?: AlertBasis | null;
+    validFrom?: string | null;
+    isAutomatic?: boolean;
+    updateCount?: number;
     createdBy?: string | null;
     expiresAt?: string | null;
     publishedAt?: string | null;
   }): Promise<Alert> {
     const result = await db.query<AlertRow>(
       `INSERT INTO alerts
-         (event_id, district_id, commune_id, type, severity, status, title, message,
+         (event_id, district_id, commune_id, region_id, type, severity, status,
+          title, message, source, basis, valid_from,
+          is_automatic, update_count,
           created_by, expires_at, published_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
        RETURNING ${ALERT_COLUMNS_RETURNING}`,
       [
         data.eventId ?? null,
         data.districtId ?? null,
         data.communeId ?? null,
+        data.regionId ?? null,
         data.type,
         data.severity,
         data.status ?? 'BROUILLON',
         data.title,
         data.message,
+        data.source ?? null,
+        data.basis ?? null,
+        data.validFrom ?? null,
+        data.isAutomatic ?? false,
+        data.updateCount ?? 0,
         data.createdBy ?? null,
         data.expiresAt ?? null,
         data.publishedAt ?? null,
@@ -176,6 +259,14 @@ export const alertsRepository = {
         conditions.push(`a.status = 'PUBLIEE'`);
         conditions.push(`(a.expires_at IS NULL OR a.expires_at > now())`);
       }
+      if (query.automatic !== undefined) {
+        conditions.push(`a.is_automatic = $${idx++}`);
+        values.push(query.automatic);
+      }
+      if (query.basis) {
+        conditions.push(`a.basis = $${idx++}`);
+        values.push(query.basis);
+      }
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -194,7 +285,8 @@ export const alertsRepository = {
          ${ALERT_COLUMNS},
          COALESCE(he.name, NULL::text) AS "event_name",
          COALESCE(d.name, NULL::text) AS "district_name",
-         COALESCE(cm.name, NULL::text) AS "commune_name"
+         COALESCE(cm.name, NULL::text) AS "commune_name",
+         COALESCE(r.name, NULL::text) AS "region_name"
        FROM alerts a
        ${LIST_JOINS}
        ${where}
@@ -217,7 +309,8 @@ export const alertsRepository = {
          ${ALERT_COLUMNS},
          COALESCE(he.name, NULL::text) AS "event_name",
          COALESCE(d.name, NULL::text) AS "district_name",
-         COALESCE(cm.name, NULL::text) AS "commune_name"
+         COALESCE(cm.name, NULL::text) AS "commune_name",
+         COALESCE(r.name, NULL::text) AS "region_name"
        FROM alerts a
        ${LIST_JOINS}
        WHERE a.id = $1`,
@@ -235,6 +328,7 @@ export const alertsRepository = {
       ['event_id', 'eventId'],
       ['district_id', 'districtId'],
       ['commune_id', 'communeId'],
+      ['region_id', 'regionId'],
       ['type', 'type'],
       ['severity', 'severity'],
       ['title', 'title'],
@@ -252,10 +346,11 @@ export const alertsRepository = {
     if (sets.length === 0) {
       const current = await this.findById(id);
       if (!current) return null;
-      const { eventName, districtName, communeName, ...alert } = current;
+      const { eventName, districtName, communeName, regionName, ...alert } = current;
       void eventName;
       void districtName;
       void communeName;
+      void regionName;
       return alert;
     }
 
@@ -266,6 +361,47 @@ export const alertsRepository = {
        WHERE id = $${idx}
        RETURNING ${ALERT_COLUMNS_RETURNING}`,
       values,
+    );
+    return result.rows[0] ? mapAlert(result.rows[0]) : null;
+  },
+
+  async applyAutomaticUpdate(
+    id: string,
+    data: {
+      title: string;
+      message: string;
+      type: AlertType;
+      severity: SeverityLevel;
+      status: AlertStatus;
+      basis: AlertBasis;
+      source: string | null;
+      validFrom: string | null;
+      expiresAt: string | null;
+      publishedAt: string | null;
+    },
+  ): Promise<Alert | null> {
+    const result = await db.query<AlertRow>(
+      `UPDATE alerts
+       SET title = $2, message = $3, type = $4, severity = $5,
+           status = $6, basis = $7, source = $8,
+           valid_from = $9, expires_at = $10,
+           published_at = COALESCE($11, published_at),
+           update_count = update_count + 1, updated_at = now()
+       WHERE id = $1
+       RETURNING ${ALERT_COLUMNS_RETURNING}`,
+      [
+        id,
+        data.title,
+        data.message,
+        data.type,
+        data.severity,
+        data.status,
+        data.basis,
+        data.source,
+        data.validFrom,
+        data.expiresAt,
+        data.publishedAt,
+      ],
     );
     return result.rows[0] ? mapAlert(result.rows[0]) : null;
   },
@@ -306,6 +442,36 @@ export const alertsRepository = {
     return result.rows[0] ? mapAlert(result.rows[0]) : null;
   },
 
+  async findAutomaticForTarget(
+    eventId: string,
+    territory: { communeId?: string; districtId?: string; regionId?: string },
+  ): Promise<Alert | null> {
+    const isGlobal =
+      territory.communeId === undefined &&
+      territory.districtId === undefined &&
+      territory.regionId === undefined;
+
+    const result = await db.query<AlertRow>(
+      `SELECT ${ALERT_COLUMNS}
+       FROM alerts a
+       WHERE a.event_id = $1
+         AND a.is_automatic = true
+         AND a.status IN ('BROUILLON', 'PUBLIEE')
+         AND a.commune_id IS NOT DISTINCT FROM $2
+         AND a.district_id IS NOT DISTINCT FROM $3
+         AND a.region_id IS NOT DISTINCT FROM $4
+       ORDER BY a.created_at DESC
+       LIMIT 1`,
+      [
+        eventId,
+        isGlobal ? null : (territory.communeId ?? null),
+        isGlobal ? null : (territory.districtId ?? null),
+        isGlobal ? null : (territory.regionId ?? null),
+      ],
+    );
+    return result.rows[0] ? mapAlert(result.rows[0]) : null;
+  },
+
   async getCommuneName(communeId: string): Promise<string | null> {
     const result = await db.query<{ name: string }>(`SELECT name FROM communes WHERE id = $1`, [
       communeId,
@@ -319,5 +485,60 @@ export const alertsRepository = {
       [eventId],
     );
     return result.rows[0]?.name ?? null;
+  },
+
+  async addUpdateEntry(entry: {
+    alertId: string;
+    kind: 'CREATED' | 'UPDATED';
+    fromStatus: AlertStatus | null;
+    toStatus: AlertStatus;
+    trigger: string;
+    autoPublish: boolean;
+    oldTitle?: string | null;
+    newTitle?: string | null;
+    oldMessage?: string | null;
+    newMessage?: string | null;
+    oldSeverity?: SeverityLevel | null;
+    newSeverity?: SeverityLevel | null;
+    oldBasis?: AlertBasis | null;
+    newBasis?: AlertBasis | null;
+  }): Promise<void> {
+    await db.query(
+      `INSERT INTO alert_updates
+         (alert_id, kind, from_status, to_status, trigger, auto_publish,
+          old_title, new_title, old_message, new_message,
+          old_severity, new_severity, old_basis, new_basis)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+      [
+        entry.alertId,
+        entry.kind,
+        entry.fromStatus,
+        entry.toStatus,
+        entry.trigger,
+        entry.autoPublish,
+        entry.oldTitle ?? null,
+        entry.newTitle ?? null,
+        entry.oldMessage ?? null,
+        entry.newMessage ?? null,
+        entry.oldSeverity ?? null,
+        entry.newSeverity ?? null,
+        entry.oldBasis ?? null,
+        entry.newBasis ?? null,
+      ],
+    );
+  },
+
+  async listUpdateEntries(alertId: string): Promise<AlertUpdateEntry[]> {
+    const result = await db.query<UpdateEntryRow>(
+      `SELECT
+         id, alert_id, kind, from_status, to_status, trigger, auto_publish,
+         old_title, new_title, old_message, new_message,
+         old_severity, new_severity, old_basis, new_basis, recorded_at
+       FROM alert_updates
+       WHERE alert_id = $1
+       ORDER BY recorded_at ASC, id ASC`,
+      [alertId],
+    );
+    return result.rows.map(mapUpdateEntry);
   },
 };

@@ -70,6 +70,11 @@ const envSchema = z.object({
   EXPOSURE_BUFFER_RADIUS_KM: z.coerce.number().min(1).default(25),
   EXPOSURE_TRAJECTORY_RADIUS_KM: z.coerce.number().min(1).default(50),
 
+  ALERTS_AUTO_PUBLISH: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
+
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 

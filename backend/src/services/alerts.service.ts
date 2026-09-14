@@ -6,7 +6,14 @@ import { eventsRepository } from '../repositories/events.repository';
 import { territoriesRepository } from '../repositories/territories.repository';
 import { risksRepository } from '../repositories/risks.repository';
 import { alertsRepository } from '../repositories/alerts.repository';
-import { Alert, AlertListRow } from '../types/alert.types';
+import { automaticAlertService } from './automatic-alerts.service';
+import {
+  Alert,
+  AlertBasis,
+  AlertGenerationTrigger,
+  AlertListRow,
+  AlertUpdateEntry,
+} from '../types/alert.types';
 import { RiskAssessment } from '../types/risk.types';
 import { UserRole } from '../types/auth.types';
 import { PaginatedResult } from '../types/territory.types';
@@ -347,5 +354,80 @@ export const alertsService = {
         throw AppError.notFound('Commune liée introuvable');
       }
     }
+  },
+
+  async generateAutomatic(
+    input: { eventId: string; trigger?: AlertGenerationTrigger },
+    actor: { id: string; role: UserRole },
+    req: RequestContext,
+  ): Promise<import('./automatic-alerts.service').AlertGenerationResult> {
+    if (!canManage(actor.role)) {
+      throw AppError.forbidden(
+        'Seuls ADMIN et SUPER_ADMIN peuvent déclencher la génération automatique',
+      );
+    }
+
+    const result = await automaticAlertService.generateForEvent({
+      eventId: input.eventId,
+      trigger: input.trigger ?? 'MANUAL',
+    });
+
+    if (result.created > 0 || result.updated > 0) {
+      await usersRepository.writeAudit({
+        userId: actor.id,
+        action: 'ALERTS_AUTO_GENERATED',
+        entityType: 'alert',
+        entityId: input.eventId,
+        newValue: {
+          created: result.created,
+          updated: result.updated,
+          basis: result.basis,
+          trigger: input.trigger ?? 'MANUAL',
+        },
+        ipAddress: getIp(req),
+      });
+    }
+
+    return result;
+  },
+
+  async getHistory(id: string, actor: { id: string; role: UserRole }): Promise<AlertUpdateEntry[]> {
+    const alert = await this.getById(id, actor);
+    if (!alert) {
+      throw AppError.notFound('Alerte introuvable');
+    }
+    return alertsRepository.listUpdateEntries(id);
+  },
+
+  async listAutomatic(
+    query: {
+      page: number;
+      limit: number;
+      status?: string;
+      type?: string;
+      severity?: string;
+      eventId?: string;
+      districtId?: string;
+      communeId?: string;
+      activeOnly: boolean;
+      basis?: AlertBasis;
+    },
+    actor: { id: string; role: UserRole },
+  ): Promise<PaginatedResult<AlertListRow>> {
+    const clientOnly = actor.role === 'CLIENT';
+    return alertsRepository.list({
+      page: query.page,
+      limit: query.limit,
+      status: query.status as AlertListRow['status'] | undefined,
+      type: query.type as AlertListRow['type'] | undefined,
+      severity: query.severity as AlertListRow['severity'] | undefined,
+      eventId: query.eventId,
+      districtId: query.districtId,
+      communeId: query.communeId,
+      activeOnly: query.activeOnly,
+      automatic: true,
+      basis: query.basis,
+      clientOnly,
+    });
   },
 };

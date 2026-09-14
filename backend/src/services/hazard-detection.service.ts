@@ -5,6 +5,7 @@ import { eventsRepository } from '../repositories/events.repository';
 import { hazardDetectionRepository } from '../repositories/hazard-detection.repository';
 import { exposureRepository } from '../repositories/exposure.repository';
 import { exposureService } from './exposure.service';
+import { automaticAlertService } from './automatic-alerts.service';
 import {
   applyOperator,
   detectionKeyFor,
@@ -489,6 +490,13 @@ async function persistDetectionAndExposure(
       await exposureRepository.upsertDetectionCommunes(eventId, rows);
     }
     await exposureService.computeForEvent(eventId, { trigger: 'DETECTION' });
+    if (rows.length > 0) {
+      await automaticAlertService.generateForEvent({
+        eventId,
+        trigger: 'DETECTION',
+        communeIds: rows.map((r) => r.communeId),
+      });
+    }
   } catch (err) {
     logger.warn({ err, eventId }, "Calcul automatique de l'exposition et des risques échoué");
   }

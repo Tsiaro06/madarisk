@@ -2962,6 +2962,91 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /alerts/automatic:
+    get:
+      tags: [Alertes]
+      summary: Liste des alertes automatiques
+      description: Alertes générées automatiquement à partir des événements (PRÉVISION → alerte de vigilance, ACTIF → alerte d'événement en cours).
+      security:
+        - bearerAuth: []
+      operationId: listAutomaticAlerts
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Limit' }
+        - {
+            name: status,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/AlertStatus' },
+          }
+        - {
+            name: basis,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/AlertBasis' },
+          }
+        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
+        - {
+            name: activeOnly,
+            in: query,
+            required: false,
+            schema: { type: boolean },
+            description: Alertes actives uniquement ("true"/"1"),
+          }
+      responses:
+        '200':
+          description: Liste des alertes automatiques
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Alert' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /alerts/automatic/generate:
+    post:
+      tags: [Alertes]
+      summary: Générer les alertes automatiques d'un événement (ADMIN / SUPER_ADMIN)
+      description: Crée ou met à jour les alertes automatiques liées à un événement (ciblage commune → district → région → événement global, mise à jour plutôt que duplication, historique des modifications).
+      security:
+        - bearerAuth: []
+      operationId: generateAutomaticAlerts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AutomaticAlertGenerationBody' }
+      responses:
+        '200':
+          description: Génération effectuée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/AutomaticAlertGenerationResult' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /alerts/{id}:
     get:
       tags: [Alertes]
@@ -2982,6 +3067,35 @@ paths:
                   success: { type: boolean }
                   message: { type: string }
                   data: { $ref: '#/components/schemas/Alert' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /alerts/{id}/history:
+    get:
+      tags: [Alertes]
+      summary: Historique des mises à jour d'une alerte
+      description: Historique des créations et mises à jour automatiques (déclencheur, anciennes valeurs, nouvelle valeurs).
+      security:
+        - bearerAuth: []
+      operationId: getAlertHistory
+      parameters:
+        - { $ref: '#/components/parameters/AlertId' }
+      responses:
+        '200':
+          description: Historique des mises à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AlertUpdateEntry' }
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -4555,11 +4669,64 @@ components:
         eventId: { type: string, format: uuid, nullable: true }
         districtId: { type: string, format: uuid, nullable: true }
         communeId: { type: string, format: uuid, nullable: true }
+        regionId: { type: string, format: uuid, nullable: true }
+        source: { type: string, nullable: true, description: Source de l'information (ex. Météo France) }
+        basis: { $ref: '#/components/schemas/AlertBasis' }
+        validFrom: { type: string, format: date-time, nullable: true }
+        isAutomatic: { type: boolean, description: Alerte générée automatiquement (événements/risques) }
+        updateCount: { type: integer, description: Nombre de mises à jour automatiques appliquées }
+        name: { type: string, nullable: true, description: Nom de la zone cible (commune, district, région ou événement) }
         publishedAt: { type: string, format: date-time, nullable: true }
         expiresAt: { type: string, format: date-time, nullable: true }
         createdBy: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    AlertBasis:
+      type: string
+      enum: [PREVISION, OBSERVATION]
+      description: Nature des données ayant déclenché l'alerte automatique
+    AlertUpdateEntry:
+      type: object
+      description: Entrée de l'historique des mises à jour d'une alerte
+      properties:
+        id: { type: string, format: uuid }
+        alertId: { type: string, format: uuid }
+        kind: { type: string, enum: [CREATED, UPDATED] }
+        fromStatus: { $ref: '#/components/schemas/AlertStatus' }
+        toStatus: { $ref: '#/components/schemas/AlertStatus' }
+        trigger: { type: string, enum: [DETECTION, SYNC, MANUAL] }
+        autoPublish: { type: boolean }
+        oldTitle: { type: string, nullable: true }
+        newTitle: { type: string, nullable: true }
+        oldMessage: { type: string, nullable: true }
+        newMessage: { type: string, nullable: true }
+        oldSeverity: { $ref: '#/components/schemas/SeverityLevel' }
+        newSeverity: { $ref: '#/components/schemas/SeverityLevel' }
+        oldBasis: { $ref: '#/components/schemas/AlertBasis' }
+        newBasis: { $ref: '#/components/schemas/AlertBasis' }
+        recordedAt: { type: string, format: date-time }
+    AutomaticAlertGenerationBody:
+      type: object
+      required: [eventId]
+      properties:
+        eventId: { type: string, format: uuid }
+        trigger:
+          type: string
+          enum: [MANUAL]
+          default: MANUAL
+    AutomaticAlertGenerationResult:
+      type: object
+      description: Résultat d'une génération automatique d'alertes pour un événement
+      properties:
+        eventId: { type: string, format: uuid }
+        basis: { $ref: '#/components/schemas/AlertBasis' }
+        autoPublish: { type: boolean }
+        created: { type: integer }
+        updated: { type: integer }
+        unchanged: { type: integer }
+        alerts:
+          type: array
+          items: { $ref: '#/components/schemas/Alert' }
     AlertCreateBody:
       type: object
       required: [type, severity, title, message]

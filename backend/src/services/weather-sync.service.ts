@@ -9,6 +9,7 @@ import { getWeatherProvider } from './weather-provider';
 import { AutomationRunStatus } from '../types/automation.types';
 import { hazardDetectionService } from './hazard-detection.service';
 import { exposureService } from './exposure.service';
+import { automaticAlertService } from './automatic-alerts.service';
 import {
   BatchCommuneInput,
   WeatherCurrentBatchItem,
@@ -469,6 +470,13 @@ async function detectAfterSync(scope: WeatherSyncScope): Promise<void> {
     await exposureService.recomputeActiveEvents('SYNC');
   } catch (err) {
     logger.warn({ err }, 'Recalcul de l exposition post-synchronisation ignoré (échec)');
+  }
+
+  // Alertes automatiques : création ou mise à jour pour chaque événement actif.
+  try {
+    await automaticAlertService.generateForActiveEvents();
+  } catch (err) {
+    logger.warn({ err }, 'Génération d alertes automatiques post-synchronisation ignorée (échec)');
   }
 }
 

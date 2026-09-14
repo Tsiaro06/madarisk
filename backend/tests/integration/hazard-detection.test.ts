@@ -153,11 +153,13 @@ async function insertForecast(
 }
 
 async function destroyEvent(eventId: string): Promise<void> {
+  await db.query('DELETE FROM alerts WHERE event_id = $1', [eventId]);
   await db.query('DELETE FROM hazard_events WHERE id = $1', [eventId]);
 }
 
 async function destroyEvents(): Promise<void> {
   if (eventIds.length === 0) return;
+  await db.query('DELETE FROM alerts WHERE event_id = ANY($1::uuid[])', [eventIds]);
   await db.query('DELETE FROM hazard_events WHERE id = ANY($1::uuid[])', [eventIds]);
   eventIds = [];
 }

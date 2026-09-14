@@ -4,6 +4,7 @@ import { successResponse, paginate } from '../utils/api-response';
 import { AppError } from '../utils/app-error';
 import {
   CreateAlertInput,
+  GenerateAutomaticAlertsInput,
   ListAlertsQuery,
   UpdateAlertInput,
 } from '../validators/alerts.validator';
@@ -55,5 +56,27 @@ export const alertsController = {
     const { id } = req.validatedParams as AlertIdParams;
     const alert = await alertsService.archive(id, req.user, req);
     res.status(200).json(successResponse(alert, 'Alerte archivée'));
+  },
+
+  listAutomatic: async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) throw AppError.unauthorized();
+    const query = req.validatedQuery as ListAlertsQuery;
+    const result = await alertsService.listAutomatic(query, req.user);
+    const meta = paginate(result.page, result.limit, result.total);
+    res.status(200).json(successResponse(result.items, 'Liste des alertes automatiques', meta));
+  },
+
+  generateAutomatic: async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) throw AppError.unauthorized();
+    const body = req.validatedBody as GenerateAutomaticAlertsInput;
+    const result = await alertsService.generateAutomatic(body, req.user, req);
+    res.status(200).json(successResponse(result, 'Génération automatique d alertes'));
+  },
+
+  getHistory: async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) throw AppError.unauthorized();
+    const { id } = req.validatedParams as AlertIdParams;
+    const history = await alertsService.getHistory(id, req.user);
+    res.status(200).json(successResponse(history, 'Historique des mises à jour de l alerte'));
   },
 };

@@ -312,10 +312,11 @@ describe('Météo - endpoints données', () => {
   });
 
   it('accepte metric, date et hour et retourne meta.latestObservationAt', async () => {
-    const today = new Date().toISOString().slice(0, 10);
-    const nowHour = new Date().getUTCHours();
+    const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000)
+      .toISOString()
+      .slice(0, 10);
     const res = await request(app)
-      .get(`/api/v1/weather/map-layer?metric=precipitation&date=${today}&hour=${nowHour}`)
+      .get(`/api/v1/weather/map-layer?metric=precipitation&date=${yesterday}&hour=8`)
       .set('Authorization', `Bearer ${admin.token}`);
     expect(res.status).toBe(200);
     expect(res.body.data.type).toBe('FeatureCollection');

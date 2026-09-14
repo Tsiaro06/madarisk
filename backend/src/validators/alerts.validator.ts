@@ -14,6 +14,8 @@ const alertStatusEnum = z.enum(['BROUILLON', 'PUBLIEE', 'ARCHIVEE', 'EXPIREE']);
 
 const severityLevelEnum = z.enum(['FAIBLE', 'MODEREE', 'ELEVEE', 'EXTREME']);
 
+const basisEnum = z.enum(['PREVISION', 'OBSERVATION']);
+
 const targetField = (label: string) => z.string().uuid(`${label} invalide`).optional().nullable();
 
 const expiresAtField = z
@@ -86,12 +88,25 @@ export const listAlertsQuerySchema = z.object({
     .string()
     .optional()
     .transform((v) => v === 'true' || v === '1'),
+  automatic: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v === 'true' || v === '1' ? true : v === 'false' || v === '0' ? false : undefined,
+    ),
+  basis: basisEnum.optional(),
 });
 
 export const alertIdParamsSchema = z.object({
   id: z.string().uuid("Identifiant d'alerte invalide"),
 });
 
+export const generateAutomaticAlertsSchema = z.object({
+  eventId: z.string().uuid('eventId invalide'),
+  trigger: z.enum(['MANUAL']).optional().default('MANUAL'),
+});
+
 export type CreateAlertInput = z.infer<typeof createAlertSchema>;
 export type UpdateAlertInput = z.infer<typeof updateAlertSchema>;
 export type ListAlertsQuery = z.infer<typeof listAlertsQuerySchema>;
+export type GenerateAutomaticAlertsInput = z.infer<typeof generateAutomaticAlertsSchema>;

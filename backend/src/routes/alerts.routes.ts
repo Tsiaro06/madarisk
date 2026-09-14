@@ -7,6 +7,7 @@ import { validate } from '../middlewares/validate.middleware';
 import {
   alertIdParamsSchema,
   createAlertSchema,
+  generateAutomaticAlertsSchema,
   listAlertsQuerySchema,
   updateAlertSchema,
 } from '../validators/alerts.validator';
@@ -25,9 +26,28 @@ router.post(
 router.get('/', validate({ query: listAlertsQuerySchema }), asyncHandler(alertsController.list));
 
 router.get(
+  '/automatic',
+  validate({ query: listAlertsQuerySchema }),
+  asyncHandler(alertsController.listAutomatic),
+);
+
+router.post(
+  '/automatic/generate',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  validate({ body: generateAutomaticAlertsSchema }),
+  asyncHandler(alertsController.generateAutomatic),
+);
+
+router.get(
   '/:id',
   validate({ params: alertIdParamsSchema }),
   asyncHandler(alertsController.getById),
+);
+
+router.get(
+  '/:id/history',
+  validate({ params: alertIdParamsSchema }),
+  asyncHandler(alertsController.getHistory),
 );
 
 router.patch(
