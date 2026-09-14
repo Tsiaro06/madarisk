@@ -689,6 +689,14 @@ export const eventsRepository = {
     await db.query(`DELETE FROM exposed_communes WHERE event_id = $1`, [eventId]);
   },
 
+  async listExposedCommuneIds(eventId: string): Promise<string[]> {
+    const result = await db.query<{ commune_id: string }>(
+      `SELECT commune_id FROM exposed_communes WHERE event_id = $1 ORDER BY commune_id`,
+      [eventId],
+    );
+    return result.rows.map((r) => r.commune_id);
+  },
+
   async removeExposedCommune(eventId: string, communeId: string): Promise<boolean> {
     const result = await db.query<CountRow>(
       `DELETE FROM exposed_communes WHERE event_id = $1 AND commune_id = $2 RETURNING id`,

@@ -11,6 +11,8 @@ import {
   LogOut,
   MapPinned,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings2,
   Shield,
   Siren,
@@ -60,6 +62,7 @@ export function AppShell() {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
 
   const links = useMemo(
     () =>
@@ -86,20 +89,54 @@ export function AppShell() {
   if (!user) return <Spinner label="Chargement de la session…" />;
 
   return (
-    <div className="min-h-screen lg:h-screen lg:grid lg:grid-cols-[260px_1fr] lg:overflow-hidden">
+    <div
+      className={cn(
+        'min-h-screen lg:h-screen lg:grid lg:overflow-hidden',
+        collapsed ? 'lg:grid-cols-[64px_1fr]' : 'lg:grid-cols-[260px_1fr]',
+      )}
+    >
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col border-r border-brand/15 bg-[#073f42] text-white transition-transform lg:static lg:translate-x-0',
+          'fixed inset-y-0 left-0 z-40 flex w-[260px] flex-col border-r border-line bg-surface transition-[width,transform] duration-200 lg:static lg:translate-x-0',
+          collapsed ? 'lg:w-[64px]' : 'lg:w-[260px]',
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
-          <Link to="/" className="font-display text-xl tracking-tight" onClick={() => setOpen(false)}>
-            MadaRisk <span className="text-teal-200">Map</span>
+        <div className="flex h-16 items-center justify-between border-b border-line px-4">
+          <Link
+            to="/"
+            className={cn(
+              'font-display text-lg font-bold tracking-tight text-ink',
+              collapsed ? 'select-none text-brand' : 'mr-1',
+            )}
+            onClick={() => setOpen(false)}
+            title={collapsed ? 'MadaRisk Map' : undefined}
+          >
+            {collapsed ? 'M' : (
+              <>
+                MadaRisk <span className="text-brand">Map</span>
+              </>
+            )}
           </Link>
-          <button type="button" className="rounded p-1 lg:hidden" onClick={() => setOpen(false)}>
-            <X className="size-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              className="hidden rounded-lg p-1.5 text-muted transition hover:bg-gray-100 lg:inline-flex"
+              onClick={() => setCollapsed((v) => !v)}
+              aria-label={collapsed ? 'Agrandir le menu' : 'Rétrécir le menu'}
+              title={collapsed ? 'Agrandir le menu' : 'Rétrécir le menu'}
+            >
+              {collapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
+            </button>
+            <button
+              type="button"
+              className="rounded-lg p-1.5 text-muted hover:bg-gray-100 lg:hidden"
+              onClick={() => setOpen(false)}
+              aria-label="Fermer le menu"
+            >
+              <X className="size-5" />
+            </button>
+          </div>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto p-3">
           {links.map((item) => {
@@ -110,20 +147,22 @@ export function AppShell() {
                 to={item.to}
                 end={item.to === '/'}
                 onClick={() => setOpen(false)}
+                title={collapsed ? item.label : undefined}
                 className={({ isActive }) =>
                   cn(
                     'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition',
-                    isActive ? 'bg-white/15 text-white' : 'text-teal-100/80 hover:bg-white/10 hover:text-white',
+                    collapsed && 'justify-center px-2',
+                    isActive ? 'bg-brand-soft text-brand-deep' : 'text-muted hover:bg-gray-100 hover:text-ink',
                   )
                 }
               >
-                <Icon className="size-4 shrink-0 opacity-90" />
-                {item.label}
+                <Icon className={cn('size-4 shrink-0 opacity-90', collapsed && 'size-5')} />
+                {!collapsed ? <span className="truncate">{item.label}</span> : null}
               </NavLink>
             );
           })}
         </nav>
-        <div className="border-t border-white/10 p-4 text-xs text-teal-100/70">
+        <div className={cn('border-t border-line px-5 py-4 text-xs text-muted', collapsed && 'hidden')}>
           Salle de crise · Madagascar
         </div>
       </aside>
@@ -138,11 +177,11 @@ export function AppShell() {
       ) : null}
 
       <div className="flex min-w-0 flex-col lg:overflow-y-auto">
-        <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-brand/10 bg-white/80 px-4 py-3 backdrop-blur-md sm:px-6">
+        <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-line bg-surface/90 px-4 py-3 backdrop-blur-md sm:px-6">
           <div className="flex items-center gap-3">
             <button
               type="button"
-              className="rounded-lg border border-brand/15 p-2 lg:hidden"
+              className="rounded-lg border border-line p-2 text-muted hover:bg-gray-100 lg:hidden"
               onClick={() => setOpen(true)}
               aria-label="Ouvrir le menu"
             >
@@ -150,7 +189,7 @@ export function AppShell() {
             </button>
             <div>
               <p className="text-xs uppercase tracking-[0.14em] text-muted">Poste de commandement</p>
-              <p className="font-display text-lg text-ink">Cartographie des risques</p>
+              <p className="text-base font-semibold tracking-tight text-ink">Cartographie des risques</p>
             </div>
           </div>
 
@@ -158,7 +197,7 @@ export function AppShell() {
             <button
               type="button"
               onClick={() => setMenuOpen((v) => !v)}
-              className="flex items-center gap-2 rounded-xl border border-brand/15 bg-white px-3 py-2 text-left text-sm shadow-sm"
+              className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-left text-sm shadow-sm"
             >
               <span className="flex size-8 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
                 {user.firstName?.[0]}
@@ -172,10 +211,10 @@ export function AppShell() {
               </span>
             </button>
             {menuOpen ? (
-              <div className="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border border-brand/15 bg-white shadow-xl">
+              <div className="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border border-line bg-surface shadow-xl">
                 <Link
                   to="/mot-de-passe"
-                  className="flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-brand-soft"
+                  className="flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-gray-50"
                   onClick={() => setMenuOpen(false)}
                 >
                   <KeyRound className="size-4" /> Mot de passe
@@ -212,11 +251,11 @@ export function AppShell() {
           </div>
         ) : null}
 
-        <main className="flex-1 px-4 py-5 sm:px-6 sm:py-6">
+        <main className="flex-1 px-4 py-6 sm:px-6 sm:py-8">
           <Outlet />
         </main>
 
-        <footer className="border-t border-brand/10 px-4 py-3 text-center text-xs text-muted sm:px-6">
+        <footer className="border-t border-line px-4 py-3 text-center text-xs text-muted sm:px-6">
           MadaRisk Map — interface salle de crise
         </footer>
       </div>

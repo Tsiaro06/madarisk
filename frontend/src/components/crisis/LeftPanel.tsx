@@ -88,7 +88,7 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-brand/10 px-3 py-2.5">
+      <div className="flex items-center justify-between border-b border-line px-3 py-2.5">
         <p className="font-display text-base text-ink">Filtres & événements</p>
         <div className="flex items-center gap-1">
           <button
@@ -103,7 +103,7 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
       </div>
 
       {/* Recherche commune */}
-      <div className="border-b border-brand/10 p-3">
+      <div className="border-b border-line p-3">
         <Input
           label="Rechercher une commune"
           value={communeQuery}
@@ -121,7 +121,7 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
               <li key={`${r.type}-${r.id}`}>
                 <button
                   type="button"
-                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition hover:bg-brand-soft/50"
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition hover:bg-gray-50"
                   onClick={() => {
                     if (r.type !== 'commune') {
                       toast('Les districts ne sont pas sélectionnables ici', 'info');
@@ -149,7 +149,7 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
       </div>
 
       {/* Filtres événements */}
-      <div className="space-y-2 border-b border-brand/10 p-3">
+      <div className="space-y-2 border-b border-line p-3">
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
           <Cpu className="size-3.5" /> Filtrer les événements
         </div>
@@ -228,7 +228,7 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
                       type="button"
                       onClick={() => onSelectEvent(ev.id)}
                       className={cn(
-                        'w-full rounded-xl border border-brand/15 bg-white p-3 text-left shadow-sm transition hover:border-brand/40 hover:shadow',
+                        'w-full rounded-xl border border-line bg-white p-3 text-left shadow-sm transition hover:border-brand/40 hover:shadow',
                         active && 'border-brand ring-2 ring-brand/20',
                       )}
                     >
@@ -259,7 +259,7 @@ export function LeftPanel({ activeEventId, onSelectEvent, onSelectCommune, onClo
           )}
         </div>
         {listQ.data?.meta?.totalPages ? (
-          <div className="border-t border-brand/10 p-2">
+          <div className="border-t border-line p-2">
             <Pagination
               page={listQ.data.meta.page}
               totalPages={listQ.data.meta.totalPages}

@@ -46,12 +46,12 @@ function riskStyle(
 ): PathOptions {
   const p = (feature?.properties ?? {}) as Record<string, unknown>;
   const level = p.riskLevel ?? p.risk_level;
-  const color = isRiskLevel(level) ? RISK_COLORS[level] : '#0a6b6e';
+  const color = isRiskLevel(level) ? RISK_COLORS[level] : '#047857';
   const communeId = featureId(p);
   const isExposed = exposedCommuneIds ? exposedCommuneIds.has(communeId) : false;
   const selected = selectedId != null && communeId === String(selectedId);
   return {
-    color: selected ? '#0f2a2e' : isExposed ? '#111827' : '#9ca3af',
+    color: selected ? '#065f46' : isExposed ? '#111827' : '#9ca3af',
     weight: selected ? 3 : isExposed ? 3 : 1.5,
     fillColor: color,
     fillOpacity: selected ? 0.8 : isExposed ? 0.85 : 0.55,
@@ -65,10 +65,10 @@ function communeStyle(
 ): PathOptions {
   const p = (feature?.properties ?? {}) as Record<string, unknown>;
   const level = hasEvent ? (p.riskLevel ?? p.risk_level) : undefined;
-  const color = hasEvent && isRiskLevel(level) ? RISK_COLORS[level] : '#0a6b6e';
+  const color = hasEvent && isRiskLevel(level) ? RISK_COLORS[level] : '#047857';
   const selected = selectedId != null && featureId(p) === String(selectedId);
   return {
-    color: selected ? '#0f2a2e' : '#0a6b6e',
+    color: selected ? '#065f46' : '#047857',
     weight: selected ? 3 : 1,
     fillColor: color,
     fillOpacity: hasEvent && isRiskLevel(level) ? 0.3 : 0.08,
@@ -349,9 +349,9 @@ export function CrisisMap({
               pointToLayer={(_, latlng) =>
                 L.circleMarker(latlng, {
                   radius: 5,
-                  color: '#0f2a2e',
+                  color: '#065f46',
                   weight: 2,
-                  fillColor: '#0a6b6e',
+                  fillColor: '#047857',
                   fillOpacity: 1,
                 })
               }
@@ -359,7 +359,7 @@ export function CrisisMap({
                 const g = feature?.geometry;
                 const isLine = g?.type !== 'Point';
                 return isLine
-                  ? { color: '#0a6b6e', weight: 3, opacity: 0.9 }
+                  ? { color: '#047857', weight: 3, opacity: 0.9 }
                   : { color: 'transparent' };
               }}
             />

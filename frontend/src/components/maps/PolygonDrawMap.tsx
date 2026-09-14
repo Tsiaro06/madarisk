@@ -39,7 +39,7 @@ export function PolygonDrawMap({
   });
 
   return (
-    <div className="relative overflow-hidden rounded-xl border border-brand/15">
+    <div className="relative overflow-hidden rounded-xl border border-line">
       <div style={{ height }}>
         <MapContainer
           center={[-19.4, 47.5]}
@@ -70,13 +70,13 @@ export function PolygonDrawMap({
           {variant === 'track' && points.length >= 2 ? (
             <Polyline
               positions={points as LatLngExpression[]}
-              pathOptions={{ color: '#0a6b6e', dashArray: '6 6', weight: 2 }}
+              pathOptions={{ color: '#047857', dashArray: '6 6', weight: 2 }}
             />
           ) : null}
           {variant === 'polygon' && points.length >= 3 ? (
             <Polygon
               positions={points as LatLngExpression[]}
-              pathOptions={{ color: '#0a6b6e', weight: 2, fillColor: '#0a6b6e', fillOpacity: 0.25 }}
+              pathOptions={{ color: '#047857', weight: 2, fillColor: '#047857', fillOpacity: 0.25 }}
             />
           ) : null}
           {points.map(([lat, lng], i) => (
@@ -85,9 +85,9 @@ export function PolygonDrawMap({
               center={[lat, lng]}
               radius={5}
               pathOptions={{
-                color: '#0a6b6e',
+                color: '#047857',
                 weight: 2,
-                fillColor: '#0a6b6e',
+                fillColor: '#047857',
                 fillOpacity: 1,
               }}
             />

@@ -68,26 +68,26 @@ export function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center px-4 py-10">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(10,107,110,0.25),transparent_45%),radial-gradient(circle_at_80%_0%,rgba(196,92,38,0.18),transparent_40%)]" />
-      <div className="relative w-full max-w-md rounded-3xl border border-brand/15 bg-white/95 p-6 shadow-2xl backdrop-blur sm:p-8">
+    <div className="relative flex min-h-screen items-center justify-center bg-canvas px-4 py-10">
+      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(4,120,87,0.08),transparent_60%)]" />
+      <div className="relative w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-[0_8px_40px_rgba(0,0,0,0.08)] sm:p-8">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-brand">Salle de crise</p>
-        <h1 className="mt-2 font-display text-3xl text-ink">MadaRisk Map</h1>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-ink">MadaRisk Map</h1>
         <p className="mt-2 text-sm text-muted">
           Accès sécurisé au poste de cartographie des risques.
         </p>
 
-        <div className="mt-6 flex rounded-xl bg-brand-soft p-1 text-sm">
+        <div className="mt-6 flex rounded-xl bg-gray-100 p-1 text-sm">
           <button
             type="button"
-            className={`flex-1 rounded-lg py-2 font-medium ${mode === 'login' ? 'bg-white shadow text-ink' : 'text-muted'}`}
+            className={`flex-1 rounded-lg py-2 font-medium transition ${mode === 'login' ? 'bg-surface shadow-sm text-ink' : 'text-muted hover:text-ink'}`}
             onClick={() => setMode('login')}
           >
             Connexion
           </button>
           <button
             type="button"
-            className={`flex-1 rounded-lg py-2 font-medium ${mode === 'register' ? 'bg-white shadow text-ink' : 'text-muted'}`}
+            className={`flex-1 rounded-lg py-2 font-medium transition ${mode === 'register' ? 'bg-surface shadow-sm text-ink' : 'text-muted hover:text-ink'}`}
             onClick={() => setMode('register')}
           >
             1er SUPER_ADMIN

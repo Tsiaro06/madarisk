@@ -119,14 +119,14 @@ export function CommuneDetailPage() {
           <div className="h-72">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#d5e4e5" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="left" tick={{ fontSize: 11 }} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
                 <Tooltip />
                 <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="temp" name="Temp (°C)" stroke="#0a6b6e" />
-                <Line yAxisId="right" type="monotone" dataKey="rain" name="Pluie (mm)" stroke="#c45c26" />
+                <Line yAxisId="left" type="monotone" dataKey="temp" name="Temp (°C)" stroke="#047857" />
+                <Line yAxisId="right" type="monotone" dataKey="rain" name="Pluie (mm)" stroke="#d97706" />
               </LineChart>
             </ResponsiveContainer>
           </div>

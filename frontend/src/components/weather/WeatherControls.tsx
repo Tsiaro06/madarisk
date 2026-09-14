@@ -147,7 +147,7 @@ export function WeatherControls({
       />
 
       {canRefresh ? (
-        <div className="border-t border-brand/10 pt-3">
+        <div className="border-t border-line pt-3">
           <Button
             variant="outline"
             size="sm"

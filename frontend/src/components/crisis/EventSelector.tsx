@@ -48,13 +48,13 @@ export function EventSelector({ className }: { className?: string }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex max-w-[260px] items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white transition hover:bg-white/10 sm:max-w-xs',
-          activeEventId && 'border-teal-300/40 bg-teal-400/10',
+          'flex max-w-[260px] items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink transition hover:bg-gray-50 sm:max-w-xs',
+          activeEventId && 'border-brand/40 bg-brand-soft/50',
         )}
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <Radio className={cn('size-4 shrink-0', activeEventId ? 'text-teal-300' : 'text-teal-100/70')} />
+        <Radio className={cn('size-4 shrink-0', activeEventId ? 'text-brand' : 'text-muted')} />
         <span className="min-w-0 flex-1 truncate text-left">
           {activeEventLoading ? 'Chargement…' : label}
         </span>

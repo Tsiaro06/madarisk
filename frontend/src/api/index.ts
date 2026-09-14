@@ -112,13 +112,8 @@ export const eventsApi = {
       params,
     }),
   exposedCommunesIds: async (id: string): Promise<Set<string>> => {
-    const res = await apiGetPage<ExposedCommuneRow[]>(
-      `/events/${id}/exposed-communes`,
-      {
-        params: { page: 1, limit: 10000 },
-      },
-    );
-    return new Set(res.data.map((r) => r.communeId));
+    const ids = await apiGet<string[]>(`/events/${id}/exposed-communes/ids`);
+    return new Set(ids);
   },
 };
 

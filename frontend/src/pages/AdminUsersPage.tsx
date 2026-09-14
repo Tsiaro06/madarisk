@@ -87,31 +87,31 @@ export function AdminUsersPage() {
           <>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-brand/10 text-muted">
+                <thead className="border-b border-line bg-gray-50 text-muted">
                   <tr>
-                    <th className="px-2 py-2">Nom</th>
-                    <th className="px-2 py-2">E-mail</th>
-                    <th className="px-2 py-2">Rôle</th>
-                    <th className="px-2 py-2">Statut</th>
-                    <th className="px-2 py-2">Dernière connexion</th>
-                    <th className="px-2 py-2" />
+                    <th className="px-3 py-2.5">Nom</th>
+                    <th className="px-3 py-2.5">E-mail</th>
+                    <th className="px-3 py-2.5">Rôle</th>
+                    <th className="px-3 py-2.5">Statut</th>
+                    <th className="px-3 py-2.5">Dernière connexion</th>
+                    <th className="px-3 py-2.5" />
                   </tr>
                 </thead>
                 <tbody>
                   {listQ.data?.data.map((u) => (
                     <tr key={u.id} className="border-b border-brand/5">
-                      <td className="px-2 py-2 font-medium">
+                      <td className="px-3 py-2.5 font-medium">
                         {u.firstName} {u.lastName}
                       </td>
-                      <td className="px-2 py-2">{u.email}</td>
-                      <td className="px-2 py-2">{ROLE_LABELS[u.role]}</td>
-                      <td className="px-2 py-2">
+                      <td className="px-3 py-2.5">{u.email}</td>
+                      <td className="px-3 py-2.5">{ROLE_LABELS[u.role]}</td>
+                      <td className="px-3 py-2.5">
                         <Badge tone={u.isActive ? 'success' : 'neutral'}>
                           {u.isActive ? 'Actif' : 'Inactif'}
                         </Badge>
                       </td>
-                      <td className="px-2 py-2">{formatDate(u.lastLoginAt)}</td>
-                      <td className="px-2 py-2 text-right">
+                      <td className="px-3 py-2.5">{formatDate(u.lastLoginAt)}</td>
+                      <td className="px-3 py-2.5 text-right">
                         <Button
                           size="sm"
                           variant="outline"

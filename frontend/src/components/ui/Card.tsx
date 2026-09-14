@@ -12,7 +12,7 @@ export function Card({ title, description, actions, children, className, ...prop
   return (
     <section
       className={cn(
-        'rounded-2xl border border-brand/10 bg-white/90 p-4 shadow-[0_8px_30px_rgba(19,38,43,0.06)] backdrop-blur-sm sm:p-5',
+        'rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(0,0,0,0.04),0_4px_12px_rgba(0,0,0,0.03)]',
         className,
       )}
       {...props}
@@ -20,8 +20,8 @@ export function Card({ title, description, actions, children, className, ...prop
       {(title || actions) && (
         <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            {title ? <h2 className="text-lg text-ink">{title}</h2> : null}
-            {description ? <p className="mt-0.5 text-sm text-muted">{description}</p> : null}
+            {title ? <h2 className="text-base font-semibold tracking-tight text-ink">{title}</h2> : null}
+            {description ? <p className="mt-1 text-sm text-muted">{description}</p> : null}
           </div>
           {actions}
         </header>

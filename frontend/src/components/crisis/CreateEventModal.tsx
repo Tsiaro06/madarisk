@@ -11,6 +11,7 @@ import { createCrisisEventSchema } from '@/schemas/forms';
 import { useActiveEvent } from '@/stores/activeEvent';
 import type { RiskLevel, RiskPhase } from '@/types';
 import { EVENT_STATUSES, EVENT_STATUS_LABELS, EVENT_TYPES, EVENT_TYPE_LABELS, SEVERITIES, SEVERITY_LABELS, PHASES, RISK_LEVELS } from '@/lib/eventMeta';
+import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -107,42 +108,63 @@ export function CreateEventModal({ open, onClose }: CreateEventModalProps) {
         onSubmit={form.handleSubmit(onSubmit)}
         className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
       >
-        <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="mb-5 flex items-start justify-between gap-3 border-b border-line pb-4">
           <div>
             <h2 className="font-display text-xl text-ink">Créer un événement</h2>
-            <p className="text-sm text-muted">Nouvelle crise à suivre en salle de crise</p>
+            <p className="mt-0.5 text-sm text-muted">
+              Nouvelle crise à suivre en salle de crise — géographie facultative à cette étape.
+            </p>
           </div>
-          <button type="button" onClick={handleClose} aria-label="Fermer" className="rounded-lg p-1.5 text-muted hover:bg-brand-soft">
+          <button type="button" onClick={handleClose} aria-label="Fermer" className="rounded-lg p-1.5 text-muted hover:bg-gray-50">
             <X className="size-5" />
           </button>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Input label="Code (ex : CY-2026-0214)" {...form.register('eventCode')} error={form.formState.errors.eventCode?.message} />
-          <Input label="Nom" {...form.register('name')} error={form.formState.errors.name?.message} />
-          <Select
-            label="Type"
-            {...form.register('type')}
-            options={EVENT_TYPES.map((t) => ({ value: t, label: EVENT_TYPE_LABELS[t] }))}
-          />
-          <Select
-            label="Statut initial"
-            {...form.register('status')}
-            options={EVENT_STATUSES.map((s) => ({ value: s, label: EVENT_STATUS_LABELS[s] }))}
-          />
-          <Select
-            label="Sévérité"
-            {...form.register('severity')}
-            options={SEVERITIES.map((s) => ({ value: s, label: SEVERITY_LABELS[s] }))}
-          />
-          <div className="space-y-2">
-            <Input label="Début" type="datetime-local" {...form.register('startedAt')} />
+        <section>
+          <div className="mb-3 flex items-center gap-2">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
+              1
+            </span>
+            <h3 className="text-sm font-semibold text-ink">Informations de base</h3>
           </div>
-          <Input label="Fin prévue" type="datetime-local" {...form.register('expectedEndAt')} />
-          <Input label="Description" {...form.register('description')} />
-        </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Input label="Code (ex : CY-2026-0214)" {...form.register('eventCode')} error={form.formState.errors.eventCode?.message} />
+            <Input label="Nom" {...form.register('name')} error={form.formState.errors.name?.message} />
+            <Select
+              label="Type"
+              {...form.register('type')}
+              options={EVENT_TYPES.map((t) => ({ value: t, label: EVENT_TYPE_LABELS[t] }))}
+            />
+            <Select
+              label="Statut initial"
+              {...form.register('status')}
+              options={EVENT_STATUSES.map((s) => ({ value: s, label: EVENT_STATUS_LABELS[s] }))}
+            />
+            <Select
+              label="Sévérité"
+              {...form.register('severity')}
+              options={SEVERITIES.map((s) => ({ value: s, label: SEVERITY_LABELS[s] }))}
+            />
+            <div className="space-y-2">
+              <Input label="Début" type="datetime-local" {...form.register('startedAt')} />
+            </div>
+            <Input label="Fin prévue" type="datetime-local" {...form.register('expectedEndAt')} />
+            <div className="sm:col-span-2">
+              <Input label="Description" {...form.register('description')} />
+            </div>
+          </div>
+        </section>
 
-        <div className="mt-4">
+        <section className="mt-6">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
+              2
+            </span>
+            <h3 className="text-sm font-semibold text-ink">
+              {form.watch('type') === 'CYCLONE' ? 'Trajectoire du cyclone' : 'Zone initiale'}
+            </h3>
+            <Badge tone="neutral">Facultatif</Badge>
+          </div>
           {form.watch('type') === 'CYCLONE' ? (
             <div className="space-y-2">
               <p className="text-sm font-medium text-ink">Points de trajectoire (cyclone)</p>
@@ -183,7 +205,10 @@ export function CreateEventModal({ open, onClose }: CreateEventModalProps) {
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-muted">Limites de districts affichées pour repérage (facultatif).</p>
+              <p className="text-xs text-muted">
+                Tracez au moins 2 points (OBSERVEE = passé, PREVUE = prévu). Limites de districts
+                affichées pour repérage (facultatif).
+              </p>
             </div>
           ) : (
             <div className="space-y-2">
@@ -236,15 +261,21 @@ export function CreateEventModal({ open, onClose }: CreateEventModalProps) {
               </p>
             </div>
           )}
-        </div>
+        </section>
 
-        <div className="mt-4 flex justify-end gap-2">
-          <Button type="button" variant="ghost" onClick={handleClose}>
-            Annuler
-          </Button>
-          <Button type="submit" loading={form.formState.isSubmitting}>
-            Créer l&apos;événement
-          </Button>
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
+          <p className="text-xs text-muted">
+            Vous pourrez compléter trajectoire, zones, exposition et évaluation depuis le détail
+            de l&apos;événement.
+          </p>
+          <div className="flex gap-2">
+            <Button type="button" variant="ghost" onClick={handleClose}>
+              Annuler
+            </Button>
+            <Button type="submit" loading={form.formState.isSubmitting}>
+              Créer l&apos;événement
+            </Button>
+          </div>
         </div>
       </form>
     </div>

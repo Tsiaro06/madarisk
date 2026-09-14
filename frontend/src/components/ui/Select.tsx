@@ -29,8 +29,8 @@ export function Select({
       <select
         id={selectId}
         className={cn(
-          'h-10 rounded-lg border border-brand/20 bg-white px-3 text-ink outline-none transition',
-          'focus:border-brand focus:ring-2 focus:ring-brand/20',
+          'h-10 rounded-lg border border-line bg-surface px-3 text-ink outline-none transition',
+          'focus:border-brand focus:ring-2 focus:ring-brand/15',
           error && 'border-risk-extreme',
           className,
         )}

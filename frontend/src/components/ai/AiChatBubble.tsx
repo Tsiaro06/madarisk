@@ -90,7 +90,7 @@ export function AiChatBubble() {
               </span>
               <div>
                 <p className="text-sm font-semibold leading-tight">Assistant IA</p>
-                <p className="text-[11px] text-teal-100">Aide salle de crise</p>
+                <p className="text-[11px] text-emerald-100">Aide salle de crise</p>
               </div>
             </div>
             <button
@@ -103,7 +103,7 @@ export function AiChatBubble() {
             </button>
           </header>
 
-          <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto bg-[#f4fafb] p-3">
+          <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 p-3">
             {messages.map((m, i) => (
               <div
                 key={`${m.role}-${i}`}
@@ -119,7 +119,7 @@ export function AiChatBubble() {
                     'max-w-[82%] rounded-2xl px-3 py-2 text-sm leading-relaxed',
                     m.role === 'user'
                       ? 'bg-brand text-white'
-                      : 'border border-brand/10 bg-white text-ink shadow-sm',
+                      : 'border border-line bg-surface text-ink shadow-sm',
                   )}
                 >
                   {m.content}
@@ -144,9 +144,9 @@ export function AiChatBubble() {
           ) : null}
 
           {!unavailable ? (
-            <form onSubmit={onSubmit} className="flex gap-2 border-t border-brand/10 bg-white p-3">
+            <form onSubmit={onSubmit} className="flex gap-2 border-t border-line bg-surface p-3">
               <input
-                className="h-10 flex-1 rounded-xl border border-brand/20 bg-white px-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                className="h-10 flex-1 rounded-xl border border-line bg-surface px-3 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15"
                 placeholder={retryAfter > 0 ? `Attendre ${retryAfter}s…` : 'Votre question…'}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

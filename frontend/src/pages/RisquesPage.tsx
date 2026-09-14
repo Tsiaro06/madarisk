@@ -117,17 +117,17 @@ export function RisquesPage() {
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-brand/10 text-muted">
+                <thead className="border-b border-line bg-gray-50 text-muted">
                   <tr>
-                    <th className="px-2 py-2">Commune</th>
-                    <th className="px-2 py-2">Score</th>
-                    <th className="px-2 py-2">Niveau</th>
+                    <th className="px-3 py-2.5">Commune</th>
+                    <th className="px-3 py-2.5">Score</th>
+                    <th className="px-3 py-2.5">Niveau</th>
                   </tr>
                 </thead>
                 <tbody>
                   {priorityQ.data?.map((c) => (
                     <tr key={c.communeId} className="border-b border-brand/5">
-                      <td className="px-2 py-2">
+                      <td className="px-3 py-2.5">
                         <Link
                           className="text-brand hover:underline"
                           to={`/territoires/communes/${c.communeId}`}
@@ -136,8 +136,8 @@ export function RisquesPage() {
                         </Link>
                         <div className="text-xs text-muted">{c.districtName}</div>
                       </td>
-                      <td className="px-2 py-2">{formatNumber(c.riskScore)}</td>
-                      <td className="px-2 py-2">
+                      <td className="px-3 py-2.5">{formatNumber(c.riskScore)}</td>
+                      <td className="px-3 py-2.5">
                         <Badge tone={tone(c.riskLevel)}>{RISK_LABELS[c.riskLevel]}</Badge>
                       </td>
                     </tr>

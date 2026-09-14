@@ -109,7 +109,7 @@ function buildForecastDays(forecast: WeatherForecastData | null | undefined): Fo
 
 function StatItem({ label, value, unit }: { label: string; value: string | number | null; unit?: string }) {
   return (
-    <div className="rounded-lg border border-brand/10 bg-brand-soft/30 px-2.5 py-2">
+    <div className="rounded-lg border border-brand/10 bg-gray-50 px-2.5 py-2">
       <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
       <p className="mt-0.5 text-sm font-semibold text-ink">
         {value == null || value === '' ? '—' : `${value}${unit ? ` ${unit}` : ''}`}
@@ -131,7 +131,7 @@ function FactorBar({ label, value, color }: FactorBarProps) {
         <span className="text-muted">{label}</span>
         <span className="font-semibold text-ink">{formatNumber(Math.round(value))}</span>
       </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-brand/10">
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-100">
         <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color }} />
       </div>
     </div>
@@ -352,7 +352,7 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
               <div className="h-40">
                 <ResponsiveContainer width="100%" height="100%">
                   <ComposedChart data={forecastDays} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#d5e4e5" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
                     <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                     <YAxis yAxisId="temp" tick={{ fontSize: 10 }} domain={['auto', 'auto']} width={26} />
                     <YAxis yAxisId="precip" orientation="right" tick={{ fontSize: 10 }} width={26} />
@@ -361,7 +361,7 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
                       yAxisId="precip"
                       dataKey="precip"
                       name="Précip. (mm)"
-                      fill="#4aa8ba"
+                      fill="#38bdf8"
                       radius={[3, 3, 0, 0]}
                       barSize={14}
                     />
@@ -370,7 +370,7 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
                       type="monotone"
                       dataKey="tempMax"
                       name="Max °C"
-                      stroke="#0a6b6e"
+                      stroke="#047857"
                       strokeWidth={2}
                       dot={false}
                     />
@@ -379,7 +379,7 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
                       type="monotone"
                       dataKey="tempMin"
                       name="Min °C"
-                      stroke="#c45c26"
+                      stroke="#d97706"
                       strokeWidth={1.5}
                       dot={false}
                     />
@@ -405,11 +405,11 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
                   </span>
                 </div>
                 <div className="mt-3 space-y-2">
-                  <FactorBar label="Pluie" value={risk.factors.rainScore} color="#2F9E44" />
-                  <FactorBar label="Vent" value={risk.factors.windScore} color="#4aa8ba" />
-                  <FactorBar label="Proximité" value={risk.factors.proximityScore} color="#F08C00" />
-                  <FactorBar label="Vulnérabilité" value={risk.factors.vulnerabilityScore} color="#7048e8" />
-                  <FactorBar label="Exposition" value={risk.factors.exposureScore} color="#E03131" />
+                  <FactorBar label="Pluie" value={risk.factors.rainScore} color="#22c55e" />
+                  <FactorBar label="Vent" value={risk.factors.windScore} color="#38bdf8" />
+                  <FactorBar label="Proximité" value={risk.factors.proximityScore} color="#f97316" />
+                  <FactorBar label="Vulnérabilité" value={risk.factors.vulnerabilityScore} color="#8b5cf6" />
+                  <FactorBar label="Exposition" value={risk.factors.exposureScore} color="#ef4444" />
                 </div>
                 {risk.explanation.length > 0 ? (
                   <ul className="mt-3 space-y-1">
@@ -429,7 +429,7 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
               </p>
             )}
             {canOps ? (
-              <div className="mt-3 flex items-end gap-2 border-t border-brand/10 pt-3">
+              <div className="mt-3 flex items-end gap-2 border-t border-line pt-3">
                 <Select
                   label="Phase"
                   value={recalcPhase}
@@ -452,7 +452,7 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
           ) : (
             <ul className="space-y-2">
               {detail.events.map((ev) => (
-                <li key={ev.id} className="rounded-lg border border-brand/10 bg-brand-soft/20 p-2.5">
+                <li key={ev.id} className="rounded-lg border border-brand/10 bg-gray-50 p-2.5">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-[11px] text-brand">{ev.eventCode}</span>
                     <div className="flex gap-1">
@@ -482,7 +482,7 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
         </Card>
 
         {/* Actions */}
-        <div className="grid grid-cols-1 gap-2 border-t border-brand/10 pt-3">
+        <div className="grid grid-cols-1 gap-2 border-t border-line pt-3">
           <Link to={`/territoires/communes/${c.id}`}>
             <Button variant="secondary" className="w-full">
               <ExternalLink className="size-4" /> Fiche complète de la commune
@@ -499,7 +499,7 @@ export function RightPanel({ communeId, detail, detailLoading, hasEvent, onClose
 
 function PanelHeader({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   return (
-    <div className="flex items-center justify-between gap-2 border-b border-brand/10 px-3 py-2.5">
+    <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2.5">
       {children}
       <button
         type="button"

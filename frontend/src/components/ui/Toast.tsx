@@ -48,7 +48,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               'pointer-events-auto rounded-xl border px-4 py-3 text-sm shadow-lg backdrop-blur',
               item.tone === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-950',
               item.tone === 'error' && 'border-red-200 bg-red-50 text-red-950',
-              item.tone === 'info' && 'border-brand/20 bg-white text-ink',
+              item.tone === 'info' && 'border-line bg-surface text-ink',
             )}
             role="status"
           >

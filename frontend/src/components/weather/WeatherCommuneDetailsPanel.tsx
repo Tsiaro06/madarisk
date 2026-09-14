@@ -173,7 +173,7 @@ export function WeatherCommuneDetailsPanel({
           <Card title="Toutes les métriques" className="!p-4">
             <div className="grid grid-cols-2 gap-3">
               {WEATHER_METRICS_ORDER.map((m) => (
-                <div key={m} className="rounded-lg bg-brand-soft/60 p-2.5">
+                <div key={m} className="rounded-lg bg-brand-soft p-2.5">
                   <p className="text-[11px] text-muted">
                     {WEATHER_METRIC_CONFIGS[m].label}
                   </p>
@@ -220,7 +220,7 @@ export function WeatherCommuneDetailsPanel({
                     data={chartData}
                     margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
                   >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#d5e4e5" />
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
                     <XAxis
                       dataKey="time"
                       tickFormatter={formatForecastTick}
@@ -239,7 +239,7 @@ export function WeatherCommuneDetailsPanel({
                       type="monotone"
                       dataKey="value"
                       name={config.label}
-                      stroke="#0a6b6e"
+                      stroke="#047857"
                       strokeWidth={2}
                       dot={false}
                       isAnimationActive={false}

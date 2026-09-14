@@ -24,9 +24,9 @@ function styleForFeature(feature?: Feature, selectedId?: string | null): PathOpt
   const risk = props?.riskLevel ?? props?.risk_level ?? props?.niveau;
   const id = String(props?.id ?? props?.communeId ?? props?.commune_id ?? '');
   const selected = selectedId != null && id === String(selectedId);
-  const color = isRiskLevel(risk) ? RISK_COLORS[risk] : '#0a6b6e';
+  const color = isRiskLevel(risk) ? RISK_COLORS[risk] : '#047857';
   return {
-    color: selected ? '#13262b' : color,
+    color: selected ? '#1a1a1a' : color,
     weight: selected ? 3 : 1.5,
     fillColor: color,
     fillOpacity: selected ? 0.75 : 0.55,
@@ -98,7 +98,7 @@ export function GeoJsonMap({
   };
 
   return (
-    <div className={cn('relative overflow-hidden rounded-xl border border-brand/15', className)}>
+    <div className={cn('relative overflow-hidden rounded-xl border border-line', className)}>
       <div style={{ height }}>
         <MapContainer
           center={[-18.9, 47.5]}

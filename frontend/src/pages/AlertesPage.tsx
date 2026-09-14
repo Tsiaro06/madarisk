@@ -170,7 +170,7 @@ export function AlertesPage() {
               {listQ.data?.data.map((a) => (
                 <li
                   key={a.id}
-                  className="rounded-xl border border-brand/10 bg-brand-soft/20 p-4"
+                  className="rounded-xl border border-brand/10 bg-gray-50 p-4"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>

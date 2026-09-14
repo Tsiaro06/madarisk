@@ -606,7 +606,7 @@ export const risksRepository = {
            'explanation', l.explanation,
            'assessedAt', l.assessed_at
          ) AS map_properties,
-         ST_AsGeoJSON(c.geom)::jsonb AS geometry
+         ST_AsGeoJSON(ST_SimplifyPreserveTopology(c.geom, 0.005))::jsonb AS geometry
        FROM latest l
        JOIN communes c ON c.id = l.commune_id
        LEFT JOIN districts d ON d.id = c.district_id`,

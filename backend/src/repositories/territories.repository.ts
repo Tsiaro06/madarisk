@@ -514,7 +514,7 @@ export const territoriesRepository = {
          jsonb_build_object(
            'type', 'Feature',
            'id', c.id,
-           'geometry', ST_AsGeoJSON(c.geom)::jsonb,
+           'geometry', ST_AsGeoJSON(ST_SimplifyPreserveTopology(c.geom, 0.005))::jsonb,
            'properties', jsonb_build_object(
              'communeId', c.id,
              'communeCode', c.admin_code,

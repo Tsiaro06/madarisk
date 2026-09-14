@@ -104,23 +104,23 @@ export function ImportsPage() {
           <>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-brand/10 text-muted">
+                <thead className="border-b border-line bg-gray-50 text-muted">
                   <tr>
-                    <th className="px-2 py-2">Fichier</th>
-                    <th className="px-2 py-2">Type</th>
-                    <th className="px-2 py-2">Statut</th>
-                    <th className="px-2 py-2">Date</th>
+                    <th className="px-3 py-2.5">Fichier</th>
+                    <th className="px-3 py-2.5">Type</th>
+                    <th className="px-3 py-2.5">Statut</th>
+                    <th className="px-3 py-2.5">Date</th>
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((row) => (
                     <tr key={row.id} className="border-b border-brand/5">
-                      <td className="px-2 py-2 font-medium">{String(row.fileName ?? row.id)}</td>
-                      <td className="px-2 py-2">{String(row.sourceType ?? '—')}</td>
-                      <td className="px-2 py-2">
+                      <td className="px-3 py-2.5 font-medium">{String(row.fileName ?? row.id)}</td>
+                      <td className="px-3 py-2.5">{String(row.sourceType ?? '—')}</td>
+                      <td className="px-3 py-2.5">
                         <Badge tone="brand">{String(row.status ?? '—')}</Badge>
                       </td>
-                      <td className="px-2 py-2">{formatDate(row.createdAt)}</td>
+                      <td className="px-3 py-2.5">{formatDate(row.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>

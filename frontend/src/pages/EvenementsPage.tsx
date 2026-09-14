@@ -164,31 +164,31 @@ export function EvenementsPage() {
           <>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-brand/10 text-muted">
+                <thead className="border-b border-line bg-gray-50 text-muted">
                   <tr>
-                    <th className="px-2 py-2">Code</th>
-                    <th className="px-2 py-2">Nom</th>
-                    <th className="px-2 py-2">Type</th>
-                    <th className="px-2 py-2">Sévérité</th>
-                    <th className="px-2 py-2">Statut</th>
-                    <th className="px-2 py-2">Créé</th>
+                    <th className="px-3 py-2.5">Code</th>
+                    <th className="px-3 py-2.5">Nom</th>
+                    <th className="px-3 py-2.5">Type</th>
+                    <th className="px-3 py-2.5">Sévérité</th>
+                    <th className="px-3 py-2.5">Statut</th>
+                    <th className="px-3 py-2.5">Créé</th>
                   </tr>
                 </thead>
                 <tbody>
                   {listQ.data?.data.map((ev) => (
-                    <tr key={ev.id} className="border-b border-brand/5 hover:bg-brand-soft/40">
-                      <td className="px-2 py-2 font-mono text-xs">{ev.eventCode}</td>
-                      <td className="px-2 py-2">
+                    <tr key={ev.id} className="border-b border-line transition hover:bg-gray-50">
+                      <td className="px-3 py-2.5 font-mono text-xs">{ev.eventCode}</td>
+                      <td className="px-3 py-2.5">
                         <Link className="font-medium text-brand hover:underline" to={`/evenements/${ev.id}`}>
                           {ev.name}
                         </Link>
                       </td>
-                      <td className="px-2 py-2">{ev.type}</td>
-                      <td className="px-2 py-2">{ev.severity}</td>
-                      <td className="px-2 py-2">
+                      <td className="px-3 py-2.5">{ev.type}</td>
+                      <td className="px-3 py-2.5">{ev.severity}</td>
+                      <td className="px-3 py-2.5">
                         <Badge tone={STATUS_TONE[ev.status]}>{ev.status}</Badge>
                       </td>
-                      <td className="px-2 py-2">{formatDate(ev.createdAt)}</td>
+                      <td className="px-3 py-2.5">{formatDate(ev.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>

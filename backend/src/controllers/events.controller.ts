@@ -135,4 +135,10 @@ export const eventsController = {
     const meta = paginate(result.page, result.limit, result.total);
     res.status(200).json(successResponse(result.items, 'Communes exposées', meta));
   },
+
+  listExposedCommuneIds: async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.validatedParams as EventIdParams;
+    const communeIds = await eventsService.listExposedCommunesIds(id);
+    res.status(200).json(successResponse(communeIds, 'Communes exposées (ids)'));
+  },
 };

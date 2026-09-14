@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth } from "@/components/auth/RequireAuth";
 import { RequireRole } from "@/components/auth/RequireRole";
 import { AppShell } from "@/components/layout/AppShell";
+import { ActiveEventProvider } from "@/stores/activeEvent";
 import { LoginPage } from "@/pages/LoginPage";
 import { CrisisRoomPage } from "@/pages/CrisisRoomPage";
 import { DashboardPage } from "@/pages/DashboardPage";
@@ -42,7 +43,14 @@ export function AppRouter() {
               element={<CommuneDetailPage />}
             />
             <Route path="evenements" element={<EvenementsPage />} />
-            <Route path="evenements/:id" element={<EvenementDetailPage />} />
+            <Route
+              path="evenements/:id"
+              element={
+                <ActiveEventProvider>
+                  <EvenementDetailPage />
+                </ActiveEventProvider>
+              }
+            />
             <Route path="meteo" element={<WeatherMapPage />} />
             <Route path="risques" element={<RisquesPage />} />
             <Route path="alertes" element={<AlertesPage />} />

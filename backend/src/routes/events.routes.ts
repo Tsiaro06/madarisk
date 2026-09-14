@@ -128,6 +128,12 @@ router.get(
   asyncHandler(eventsController.listExposedCommunes),
 );
 
+router.get(
+  '/:id/exposed-communes/ids',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(eventsController.listExposedCommuneIds),
+);
+
 router.delete(
   '/:id/exposed-communes/:communeId',
   authorize('ADMIN', 'SUPER_ADMIN'),

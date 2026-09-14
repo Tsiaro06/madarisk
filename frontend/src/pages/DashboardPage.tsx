@@ -85,7 +85,7 @@ export function DashboardPage() {
         {kpis.map((k) => (
           <Card key={k.label} className="!p-4">
             <p className="text-xs uppercase tracking-wide text-muted">{k.label}</p>
-            <p className="mt-1 font-display text-3xl text-brand">
+            <p className="mt-1 text-3xl font-bold tracking-tight text-brand">
               {typeof k.value === 'number' ? formatNumber(k.value) : (k.value ?? '—')}
             </p>
           </Card>
@@ -100,11 +100,11 @@ export function DashboardPage() {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={distData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#d5e4e5" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
                 <XAxis dataKey="niveau" tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip />
-                <Bar dataKey="count" name="Communes" fill="#0a6b6e" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="count" name="Communes" fill="#047857" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -114,11 +114,11 @@ export function DashboardPage() {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={timeline}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#d5e4e5" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip />
-                <Line type="monotone" dataKey="total" stroke="#c45c26" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="total" stroke="#d97706" strokeWidth={2} dot={false} />
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -128,29 +128,29 @@ export function DashboardPage() {
       <Card title="Communes prioritaires">
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-brand/10 text-muted">
+            <thead className="border-b border-line bg-gray-50 text-xs uppercase tracking-wide text-muted">
               <tr>
-                <th className="px-2 py-2 font-medium">Commune</th>
-                <th className="px-2 py-2 font-medium">District</th>
-                <th className="px-2 py-2 font-medium">Score</th>
-                <th className="px-2 py-2 font-medium">Niveau</th>
-                <th className="px-2 py-2 font-medium">Population</th>
+                <th className="px-3 py-2.5 font-medium">Commune</th>
+                <th className="px-3 py-2.5 font-medium">District</th>
+                <th className="px-3 py-2.5 font-medium">Score</th>
+                <th className="px-3 py-2.5 font-medium">Niveau</th>
+                <th className="px-3 py-2.5 font-medium">Population</th>
               </tr>
             </thead>
             <tbody>
               {(priorityQ.data ?? s?.priorityCommunes ?? []).map((c) => (
-                <tr key={c.communeId} className="border-b border-brand/5 hover:bg-brand-soft/40">
-                  <td className="px-2 py-2">
+                <tr key={c.communeId} className="border-b border-line transition hover:bg-gray-50">
+                  <td className="px-3 py-3">
                     <Link className="font-medium text-brand hover:underline" to={`/territoires/communes/${c.communeId}`}>
                       {c.communeName}
                     </Link>
                   </td>
-                  <td className="px-2 py-2">{c.districtName}</td>
-                  <td className="px-2 py-2">{formatNumber(c.riskScore)}</td>
-                  <td className="px-2 py-2">
+                  <td className="px-3 py-3">{c.districtName}</td>
+                  <td className="px-3 py-3">{formatNumber(c.riskScore)}</td>
+                  <td className="px-3 py-3">
                     <Badge tone={riskTone(c.riskLevel)}>{RISK_LABELS[c.riskLevel]}</Badge>
                   </td>
-                  <td className="px-2 py-2">{formatNumber(c.population)}</td>
+                  <td className="px-3 py-3">{formatNumber(c.population)}</td>
                 </tr>
               ))}
             </tbody>

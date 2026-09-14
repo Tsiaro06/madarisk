@@ -87,21 +87,21 @@ export function RapportsPage() {
           <>
             <div className="overflow-x-auto">
               <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-brand/10 text-muted">
+                <thead className="border-b border-line bg-gray-50 text-muted">
                   <tr>
-                    <th className="px-2 py-2">Nom</th>
-                    <th className="px-2 py-2">Type</th>
-                    <th className="px-2 py-2">Date</th>
-                    <th className="px-2 py-2" />
+                    <th className="px-3 py-2.5">Nom</th>
+                    <th className="px-3 py-2.5">Type</th>
+                    <th className="px-3 py-2.5">Date</th>
+                    <th className="px-3 py-2.5" />
                   </tr>
                 </thead>
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.id} className="border-b border-brand/5">
-                      <td className="px-2 py-2 font-medium">{String(r.name ?? r.id)}</td>
-                      <td className="px-2 py-2">{String(r.type ?? '—')}</td>
-                      <td className="px-2 py-2">{formatDate(r.createdAt)}</td>
-                      <td className="px-2 py-2 text-right">
+                      <td className="px-3 py-2.5 font-medium">{String(r.name ?? r.id)}</td>
+                      <td className="px-3 py-2.5">{String(r.type ?? '—')}</td>
+                      <td className="px-3 py-2.5">{formatDate(r.createdAt)}</td>
+                      <td className="px-3 py-2.5 text-right">
                         <Button
                           size="sm"
                           variant="ghost"

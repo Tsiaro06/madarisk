@@ -48,7 +48,7 @@ export function TerritoiresPage() {
       </div>
 
       <div className="flex flex-wrap items-end gap-3">
-        <div className="inline-flex rounded-xl bg-brand-soft p-1">
+        <div className="inline-flex rounded-xl bg-gray-100 p-1">
           {([
             ['communes', 'Communes'],
             ['districts', 'Districts'],
@@ -93,19 +93,19 @@ export function TerritoiresPage() {
               <>
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-left text-sm">
-                    <thead className="border-b border-brand/10 text-muted">
+                    <thead className="border-b border-line bg-gray-50 text-muted">
                       <tr>
-                        <th className="px-2 py-2">Code</th>
-                        <th className="px-2 py-2">Nom</th>
-                        <th className="px-2 py-2">Communes</th>
-                        <th className="px-2 py-2">Population</th>
+                        <th className="px-3 py-2.5">Code</th>
+                        <th className="px-3 py-2.5">Nom</th>
+                        <th className="px-3 py-2.5">Communes</th>
+                        <th className="px-3 py-2.5">Population</th>
                       </tr>
                     </thead>
                     <tbody>
                       {districtsQ.data?.data.map((d) => (
-                        <tr key={d.id} className="border-b border-brand/5 hover:bg-brand-soft/40">
-                          <td className="px-2 py-2 font-mono text-xs">{d.adminCode}</td>
-                          <td className="px-2 py-2">
+                        <tr key={d.id} className="border-b border-line transition hover:bg-gray-50">
+                          <td className="px-3 py-2.5 font-mono text-xs">{d.adminCode}</td>
+                          <td className="px-3 py-2.5">
                             <Link
                               className="font-medium text-brand hover:underline"
                               to={`/territoires/districts/${d.id}`}
@@ -113,8 +113,8 @@ export function TerritoiresPage() {
                               {d.name}
                             </Link>
                           </td>
-                          <td className="px-2 py-2">{d.totalCommunes}</td>
-                          <td className="px-2 py-2">{formatNumber(d.population)}</td>
+                          <td className="px-3 py-2.5">{d.totalCommunes}</td>
+                          <td className="px-3 py-2.5">{formatNumber(d.population)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -133,12 +133,12 @@ export function TerritoiresPage() {
             <>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-left text-sm">
-                  <thead className="border-b border-brand/10 text-muted">
+                  <thead className="border-b border-line bg-gray-50 text-muted">
                     <tr>
-                      <th className="px-2 py-2">Code</th>
-                      <th className="px-2 py-2">Commune</th>
-                      <th className="px-2 py-2">District</th>
-                      <th className="px-2 py-2">Population</th>
+                      <th className="px-3 py-2.5">Code</th>
+                      <th className="px-3 py-2.5">Commune</th>
+                      <th className="px-3 py-2.5">District</th>
+                      <th className="px-3 py-2.5">Population</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -146,19 +146,19 @@ export function TerritoiresPage() {
                       <tr
                         key={c.id}
                         className={cn(
-                          'border-b border-brand/5 cursor-pointer hover:bg-brand-soft/50',
+                          'border-b border-line cursor-pointer transition hover:bg-gray-50',
                           selectedId === c.id && 'bg-brand-soft',
                         )}
                         onClick={() => setSelectedId(c.id)}
                       >
-                        <td className="px-2 py-2 font-mono text-xs">{c.adminCode}</td>
-                        <td className="px-2 py-2">
+                        <td className="px-3 py-2.5 font-mono text-xs">{c.adminCode}</td>
+                        <td className="px-3 py-2.5">
                           <Link className="font-medium text-brand hover:underline" to={`/territoires/communes/${c.id}`}>
                             {c.name}
                           </Link>
                         </td>
-                        <td className="px-2 py-2">{c.districtName}</td>
-                        <td className="px-2 py-2">{formatNumber(c.population)}</td>
+                        <td className="px-3 py-2.5">{c.districtName}</td>
+                        <td className="px-3 py-2.5">{formatNumber(c.population)}</td>
                       </tr>
                     ))}
                   </tbody>

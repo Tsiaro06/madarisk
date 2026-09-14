@@ -598,6 +598,11 @@ export const eventsService = {
     });
   },
 
+  async listExposedCommunesIds(id: string): Promise<string[]> {
+    await this.ensureExists(id);
+    return eventsRepository.listExposedCommuneIds(id);
+  },
+
   async ensureExists(id: string): Promise<EventListItem> {
     const event = await eventsRepository.findById(id);
     if (!event) {

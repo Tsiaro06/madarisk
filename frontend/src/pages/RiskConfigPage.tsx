@@ -94,35 +94,35 @@ export function RiskConfigPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-sm">
-              <thead className="border-b border-brand/10 text-muted">
+              <thead className="border-b border-line bg-gray-50 text-muted">
                 <tr>
-                  <th className="px-2 py-2">Nom</th>
-                  <th className="px-2 py-2">Poids</th>
-                  <th className="px-2 py-2">Seuils</th>
-                  <th className="px-2 py-2">Statut</th>
-                  <th className="px-2 py-2">Créée</th>
+                  <th className="px-3 py-2.5">Nom</th>
+                  <th className="px-3 py-2.5">Poids</th>
+                  <th className="px-3 py-2.5">Seuils</th>
+                  <th className="px-3 py-2.5">Statut</th>
+                  <th className="px-3 py-2.5">Créée</th>
                 </tr>
               </thead>
               <tbody>
                 {configs.map((c) => (
                   <tr key={c.id} className="border-b border-brand/5">
-                    <td className="px-2 py-2 font-medium">{String(c.name ?? c.id)}</td>
-                    <td className="px-2 py-2 font-mono text-xs">
+                    <td className="px-3 py-2.5 font-medium">{String(c.name ?? c.id)}</td>
+                    <td className="px-3 py-2.5 font-mono text-xs">
                       {[c.rainWeight, c.windWeight, c.proximityWeight, c.vulnerabilityWeight, c.exposureWeight]
                         .filter((v) => v != null)
                         .join(' / ') || '—'}
                     </td>
-                    <td className="px-2 py-2 font-mono text-xs">
+                    <td className="px-3 py-2.5 font-mono text-xs">
                       {[c.lowThreshold, c.moderateThreshold, c.highThreshold, c.extremeThreshold]
                         .filter((v) => v != null)
                         .join(' / ') || '—'}
                     </td>
-                    <td className="px-2 py-2">
+                    <td className="px-3 py-2.5">
                       <Badge tone={c.isActive ? 'success' : 'neutral'}>
                         {c.isActive ? 'Active' : 'Inactive'}
                       </Badge>
                     </td>
-                    <td className="px-2 py-2">{formatDate(c.createdAt)}</td>
+                    <td className="px-3 py-2.5">{formatDate(c.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
