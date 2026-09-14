@@ -3,6 +3,8 @@ import { logger } from '../config/logger';
 import { detectionRulesService } from './detection-rules.service';
 import { eventsRepository } from '../repositories/events.repository';
 import { hazardDetectionRepository } from '../repositories/hazard-detection.repository';
+import { exposureRepository } from '../repositories/exposure.repository';
+import { exposureService } from './exposure.service';
 import {
   applyOperator,
   detectionKeyFor,
@@ -27,6 +29,7 @@ import type {
 import type { EventStatus, SeverityLevel } from '../types/event.types';
 import { AppError } from '../utils/app-error';
 import type { ScopeResolution } from '../repositories/hazard-detection.repository';
+import type { DetectionCommuneRow } from '../types/exposure.types';
 
 interface RunningLock {
   runId: string;
@@ -265,6 +268,7 @@ async function evaluateRules(
         best,
         ctx.trigger,
       );
+      await persistDetectionAndExposure(eventId, group.signals, ctx);
       touchedEventIds.add(eventId);
       eventsUpdated += 1;
     } else {
@@ -290,12 +294,17 @@ async function evaluateRules(
       await hazardDetectionRepository.insertMonitoring(eventId, key, nowIso);
       await hazardDetectionRepository.markDetected(eventId, nowIso);
       await recordSnapshot(eventId, decision, severity, best, ctx.trigger);
+      await persistDetectionAndExposure(eventId, group.signals, ctx);
       touchedEventIds.add(eventId);
       eventsCreated += 1;
     }
   }
 
   const transitioned = await applyDecrease(ctx, touchedEventIds);
+
+  for (const eventId of transitioned.eventIds) {
+    await persistDetectionAndExposure(eventId, [], ctx);
+  }
 
   const status: 'SUCCESS' | 'PARTIAL' | 'FAILED' =
     rules.length > 0 && ruleErrors === rules.length
@@ -314,7 +323,7 @@ async function evaluateRules(
     rulesTriggered,
     detections,
     eventsCreated,
-    eventsUpdated: eventsUpdated + transitioned,
+    eventsUpdated: eventsUpdated + transitioned.count,
   } as DetectionRunOutcome;
 }
 
@@ -451,10 +460,48 @@ async function recordSnapshot(
   });
 }
 
-async function applyDecrease(ctx: EvalContext, touchedEventIds: Set<string>): Promise<number> {
+/** Communes uniques au-dessus du seuil, avec la valeur la plus intense par commune. */
+function detectionCommunesFor(signals: DetectionSignal[]): DetectionCommuneRow[] {
+  const byCommune = new Map<string, DetectionCommuneRow>();
+  for (const s of signals) {
+    const existing = byCommune.get(s.communeId);
+    if (!existing || (existing.value ?? -Infinity) < s.value) {
+      byCommune.set(s.communeId, {
+        communeId: s.communeId,
+        metric: s.metric,
+        value: s.value,
+        threshold: s.threshold,
+      });
+    }
+  }
+  return Array.from(byCommune.values());
+}
+
+/** Persiste les communes au-dessus du seuil puis recalcule exposition + risques. */
+async function persistDetectionAndExposure(
+  eventId: string,
+  signals: DetectionSignal[],
+  _ctx: EvalContext,
+): Promise<void> {
+  try {
+    const rows = detectionCommunesFor(signals);
+    if (rows.length > 0) {
+      await exposureRepository.upsertDetectionCommunes(eventId, rows);
+    }
+    await exposureService.computeForEvent(eventId, { trigger: 'DETECTION' });
+  } catch (err) {
+    logger.warn({ err, eventId }, "Calcul automatique de l'exposition et des risques échoué");
+  }
+}
+
+async function applyDecrease(
+  ctx: EvalContext,
+  touchedEventIds: Set<string>,
+): Promise<{ count: number; eventIds: string[] }> {
   const nowIso = ctx.now.toISOString();
   const rows = await hazardDetectionRepository.listMonitorings();
   let transitions = 0;
+  const eventIds: string[] = [];
 
   for (const row of rows) {
     if (touchedEventIds.has(row.eventId)) continue;
@@ -482,6 +529,7 @@ async function applyDecrease(ctx: EvalContext, touchedEventIds: Set<string>): Pr
           details: { source: HISTORY_SOURCE, reason: 'Danger en baisse' },
         });
         transitions += 1;
+        eventIds.push(row.eventId);
       }
     } else if (row.status === 'SUIVI') {
       const sinceMs = row.monitoringSince ? new Date(row.monitoringSince).getTime() : null;
@@ -506,11 +554,12 @@ async function applyDecrease(ctx: EvalContext, touchedEventIds: Set<string>): Pr
         });
         await hazardDetectionRepository.deleteMonitoring(row.eventId);
         transitions += 1;
+        eventIds.push(row.eventId);
       } else {
         await hazardDetectionRepository.incrementNormalCycle(row.eventId, nowIso);
       }
     }
   }
 
-  return transitions;
+  return { count: transitions, eventIds };
 }

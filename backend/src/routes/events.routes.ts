@@ -18,6 +18,7 @@ import {
   createPolygonAreaSchema,
   calculateExposureSchema,
   listExposedCommunesQuerySchema,
+  recalculateExposureSchema,
 } from '../validators/events.validator';
 import { recalculateEventRiskSchema } from '../validators/risks.validator';
 import { risksController } from '../controllers/risks.controller';
@@ -120,6 +121,25 @@ router.post(
   authorize('ADMIN', 'SUPER_ADMIN'),
   validate({ params: eventIdParamsSchema, query: calculateExposureSchema }),
   asyncHandler(eventsController.calculateExposure),
+);
+
+router.post(
+  '/:id/exposure/recalculate',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  validate({ params: eventIdParamsSchema, body: recalculateExposureSchema }),
+  asyncHandler(eventsController.recalculateExposure),
+);
+
+router.get(
+  '/:id/exposure-geojson',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(eventsController.exposureLayer),
+);
+
+router.get(
+  '/:id/exposure/runs',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(eventsController.listExposureRuns),
 );
 
 router.post(

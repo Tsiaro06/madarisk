@@ -195,6 +195,11 @@ export const listExposedCommunesQuerySchema = z.object({
   maxDistanceKm: z.coerce.number().min(0).optional(),
 });
 
+export const recalculateExposureSchema = z.object({
+  bufferRadiusKm: z.coerce.number().min(1).max(300).optional(),
+  trajectoryRadiusKm: z.coerce.number().min(1).max(500).optional(),
+});
+
 export type CreateEventInput = z.infer<typeof createEventSchema>;
 export type UpdateEventInput = z.infer<typeof updateEventSchema>;
 export type UpdateEventStatusInput = z.infer<typeof updateEventStatusSchema>;
@@ -205,3 +210,4 @@ export type CalculateAreaInput = z.infer<typeof calculateAreaSchema>;
 export type CreatePolygonAreaInput = z.infer<typeof createPolygonAreaSchema>;
 export type CalculateExposureInput = z.infer<typeof calculateExposureSchema>;
 export type ListExposedCommunesQuery = z.infer<typeof listExposedCommunesQuerySchema>;
+export type RecalculateExposureInput = z.infer<typeof recalculateExposureSchema>;

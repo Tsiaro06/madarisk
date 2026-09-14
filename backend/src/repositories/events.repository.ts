@@ -643,15 +643,18 @@ export const eventsRepository = {
            'type', 'Feature',
            'id', a.id,
            'geometry', ST_AsGeoJSON(a.geom)::jsonb,
-           'properties', jsonb_build_object(
-             'areaId', a.id,
-             'phase', a.phase,
-             'riskLevel', a.risk_level,
-             'radiusKm', a.radius_km,
-             'validFrom', a.valid_from,
-             'validTo', a.valid_to,
-             'source', a.source
-           )
+'properties', jsonb_build_object(
+              'areaId', a.id,
+              'phase', a.phase,
+              'riskLevel', a.risk_level,
+              'radiusKm', a.radius_km,
+              'validFrom', a.valid_from,
+              'validTo', a.valid_to,
+              'source', a.source,
+              'sourceType', COALESCE(a.source_type, 'MANUEL'),
+              'isEstimate', a.is_estimate,
+              'description', a.description
+            )
          )::jsonb AS feature
        FROM event_areas a
        WHERE a.event_id = $1
@@ -862,6 +865,10 @@ export const eventsRepository = {
       population: number | null;
       riskLevel: string | null;
       riskScore: string | null;
+      overlapPercent: string | null;
+      sourceType: string;
+      dataType: string;
+      updatedAt: string;
     }>(
       `SELECT
          c.id AS "communeId",
@@ -875,7 +882,11 @@ export const eventsRepository = {
          ec.exposed_population AS "exposedPopulation",
          c.population AS "population",
          latest_risk.risk_level::text AS "riskLevel",
-         latest_risk.risk_score::text AS "riskScore"
+         latest_risk.risk_score::text AS "riskScore",
+         ec.overlap_percent::text AS "overlapPercent",
+         COALESCE(ec.source_type, 'ZONE') AS "sourceType",
+         COALESCE(ec.data_type, 'ESTIME') AS "dataType",
+         ec.updated_at AS "updatedAt"
        FROM exposed_communes ec
        JOIN communes c ON c.id = ec.commune_id
        LEFT JOIN districts d ON d.id = c.district_id
@@ -906,6 +917,10 @@ export const eventsRepository = {
         population: r.population,
         riskLevel: r.riskLevel as RiskLevel | null,
         riskScore: r.riskScore !== null ? parseFloat(r.riskScore) : null,
+        overlapPercent: r.overlapPercent !== null ? parseFloat(r.overlapPercent) : null,
+        sourceType: r.sourceType as ExposedCommuneRow['sourceType'],
+        dataType: r.dataType as ExposedCommuneRow['dataType'],
+        updatedAt: r.updatedAt,
       })),
       page: query.page,
       limit: query.limit,

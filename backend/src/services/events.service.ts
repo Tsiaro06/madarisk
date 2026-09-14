@@ -2,6 +2,8 @@ import { AppError } from '../utils/app-error';
 import { logger } from '../config/logger';
 import { usersRepository } from '../repositories/users.repository';
 import { eventsRepository } from '../repositories/events.repository';
+import { exposureRepository } from '../repositories/exposure.repository';
+import { exposureService } from './exposure.service';
 import {
   AreaGeoJson,
   EventDetail,
@@ -12,6 +14,11 @@ import {
   ExposedCommuneRow,
   TrackGeoJson,
 } from '../types/event.types';
+import {
+  ExposureLayerGeoJson,
+  ExposureRecalculationResult,
+  ExposureRun,
+} from '../types/exposure.types';
 import { PaginatedResult } from '../types/territory.types';
 import { UserRole } from '../types/auth.types';
 import {
@@ -601,6 +608,53 @@ export const eventsService = {
   async listExposedCommunesIds(id: string): Promise<string[]> {
     await this.ensureExists(id);
     return eventsRepository.listExposedCommuneIds(id);
+  },
+
+  async recalculateExposure(
+    id: string,
+    input: { bufferRadiusKm?: number; trajectoryRadiusKm?: number },
+    actor: { id: string; role: UserRole },
+    req: RequestContext,
+  ): Promise<ExposureRecalculationResult> {
+    if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
+      throw AppError.forbidden(
+        'Seuls ADMIN et SUPER_ADMIN peuvent recalculer l\'exposition',
+      );
+    }
+
+    await this.ensureExists(id);
+
+    const result = await exposureService.computeForEvent(id, {
+      trigger: 'MANUAL',
+      bufferRadiusKm: input.bufferRadiusKm,
+      trajectoryRadiusKm: input.trajectoryRadiusKm,
+    });
+
+    await usersRepository.writeAudit({
+      userId: actor.id,
+      action: 'EVENT_EXPOSURE_RECALCULATED',
+      entityType: 'hazard_event',
+      entityId: id,
+      newValue: {
+        trigger: result.trigger,
+        areasCreated: result.areasCreated,
+        communesExposed: result.communesExposed,
+        riskAssessed: result.riskAssessed,
+      },
+      ipAddress: getIp(req),
+    });
+
+    return result;
+  },
+
+  async exposureLayer(id: string): Promise<ExposureLayerGeoJson> {
+    await this.ensureExists(id);
+    return exposureRepository.exposureLayer(id);
+  },
+
+  async listExposureRuns(id: string): Promise<ExposureRun[]> {
+    await this.ensureExists(id);
+    return exposureRepository.listExposureRuns(id);
   },
 
   async ensureExists(id: string): Promise<EventListItem> {

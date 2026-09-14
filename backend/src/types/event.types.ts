@@ -187,6 +187,10 @@ export interface ExposedCommuneRow {
   population: number | null;
   riskLevel: RiskLevel | null;
   riskScore: number | null;
+  overlapPercent: number | null;
+  sourceType: 'SEUIL' | 'ZONE' | 'TRAJECTOIRE' | 'MANUEL';
+  dataType: 'REEL' | 'ESTIME';
+  updatedAt: string;
 }
 
 export interface ExposureCalculationResult {

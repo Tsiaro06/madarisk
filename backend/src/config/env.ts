@@ -67,6 +67,9 @@ const envSchema = z.object({
   DETECTION_MONITORING_HOURS: z.coerce.number().min(1).default(24),
   DETECTION_DEDUPE_HOURS: z.coerce.number().min(1).default(48),
 
+  EXPOSURE_BUFFER_RADIUS_KM: z.coerce.number().min(1).default(25),
+  EXPOSURE_TRAJECTORY_RADIUS_KM: z.coerce.number().min(1).default(50),
+
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 

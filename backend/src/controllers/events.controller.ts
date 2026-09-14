@@ -11,6 +11,7 @@ import {
   ListEventsQuery,
   ListExposedCommunesQuery,
   ListTracksQuery,
+  RecalculateExposureInput,
   UpdateEventInput,
   UpdateEventStatusInput,
 } from '../validators/events.validator';
@@ -140,5 +141,25 @@ export const eventsController = {
     const { id } = req.validatedParams as EventIdParams;
     const communeIds = await eventsService.listExposedCommunesIds(id);
     res.status(200).json(successResponse(communeIds, 'Communes exposées (ids)'));
+  },
+
+  recalculateExposure: async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) throw AppError.unauthorized();
+    const { id } = req.validatedParams as EventIdParams;
+    const body = (req.validatedBody ?? {}) as RecalculateExposureInput;
+    const result = await eventsService.recalculateExposure(id, body, req.user, req);
+    res.status(200).json(successResponse(result, 'Exposition et risques recalculés'));
+  },
+
+  exposureLayer: async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.validatedParams as EventIdParams;
+    const geojson = await eventsService.exposureLayer(id);
+    res.status(200).json(successResponse(geojson, "Couche GeoJSON d'exposition"));
+  },
+
+  listExposureRuns: async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.validatedParams as EventIdParams;
+    const runs = await eventsService.listExposureRuns(id);
+    res.status(200).json(successResponse(runs, "Historique des calculs d'exposition"));
   },
 };

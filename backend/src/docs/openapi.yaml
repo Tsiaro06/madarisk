@@ -1798,6 +1798,116 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /events/{id}/exposure/recalculate:
+    post:
+      tags: [Événements]
+      summary: Recalculer automatiquement l'exposition et les risques (ADMIN / SUPER_ADMIN)
+      description: >
+        Crée ou met à jour les zones d'influence (estimation autour des communes
+        au-dessus du seuil, trajectoire officielle si elle existe), recalcule les
+        communes exposées (avec distance et pourcentage de recouvrement) puis les
+        scores de risque via le moteur existant. Idempotent : aucune zone dupliquée.
+      security:
+        - bearerAuth: []
+      operationId: recalculateExposure
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bufferRadiusKm:
+                  type: number
+                  description: Rayon de la zone estimée autour des communes au-dessus du seuil
+                trajectoryRadiusKm:
+                  type: number
+                  description: Rayon de la zone autour de la trajectoire officielle
+      responses:
+        '200':
+          description: Exposition et risques recalculés
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/ExposureRecalculationResult' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/exposure-geojson:
+    get:
+      tags: [Événements]
+      summary: Couche GeoJSON d'exposition d'un événement
+      description: >
+        FeatureCollection des communes exposées : géométrie des communes et
+        propriétés (population, population exposée, pourcentage de recouvrement,
+        distance à la trajectoire, source et type de données, risque associé).
+        Coordonnées au format [longitude, latitude].
+      security:
+        - bearerAuth: []
+      operationId: exposureLayer
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      responses:
+        '200':
+          description: Couche d'exposition
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/ExposureLayer' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/exposure/runs:
+    get:
+      tags: [Événements]
+      summary: Historique des calculs d'exposition d'un événement
+      security:
+        - bearerAuth: []
+      operationId: exposureRuns
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      responses:
+        '200':
+          description: Historique des calculs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/ExposureRun' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /events/{id}/risks/recalculate:
     post:
       tags: [Événements]
@@ -4045,6 +4155,12 @@ components:
         phase: { $ref: '#/components/schemas/RiskPhase' }
         radiusKm: { type: number }
         riskLevel: { $ref: '#/components/schemas/RiskLevel' }
+        sourceType:
+          type: string
+          enum: [ESTIMATION, TRAJECTOIRE, MANUEL, POLYGONE]
+          description: Provenance de la zone (ESTIMATION = calculé par le système)
+        isEstimate: { type: boolean, description: true si la zone est estimée par le système (ESTIME) }
+        description: { type: [string, 'null'] }
         circle: { $ref: '#/components/schemas/GeoJsonGeometry' }
         createdAt: { type: string, format: date-time }
     PolygonGeometry:
@@ -4079,15 +4195,84 @@ components:
         areaKmTouched: { type: number }
     ExposedCommune:
       type: object
+      description: Commune exposée à un événement (source, type de données, distance et recouvrement)
       properties:
         communeId: { type: string, format: uuid }
+        communeCode: { type: string }
         communeName: { type: string }
         districtId: { type: string, format: uuid }
-        riskScore: { type: number }
+        districtCode: { type: string }
+        districtName: { type: string }
+        distanceToTrackKm: { type: [number, 'null'] }
+        isInsideInfluenceArea: { type: boolean }
+        exposedPopulation: { type: [integer, 'null'] }
+        population: { type: [integer, 'null'] }
         riskLevel: { $ref: '#/components/schemas/RiskLevel' }
-        population: { type: integer }
-        distanceKm: { type: number }
-        calculatedAt: { type: string, format: date-time }
+        riskScore: { type: [number, 'null'] }
+        overlapPercent: { type: [number, 'null'], description: 'Pourcentage de recouvrement de la commune par la zone d influence' }
+        sourceType:
+          type: string
+          enum: [SEUIL, ZONE, TRAJECTOIRE, MANUEL]
+          description: Source de l exposition (SEUIL = seuil dépassé, ZONE = recouvrement par une zone)
+        dataType:
+          type: string
+          enum: [REEL, ESTIME]
+          description: Type de données (REEL = données réelles, ESTIME = estimation système)
+        updatedAt: { type: string, format: date-time }
+    ExposureRecalculationResult:
+      type: object
+      description: Résultat d'un calcul automatique d'exposition et de risques
+      properties:
+        eventId: { type: string, format: uuid }
+        trigger: { type: string, enum: [DETECTION, SYNC, MANUAL] }
+        areasCreated: { type: integer }
+        areasSkipped: { type: integer }
+        communesUpserted: { type: integer }
+        communesExposed: { type: integer }
+        riskAssessed: { type: integer }
+        runId: { type: string, format: uuid }
+    ExposureRun:
+      type: object
+      description: Exécution d'un calcul d'exposition (historique)
+      properties:
+        id: { type: string, format: uuid }
+        eventId: { type: string, format: uuid }
+        trigger: { type: string, enum: [DETECTION, SYNC, MANUAL] }
+        areasCreated: { type: integer }
+        communesUpserted: { type: integer }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+    ExposureLayer:
+      type: object
+      description: Couche GeoJSON des communes exposées (coordonnées [longitude, latitude])
+      required: [type, features]
+      properties:
+        type: { type: string, enum: [FeatureCollection] }
+        features:
+          type: array
+          items:
+            type: object
+            required: [type, geometry, properties]
+            properties:
+              type: { type: string, enum: [Feature] }
+              id: { type: string, format: uuid }
+              geometry: { $ref: '#/components/schemas/GeoJsonGeometry' }
+              properties:
+                type: object
+                properties:
+                  communeId: { type: string, format: uuid }
+                  communeCode: { type: string }
+                  communeName: { type: string }
+                  districtName: { type: string }
+                  population: { type: [integer, 'null'] }
+                  exposedPopulation: { type: [integer, 'null'] }
+                  overlapPercent: { type: [number, 'null'] }
+                  distanceToTrackKm: { type: [number, 'null'] }
+                  sourceType: { type: string, enum: [SEUIL, ZONE, TRAJECTOIRE, MANUEL] }
+                  dataType: { type: string, enum: [REEL, ESTIME] }
+                  riskLevel: { $ref: '#/components/schemas/RiskLevel' }
+                  riskScore: { type: [number, 'null'] }
+                  updatedAt: { type: string, format: date-time }
     WeatherObservation:
       type: object
       description: Observation météo

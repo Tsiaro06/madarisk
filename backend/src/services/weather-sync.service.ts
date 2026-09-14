@@ -8,6 +8,7 @@ import { weatherSyncRepository } from '../repositories/weather-sync.repository';
 import { getWeatherProvider } from './weather-provider';
 import { AutomationRunStatus } from '../types/automation.types';
 import { hazardDetectionService } from './hazard-detection.service';
+import { exposureService } from './exposure.service';
 import {
   BatchCommuneInput,
   WeatherCurrentBatchItem,
@@ -460,6 +461,14 @@ async function detectAfterSync(scope: WeatherSyncScope): Promise<void> {
     });
   } catch (err) {
     logger.warn({ err }, 'Détection d aléas post-synchronisation ignorée (échec)');
+  }
+
+  // Après une nouvelle synchronisation : recalcule automatique (idempotent)
+  // de l'exposition et des risques pour tous les événements détectés.
+  try {
+    await exposureService.recomputeActiveEvents('SYNC');
+  } catch (err) {
+    logger.warn({ err }, 'Recalcul de l exposition post-synchronisation ignoré (échec)');
   }
 }
 

@@ -284,6 +284,46 @@ function enrichAssessment(assessment: RiskAssessment, thresholds: RiskThresholds
   return { ...assessment, ...presentation };
 }
 
+/** Évalue le risque des communes cibles avec la configuration active (interne, sans audit). */
+async function assessCommunes(
+  communeIds: string[],
+  eventId: string | null,
+  phase: RiskPhase,
+): Promise<RiskAssessment[]> {
+  if (communeIds.length === 0) return [];
+
+  const configuration = await risksRepository.getActiveConfiguration();
+  const { weights, thresholds } = asConfiguration(configuration);
+
+  const contexts = await risksRepository.getRiskContexts({ communeIds, eventId });
+  const assessedAt = new Date().toISOString();
+
+  const rows = contexts.map((context) => {
+    const result = computeRiskAssessment(
+      context,
+      { weights, thresholds },
+      assessedAt,
+      eventId !== null,
+      phase,
+    );
+    return {
+      communeId: context.communeId,
+      eventId,
+      configurationId: configuration ? configuration.id : null,
+      phase,
+      riskScore: result.riskScore,
+      riskLevel: result.riskLevel,
+      factors: result.factors,
+      explanation: result.explanation,
+      assessedAt,
+    };
+  });
+
+  const saved = await risksRepository.saveAssessments(rows);
+  await alertsService.createRiskAlertIfThresholdExceeded(saved);
+  return saved;
+}
+
 export const risksService = {
   async listConfigurations(): Promise<RiskConfiguration[]> {
     return risksRepository.listConfigurations();
@@ -446,42 +486,12 @@ export const risksService = {
     }
 
     const configuration = await risksRepository.getActiveConfiguration();
-    const { weights, thresholds } = asConfiguration(configuration);
+    const { thresholds } = asConfiguration(configuration);
 
-    const contexts = await risksRepository.getRiskContexts({
-      communeIds,
-      eventId,
-    });
-
-    const assessedAt = new Date().toISOString();
-
-    const rows = contexts.map((context) => {
-      const result = computeRiskAssessment(
-        context,
-        { weights, thresholds },
-        assessedAt,
-        eventId !== null,
-        phase,
-      );
-      return {
-        communeId: context.communeId,
-        eventId,
-        configurationId: configuration ? configuration.id : null,
-        phase,
-        riskScore: result.riskScore,
-        riskLevel: result.riskLevel,
-        factors: result.factors,
-        explanation: result.explanation,
-        assessedAt,
-      };
-    });
-
-    const saved = await risksRepository.saveAssessments(rows);
+    const saved = await assessCommunes(communeIds, eventId, phase);
     const assessments = saved.map((a) => enrichAssessment(a, thresholds));
 
     logger.info({ eventId, phase, total: assessments.length }, 'Recalcul des risques terminé');
-
-    await alertsService.createRiskAlertIfThresholdExceeded(saved);
 
     await usersRepository.writeAudit({
       userId: actor.id,
@@ -496,6 +506,17 @@ export const risksService = {
     });
 
     return { phase, totalCommunes: assessments.length, assessments };
+  },
+
+  /**
+   * Évalue automatiquement le risque des communes exposées d'un événement
+   * (appelé par le moteur d'exposition — pas d'audit utilisateur).
+   */
+  async assessExposedCommunes(eventId: string, phase: RiskPhase): Promise<number> {
+    const communeIds = await risksRepository.resolveTargetCommunes({ eventId });
+    if (communeIds.length === 0) return 0;
+    const saved = await assessCommunes(communeIds, eventId, phase);
+    return saved.length;
   },
 
   async communeRisks(
