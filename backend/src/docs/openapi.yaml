@@ -216,7 +216,8 @@ paths:
                     type: object
                     properties:
                       accessToken: { type: string, description: Jeton JWT (15 min) }
-                      refreshToken: { type: string, description: Jeton de rafraîchissement (7 jours) }
+                      refreshToken:
+                        { type: string, description: Jeton de rafraîchissement (7 jours) }
                       user: { $ref: '#/components/schemas/User' }
               example:
                 success: true
@@ -341,9 +342,27 @@ paths:
       parameters:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Limit' }
-        - { name: search, in: query, required: false, schema: { type: string }, description: Recherche sur email, prénom ou nom }
-        - { name: role, in: query, required: false, schema: { $ref: '#/components/schemas/UserRole' } }
-        - { name: isActive, in: query, required: false, schema: { type: boolean }, description: Filtre actif/inactif ("true"/"false") }
+        - {
+            name: search,
+            in: query,
+            required: false,
+            schema: { type: string },
+            description: Recherche sur email,
+            prénom ou nom,
+          }
+        - {
+            name: role,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/UserRole' },
+          }
+        - {
+            name: isActive,
+            in: query,
+            required: false,
+            schema: { type: boolean },
+            description: Filtre actif/inactif ("true"/"false"),
+          }
       responses:
         '200':
           description: Liste des utilisateurs
@@ -564,9 +583,27 @@ paths:
       parameters:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Limit' }
-        - { name: search, in: query, required: false, schema: { type: string }, description: Recherche sur nom ou code }
-        - { name: adminCode, in: query, required: false, schema: { type: string }, description: Code administratif exact }
-        - { name: includeGeometry, in: query, required: false, schema: { type: boolean }, description: Inclure la géométrie ("true"/"1") }
+        - {
+            name: search,
+            in: query,
+            required: false,
+            schema: { type: string },
+            description: Recherche sur nom ou code,
+          }
+        - {
+            name: adminCode,
+            in: query,
+            required: false,
+            schema: { type: string },
+            description: Code administratif exact,
+          }
+        - {
+            name: includeGeometry,
+            in: query,
+            required: false,
+            schema: { type: boolean },
+            description: Inclure la géométrie ("true"/"1"),
+          }
       responses:
         '200':
           description: Liste des districts
@@ -623,11 +660,22 @@ paths:
       parameters:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Limit' }
-        - { name: search, in: query, required: false, schema: { type: string }, description: Recherche sur nom ou code }
+        - {
+            name: search,
+            in: query,
+            required: false,
+            schema: { type: string },
+            description: Recherche sur nom ou code,
+          }
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: districtCode, in: query, required: false, schema: { type: string } }
         - { name: adminCode, in: query, required: false, schema: { type: string } }
-        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
+        - {
+            name: riskLevel,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/RiskLevel' },
+          }
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: includeGeometry, in: query, required: false, schema: { type: boolean } }
       responses:
@@ -725,8 +773,19 @@ paths:
       operationId: districtsGeoJson
       parameters:
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
-        - { name: includeStats, in: query, required: false, schema: { type: boolean }, description: Inclure les statistiques agrégées }
+        - {
+            name: riskLevel,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/RiskLevel' },
+          }
+        - {
+            name: includeStats,
+            in: query,
+            required: false,
+            schema: { type: boolean },
+            description: Inclure les statistiques agrégées,
+          }
       responses:
         '200':
           description: District FeatureCollection
@@ -752,9 +811,25 @@ paths:
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: districtCode, in: query, required: false, schema: { type: string } }
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
-        - { name: phase, in: query, required: false, schema: { $ref: '#/components/schemas/RiskPhase' } }
-        - { name: includeRisk, in: query, required: false, schema: { type: boolean }, description: Inclure les attributs de risque (défaut true) }
+        - {
+            name: riskLevel,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/RiskLevel' },
+          }
+        - {
+            name: phase,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/RiskPhase' },
+          }
+        - {
+            name: includeRisk,
+            in: query,
+            required: false,
+            schema: { type: boolean },
+            description: Inclure les attributs de risque (défaut true),
+          }
         - { name: includeGeometry, in: query, required: false, schema: { type: boolean } }
       responses:
         '200':
@@ -829,9 +904,24 @@ paths:
       parameters:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Limit' }
-        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/ImportStatus' } }
-        - { name: fileType, in: query, required: false, schema: { $ref: '#/components/schemas/ImportFileType' } }
-        - { name: territoryType, in: query, required: false, schema: { type: string, enum: [DISTRICT, COMMUNE] } }
+        - {
+            name: status,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/ImportStatus' },
+          }
+        - {
+            name: fileType,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/ImportFileType' },
+          }
+        - {
+            name: territoryType,
+            in: query,
+            required: false,
+            schema: { type: string, enum: [DISTRICT, COMMUNE] },
+          }
       responses:
         '200':
           description: Liste des imports
@@ -965,10 +1055,30 @@ paths:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Limit' }
         - { name: importId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/MatchStatus' } }
-        - { name: targetType, in: query, required: false, schema: { type: string, enum: [DISTRICT, COMMUNE] } }
-        - { name: minConfidence, in: query, required: false, schema: { type: number, minimum: 0, maximum: 100 } }
-        - { name: maxConfidence, in: query, required: false, schema: { type: number, minimum: 0, maximum: 100 } }
+        - {
+            name: status,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/MatchStatus' },
+          }
+        - {
+            name: targetType,
+            in: query,
+            required: false,
+            schema: { type: string, enum: [DISTRICT, COMMUNE] },
+          }
+        - {
+            name: minConfidence,
+            in: query,
+            required: false,
+            schema: { type: number, minimum: 0, maximum: 100 },
+          }
+        - {
+            name: maxConfidence,
+            in: query,
+            required: false,
+            schema: { type: number, minimum: 0, maximum: 100 },
+          }
       responses:
         '200':
           description: Liste des correspondances
@@ -1036,7 +1146,8 @@ paths:
                 targetType:
                   type: string
                   enum: [DISTRICT, COMMUNE]
-                districtId: { type: string, format: uuid, description: Requis si targetType=DISTRICT }
+                districtId:
+                  { type: string, format: uuid, description: Requis si targetType=DISTRICT }
                 communeId: { type: string, format: uuid, description: Requis si targetType=COMMUNE }
                 createAlias: { type: boolean, default: false }
                 alias: { type: string, description: Valeur d'alias si createAlias est activé }
@@ -1190,11 +1301,36 @@ paths:
       parameters:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Limit' }
-        - { name: type, in: query, required: false, schema: { $ref: '#/components/schemas/HazardType' } }
-        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/EventStatus' } }
-        - { name: severity, in: query, required: false, schema: { $ref: '#/components/schemas/SeverityLevel' } }
-        - { name: startedAfter, in: query, required: false, schema: { type: string, format: date-time } }
-        - { name: startedBefore, in: query, required: false, schema: { type: string, format: date-time } }
+        - {
+            name: type,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/HazardType' },
+          }
+        - {
+            name: status,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/EventStatus' },
+          }
+        - {
+            name: severity,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/SeverityLevel' },
+          }
+        - {
+            name: startedAfter,
+            in: query,
+            required: false,
+            schema: { type: string, format: date-time },
+          }
+        - {
+            name: startedBefore,
+            in: query,
+            required: false,
+            schema: { type: string, format: date-time },
+          }
         - { name: search, in: query, required: false, schema: { type: string } }
       responses:
         '200':
@@ -1395,7 +1531,12 @@ paths:
       operationId: listEventTracks
       parameters:
         - { $ref: '#/components/parameters/EventId' }
-        - { name: trackType, in: query, required: false, schema: { $ref: '#/components/schemas/TrackType' } }
+        - {
+            name: trackType,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/TrackType' },
+          }
       responses:
         '200':
           description: Points de trajectoire
@@ -1619,8 +1760,20 @@ paths:
       operationId: calculateExposure
       parameters:
         - { $ref: '#/components/parameters/EventId' }
-        - { name: areaId, in: query, required: false, schema: { type: string, format: uuid }, description: Zone d'influence ciblée }
-        - { name: allAreas, in: query, required: false, schema: { type: boolean }, description: Utiliser toutes les zones ("true" pour oui) }
+        - {
+            name: areaId,
+            in: query,
+            required: false,
+            schema: { type: string, format: uuid },
+            description: Zone d'influence ciblée,
+          }
+        - {
+            name: allAreas,
+            in: query,
+            required: false,
+            schema: { type: boolean },
+            description: Utiliser toutes les zones ("true" pour oui),
+          }
       responses:
         '200':
           description: Exposition calculée
@@ -1700,8 +1853,18 @@ paths:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Limit' }
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: phase, in: query, required: false, schema: { $ref: '#/components/schemas/RiskPhase' } }
-        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
+        - {
+            name: phase,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/RiskPhase' },
+          }
+        - {
+            name: riskLevel,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/RiskLevel' },
+          }
         - { name: minDistanceKm, in: query, required: false, schema: { type: number, minimum: 0 } }
         - { name: maxDistanceKm, in: query, required: false, schema: { type: number, minimum: 0 } }
       responses:
@@ -1810,15 +1973,33 @@ paths:
       parameters:
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: observedAt, in: query, required: false, schema: { type: string, format: date-time } }
+        - {
+            name: observedAt,
+            in: query,
+            required: false,
+            schema: { type: string, format: date-time },
+          }
         - name: metric
           in: query
           required: false
           schema:
             type: string
-            enum: [precipitation, temperature_2m, relative_humidity_2m, pressure_msl, wind_speed_10m]
-        - { name: date, in: query, required: false, description: 'Date cible au format YYYY-MM-DD', schema: { type: string, pattern: '^\\d{4}-\\d{2}-\\d{2}$' } }
-        - { name: hour, in: query, required: false, description: 'Heure cible (0 à 23), nécessite date', schema: { type: integer, minimum: 0, maximum: 23 } }
+            enum:
+              [precipitation, temperature_2m, relative_humidity_2m, pressure_msl, wind_speed_10m]
+        - {
+            name: date,
+            in: query,
+            required: false,
+            description: 'Date cible au format YYYY-MM-DD',
+            schema: { type: string, pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+          }
+        - {
+            name: hour,
+            in: query,
+            required: false,
+            description: 'Heure cible (0 à 23), nécessite date',
+            schema: { type: integer, minimum: 0, maximum: 23 },
+          }
       responses:
         '200':
           description: Couche météo
@@ -1862,7 +2043,12 @@ paths:
                   items: { type: string, format: uuid }
                 districtId: { type: string, format: uuid }
                 eventId: { type: string, format: uuid }
-                confirmAll: { type: boolean, default: false, description: Confirmer le rafraîchissement de toutes les communes }
+                confirmAll:
+                  {
+                    type: boolean,
+                    default: false,
+                    description: Confirmer le rafraîchissement de toutes les communes,
+                  }
             examples:
               weatherRefreshExample:
                 $ref: '#/components/examples/weatherRefresh'
@@ -2067,7 +2253,12 @@ paths:
       operationId: weatherHistory
       parameters:
         - { $ref: '#/components/parameters/CommuneId' }
-        - { name: dateFrom, in: query, required: false, schema: { type: string, format: date-time } }
+        - {
+            name: dateFrom,
+            in: query,
+            required: false,
+            schema: { type: string, format: date-time },
+          }
         - { name: dateTo, in: query, required: false, schema: { type: string, format: date-time } }
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Limit' }
@@ -2111,12 +2302,18 @@ paths:
               required: [phase]
               properties:
                 phase: { $ref: '#/components/schemas/RiskPhase' }
-                eventId: { type: string, format: uuid, description: Périmètre = communes exposées de l'événement }
+                eventId:
+                  {
+                    type: string,
+                    format: uuid,
+                    description: Périmètre = communes exposées de l'événement,
+                  }
                 communeIds:
                   type: array
                   description: Périmètre = communes ciblées (1 à 2000).
                   items: { type: string, format: uuid }
-                districtId: { type: string, format: uuid, description: Périmètre = communes du district }
+                districtId:
+                  { type: string, format: uuid, description: Périmètre = communes du district }
       responses:
         '200':
           description: Risques recalculés
@@ -2149,8 +2346,20 @@ paths:
       operationId: getCommuneRisk
       parameters:
         - { $ref: '#/components/parameters/CommuneId' }
-        - { name: eventId, in: query, required: false, schema: { type: string, format: uuid }, description: Évaluation dans le contexte d'un événement }
-        - { name: latest, in: query, required: false, schema: { type: boolean }, description: Dernière évaluation disponible (défaut true) }
+        - {
+            name: eventId,
+            in: query,
+            required: false,
+            schema: { type: string, format: uuid },
+            description: Évaluation dans le contexte d'un événement,
+          }
+        - {
+            name: latest,
+            in: query,
+            required: false,
+            schema: { type: boolean },
+            description: Dernière évaluation disponible (défaut true),
+          }
       responses:
         '200':
           description: Évaluation de risque de la commune
@@ -2180,8 +2389,18 @@ paths:
       parameters:
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
-        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - {
+            name: riskLevel,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/RiskLevel' },
+          }
+        - {
+            name: limit,
+            in: query,
+            required: false,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 20 },
+          }
       responses:
         '200':
           description: Communes prioritaires
@@ -2210,8 +2429,18 @@ paths:
       parameters:
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
-        - { name: phase, in: query, required: false, schema: { $ref: '#/components/schemas/RiskPhase' } }
+        - {
+            name: riskLevel,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/RiskLevel' },
+          }
+        - {
+            name: phase,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/RiskPhase' },
+          }
       responses:
         '200':
           description: Couche de risques
@@ -2388,6 +2617,119 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /detection/run:
+    post:
+      tags: [Détection automatique]
+      summary: Déclencher la détection automatique d aléas (ADMIN / SUPER_ADMIN)
+      description: >
+        Évalue les règles de détection actives contre les données météo récentes
+        (observations et/ou prévisions), crée ou met à jour les événements associés
+        (PREVISION depuis une prévision, ACTIF depuis une observation confirmée),
+        et applique les transitions de danger décroissant (ACTIF vers SUIVI puis
+        CLOTURE). Sans exécution concurrente : une demande pendant une exécution
+        en cours renvoie 409. Chaque exécution est journalisée dans
+        hazard_detection_runs, avec historique de statuts et snapshots d événements.
+      security:
+        - bearerAuth: []
+      operationId: runHazardDetection
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scope:
+                  type: string
+                  enum: [OBSERVATIONS, FORECASTS, ALL]
+                  default: ALL
+      responses:
+        '200':
+          description: Résultat de la détection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/DetectionRunResult' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /detection/runs:
+    get:
+      tags: [Détection automatique]
+      summary: Historique des exécutions de détection (ADMIN / SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: listDetectionRuns
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Exécutions de détection
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/DetectionRunInfo' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/history:
+    get:
+      tags: [Événements]
+      summary: Chronologie d un événement (historique de statuts et snapshots)
+      security:
+        - bearerAuth: []
+      operationId: getEventHistory
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+      responses:
+        '200':
+          description: Chronologie de l événement
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: object
+                    properties:
+                      eventId: { type: string, format: uuid }
+                      timeline:
+                        type: array
+                        items: { $ref: '#/components/schemas/EventTimelineEntry' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /detection-rules/{id}:
     get:
       tags: [Détection automatique]
@@ -2463,13 +2805,34 @@ paths:
       parameters:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Limit' }
-        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/AlertStatus' } }
-        - { name: type, in: query, required: false, schema: { $ref: '#/components/schemas/AlertType' } }
-        - { name: severity, in: query, required: false, schema: { $ref: '#/components/schemas/SeverityLevel' } }
+        - {
+            name: status,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/AlertStatus' },
+          }
+        - {
+            name: type,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/AlertType' },
+          }
+        - {
+            name: severity,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/SeverityLevel' },
+          }
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: communeId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: activeOnly, in: query, required: false, schema: { type: boolean }, description: Alerte actives uniquement ("true"/"1") }
+        - {
+            name: activeOnly,
+            in: query,
+            required: false,
+            schema: { type: boolean },
+            description: Alerte actives uniquement ("true"/"1"),
+          }
       responses:
         '200':
           description: Liste des alertes
@@ -2683,7 +3046,12 @@ paths:
       operationId: dashboardEventsTimeline
       parameters:
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: dateFrom, in: query, required: false, schema: { type: string, format: date-time } }
+        - {
+            name: dateFrom,
+            in: query,
+            required: false,
+            schema: { type: string, format: date-time },
+          }
         - { name: dateTo, in: query, required: false, schema: { type: string, format: date-time } }
       responses:
         '200':
@@ -2720,8 +3088,18 @@ paths:
       parameters:
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
         - { name: districtId, in: query, required: false, schema: { type: string, format: uuid } }
-        - { name: riskLevel, in: query, required: false, schema: { $ref: '#/components/schemas/RiskLevel' } }
-        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - {
+            name: riskLevel,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/RiskLevel' },
+          }
+        - {
+            name: limit,
+            in: query,
+            required: false,
+            schema: { type: integer, minimum: 1, maximum: 100, default: 20 },
+          }
       responses:
         '200':
           description: Communes prioritaires
@@ -2749,7 +3127,12 @@ paths:
         - bearerAuth: []
       operationId: dashboardReport
       parameters:
-        - { name: dateFrom, in: query, required: false, schema: { type: string, format: date-time } }
+        - {
+            name: dateFrom,
+            in: query,
+            required: false,
+            schema: { type: string, format: date-time },
+          }
         - { name: dateTo, in: query, required: false, schema: { type: string, format: date-time } }
       responses:
         '200':
@@ -2904,7 +3287,12 @@ paths:
       parameters:
         - { $ref: '#/components/parameters/Page' }
         - { $ref: '#/components/parameters/Limit' }
-        - { name: format, in: query, required: false, schema: { $ref: '#/components/schemas/ReportFormat' } }
+        - {
+            name: format,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/ReportFormat' },
+          }
         - { name: reportType, in: query, required: false, schema: { type: string } }
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
       responses:
@@ -2936,7 +3324,13 @@ paths:
         - bearerAuth: []
       operationId: downloadReport
       parameters:
-        - { name: id, in: path, required: true, schema: { type: string, format: uuid }, description: Identifiant du rapport }
+        - {
+            name: id,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+            description: Identifiant du rapport,
+          }
       responses:
         '200':
           description: Fichier du rapport
@@ -3023,7 +3417,12 @@ paths:
       operationId: listAiConversations
       parameters:
         - { $ref: '#/components/parameters/Page' }
-        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 50, default: 20 } }
+        - {
+            name: limit,
+            in: query,
+            required: false,
+            schema: { type: integer, minimum: 1, maximum: 50, default: 20 },
+          }
       responses:
         '200':
           description: Liste des conversations
@@ -3362,7 +3761,18 @@ components:
       enum: [SUPER_ADMIN, ADMIN, ANALYSTE_SIG, CLIENT]
     HazardType:
       type: string
-      enum: [CYCLONE, INONDATION, SECHERESSE, FORTE_PLUIE, VENT_VIOLENT, GLISSEMENT_TERRAIN, FEU_VEGETATION, VAGUE_DE_CHALEUR, AUTRE]
+      enum:
+        [
+          CYCLONE,
+          INONDATION,
+          SECHERESSE,
+          FORTE_PLUIE,
+          VENT_VIOLENT,
+          GLISSEMENT_TERRAIN,
+          FEU_VEGETATION,
+          VAGUE_DE_CHALEUR,
+          AUTRE,
+        ]
     DetectionOperator:
       type: string
       enum: [GT, GE, LT, LE, EQ, BETWEEN]
@@ -3554,7 +3964,8 @@ components:
           pattern: '^[A-Za-z0-9._-]+$'
           maxLength: 100
           example: CY-2026-0214
-        name: { type: string, minLength: 1, maxLength: 200, example: Cyclone Freddy - Passage Nord-Est }
+        name:
+          { type: string, minLength: 1, maxLength: 200, example: Cyclone Freddy - Passage Nord-Est }
         type: { $ref: '#/components/schemas/HazardType' }
         status: { $ref: '#/components/schemas/EventStatus' }
         severity: { $ref: '#/components/schemas/SeverityLevel' }
@@ -3716,7 +4127,8 @@ components:
       properties:
         status: { type: string, enum: [RUNNING, SUCCESS, FAILED, PARTIAL] }
         started: { type: boolean }
-        joinedExisting: { type: boolean, description: true si une exécution identique était déjà en cours }
+        joinedExisting:
+          { type: boolean, description: true si une exécution identique était déjà en cours }
         runs:
           type: array
           items:
@@ -3896,6 +4308,55 @@ components:
         createdBy: { type: string, format: uuid, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    DetectionRunResult:
+      type: object
+      description: Résultat d'une exécution de détection automatique
+      properties:
+        runId: { type: string, format: uuid, nullable: true }
+        started: { type: boolean }
+        joinedExisting: { type: boolean }
+        status:
+          type: string
+          enum: [SUCCESS, PARTIAL, RUNNING, SKIPPED]
+        trigger: { type: string, enum: [SCHEDULED, MANUAL] }
+        rulesEvaluated: { type: integer }
+        rulesTriggered: { type: integer }
+        detections: { type: integer }
+        eventsCreated: { type: integer }
+        eventsUpdated: { type: integer }
+    DetectionRunInfo:
+      type: object
+      description: Traçabilité d'une exécution de détection
+      properties:
+        runId: { type: string, format: uuid }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time, nullable: true }
+        status: { $ref: '#/components/schemas/DetectionRunStatus' }
+        trigger: { type: string, enum: [SCHEDULED, MANUAL] }
+        rulesEvaluated: { type: integer }
+        detections: { type: integer }
+        rulesTriggered: { type: integer }
+        eventsCreated: { type: integer }
+        eventsUpdated: { type: integer }
+        errorMessage: { type: string, nullable: true }
+    DetectionRunStatus:
+      type: string
+      enum: [RUNNING, SUCCESS, FAILED, PARTIAL]
+    EventTimelineEntry:
+      type: object
+      description: Entrée de chronologie (changement de statut ou snapshot)
+      properties:
+        recordedAt: { type: string, format: date-time }
+        kind: { type: string, enum: [STATUS_CHANGE, SNAPSHOT] }
+        fromStatus: { $ref: '#/components/schemas/EventStatus' }
+        toStatus: { $ref: '#/components/schemas/EventStatus' }
+        reason: { type: string, nullable: true }
+        source: { type: string }
+        actorType: { type: string }
+        severity: { $ref: '#/components/schemas/SeverityLevel' }
+        exposedCommuneCount: { type: integer, nullable: true }
+        metricValues: { type: object, nullable: true }
+        details: { type: object, nullable: true }
     Alert:
       type: object
       description: Alerte (brouillon, publiée, archivée ou expirée)

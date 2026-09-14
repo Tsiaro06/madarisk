@@ -21,10 +21,17 @@ import {
 } from '../validators/events.validator';
 import { recalculateEventRiskSchema } from '../validators/risks.validator';
 import { risksController } from '../controllers/risks.controller';
+import { eventHistoryController } from '../controllers/hazard-detection.controller';
 
 const router = Router();
 
 router.use(authenticate);
+
+router.get(
+  '/:id/history',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(eventHistoryController.history),
+);
 
 router.post(
   '/',

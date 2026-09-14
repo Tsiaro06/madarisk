@@ -63,6 +63,10 @@ const envSchema = z.object({
   WEATHER_FORECAST_STALE_HOURS: z.coerce.number().default(6),
   RISK_RECALCULATION_CRON: z.string().default('10 * * * *'),
 
+  DETECTION_NORMAL_CYCLES_BEFORE_MONITORING: z.coerce.number().int().min(1).default(3),
+  DETECTION_MONITORING_HOURS: z.coerce.number().min(1).default(24),
+  DETECTION_DEDUPE_HOURS: z.coerce.number().min(1).default(48),
+
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 

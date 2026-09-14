@@ -7,6 +7,7 @@ import type { WeatherInsertData } from '../repositories/weather.repository';
 import { weatherSyncRepository } from '../repositories/weather-sync.repository';
 import { getWeatherProvider } from './weather-provider';
 import { AutomationRunStatus } from '../types/automation.types';
+import { hazardDetectionService } from './hazard-detection.service';
 import {
   BatchCommuneInput,
   WeatherCurrentBatchItem,
@@ -450,6 +451,18 @@ async function runSubScopeBody(
 
 const inflight = new Map<string, { runId: string | null }>();
 
+async function detectAfterSync(scope: WeatherSyncScope): Promise<void> {
+  try {
+    await hazardDetectionService.run({
+      trigger: 'SCHEDULED',
+      scope: scope === 'OBSERVATIONS_AND_FORECASTS' ? 'ALL' : scope,
+      skipWhenNoRules: true,
+    });
+  } catch (err) {
+    logger.warn({ err }, 'Détection d aléas post-synchronisation ignorée (échec)');
+  }
+}
+
 export const weatherSyncService = {
   async trigger(
     input: { scope: WeatherSyncScope; communeIds?: string[] },
@@ -486,6 +499,8 @@ export const weatherSyncService = {
     } finally {
       for (const scope of scopes) inflight.delete(scope);
     }
+
+    await detectAfterSync(input.scope);
 
     const successCount = runStatuses.filter((s) => s === 'SUCCESS').length;
     const failedCount = runStatuses.length - successCount;
