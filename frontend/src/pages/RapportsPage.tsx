@@ -3,6 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { reportsApi } from '@/api';
 import { ApiClientError } from '@/api/client';
 import { Card } from '@/components/ui/Card';
+import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -70,7 +71,8 @@ export function RapportsPage() {
       </div>
 
       {canExport ? (
-        <Card title="Exporter" description="Générer un fichier à partir du tableau de bord">
+        <AdministrativeInterventionPanel>
+          <p className="text-sm font-semibold text-ink">Exports manuels (intervention)</p>
           <div className="flex flex-wrap gap-2">
             <Button loading={exportM.isPending} onClick={() => exportM.mutate('csv')}>
               Export CSV
@@ -82,7 +84,11 @@ export function RapportsPage() {
               Export PDF
             </Button>
           </div>
-        </Card>
+          <p className="text-xs text-muted">
+            Les rapports automatiques sont disponibles dans l&apos;historique. Utilisez ces
+            exports pour une extraction ponctuelle ou une analyse administrative.
+          </p>
+        </AdministrativeInterventionPanel>
       ) : null}
 
       <Card title="Rapports générés">

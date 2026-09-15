@@ -13,7 +13,7 @@ export function ForbiddenPage() {
         Votre rôle ne permet pas d&apos;accéder à cette section de la salle de crise.
       </p>
       <Link to="/">
-        <Button>Retour au dashboard</Button>
+        <Button>Retour à la salle de crise</Button>
       </Link>
     </div>
   );

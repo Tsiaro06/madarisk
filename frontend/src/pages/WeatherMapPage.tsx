@@ -14,6 +14,7 @@ import {
   type SelectedCommune,
 } from "@/components/weather/WeatherCommuneDetailsPanel";
 import { WeatherModeBadge } from "@/components/weather/WeatherModeBadge";
+import { RefreshDataButton } from "@/components/ui/RefreshDataButton";
 import { useWeatherMapLayer } from "@/hooks/useWeatherMapLayer";
 import { canManageOps } from "@/lib/roles";
 import {
@@ -153,6 +154,15 @@ export function WeatherMapPage() {
 
   const handleRefresh = async () => {
     if (refreshing || !canRefresh) return;
+    if (
+      !window.confirm(
+        `Relancer la synchronisation des observations météo ${
+          districtId ? "de ce district" : "nationale"
+        } ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.`,
+      )
+    ) {
+      return;
+    }
     const districts = districtsQ.data ?? [];
     if (!districtId && districts.length === 0) {
       toast(
@@ -167,7 +177,7 @@ export function WeatherMapPage() {
     let failed = 0;
     try {
       if (districtId) {
-        setRefreshProgress("Rafraîchissement du district…");
+        setRefreshProgress("Synchronisation du district…");
         await weatherApi.refresh({ districtId });
         ok = 1;
       } else {
@@ -186,13 +196,13 @@ export function WeatherMapPage() {
       await qc.invalidateQueries({ queryKey: ["weather", "map-layer"] });
       toast(
         failed > 0
-          ? `Rafraîchissement terminé : ${ok} district(s) à jour, ${failed} en échec.`
-          : "Rafraîchissement des données météo terminé.",
+          ? `Synchronisation terminée : ${ok} district(s) à jour, ${failed} en échec.`
+          : "Synchronisation des données météo terminée.",
         ok > 0 ? "success" : "error",
       );
     } catch (err) {
       toast(
-        err instanceof Error ? err.message : "Échec du rafraîchissement météo.",
+        err instanceof Error ? err.message : "Échec de la synchronisation météo.",
         "error",
       );
     } finally {
@@ -220,7 +230,6 @@ export function WeatherMapPage() {
         setDistrictId(id);
         setSelectedId(null);
       }}
-      canRefresh={canRefresh}
       isRefreshing={refreshing}
       refreshProgress={refreshProgress}
       onRefresh={handleRefresh}
@@ -253,12 +262,13 @@ export function WeatherMapPage() {
           className="shrink-0"
         >
           <ArrowLeft className="size-4" />
-          <span className="hidden sm:inline">Retour au dashboard</span>
+          <span className="hidden sm:inline">Retour à la salle de crise</span>
         </Button>
         <div className="min-w-0">
           <h1 className="truncate font-display text-lg text-ink">Météo</h1>
           <p className="hidden truncate text-xs text-muted sm:block">
-            Observations et prévisions par commune — indépendant des événements
+            Observations et prévisions par commune — alimentées automatiquement par la
+            surveillance
           </p>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -274,6 +284,10 @@ export function WeatherMapPage() {
             </span>
           </div>
           <WeatherModeBadge mode={mode} />
+          <RefreshDataButton
+            queryKey={["weather", "map-layer", "page"]}
+            onRefresh={() => void qc.refetchQueries({ queryKey: ["weather"] })}
+          />
           <div className="flex shrink-0 gap-2 lg:hidden">
             <Button
               variant="outline"

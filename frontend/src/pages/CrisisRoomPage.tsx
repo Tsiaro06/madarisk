@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CloudSun } from 'lucide-react';
+import { AlertTriangle, CloudSun, Plus } from 'lucide-react';
 import { alertsApi, eventsApi, risksApi, territoriesApi, weatherApi } from '@/api';
 import type { CommuneDetail, EventTrack, ExposedCommuneInfo } from '@/types';
 import { canManageOps } from '@/lib/roles';
@@ -9,6 +9,8 @@ import { useAuthStore } from '@/stores/authStore';
 import { ActiveEventProvider, useActiveEvent } from '@/stores/activeEvent';
 import { AiChatBubble } from '@/components/ai/AiChatBubble';
 import { AlertBanner } from '@/components/ui/AlertBanner';
+import { Button } from '@/components/ui/Button';
+import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { CrisisHeader } from '@/components/crisis/CrisisHeader';
 import { LeftPanel } from '@/components/crisis/LeftPanel';
 import { RightPanel } from '@/components/crisis/RightPanel';
@@ -190,8 +192,6 @@ function CrisisRoomView() {
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-canvas">
       <CrisisHeader
-        canCreate={canCreate}
-        onOpenCreate={() => setCreateOpen(true)}
         leftOpen={leftOpen}
         onToggleLeft={() => {
           setLeftOpen((v) => !v);
@@ -248,18 +248,33 @@ function CrisisRoomView() {
       <div className="flex min-h-0 flex-1">
         <aside
           className={cn(
-            'hidden w-80 shrink-0 border-r border-brand/10 bg-canvas lg:block',
+            'hidden w-80 shrink-0 flex-col border-r border-brand/10 bg-canvas lg:flex',
             !leftOpen && 'lg:hidden',
           )}
         >
-          <LeftPanel
-            activeEventId={activeEventId}
-            onSelectEvent={handleSelectEvent}
-            onSelectCommune={(r) => selectCommune(r.id, true)}
-            onClose={() => setLeftOpen(false)}
-            districtId={districtId}
-            onDistrictChange={handleDistrictChange}
-          />
+          <div className="min-h-0 flex-1">
+            <LeftPanel
+              activeEventId={activeEventId}
+              onSelectEvent={handleSelectEvent}
+              onSelectCommune={(r) => selectCommune(r.id, true)}
+              onClose={() => setLeftOpen(false)}
+              districtId={districtId}
+              onDistrictChange={handleDistrictChange}
+            />
+          </div>
+          {canCreate ? (
+            <div className="border-t border-brand/10 p-2">
+              <AdministrativeInterventionPanel title="Salle de crise">
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => setCreateOpen(true)}
+                >
+                  <Plus className="size-4" /> Créer un événement exceptionnel
+                </Button>
+              </AdministrativeInterventionPanel>
+            </div>
+          ) : null}
         </aside>
 
         <main className="relative min-w-0 flex-1">
@@ -288,8 +303,10 @@ function CrisisRoomView() {
                 </p>
                 <p className="mt-1 text-xs text-muted">
                   La salle de crise affiche la météo nationale et les vigilances en continu.
-                  Créez ou activez un événement (PREVISION, ACTIF, SUIVI) pour superposer
-                  trajectoires, zones d&apos;influence et niveaux de risque.
+                  Activez un événement (PREVISION, ACTIF, SUIVI) pour superposer
+                  trajectoires, zones d&apos;influence et niveaux de risque. La création manuelle
+                  d&apos;un événement est une action exceptionnelle réservée à l&apos;intervention
+                  administrative.
                 </p>
                 <div className="mt-3 space-y-1.5 text-xs text-ink">
                   <p className="flex items-start gap-1.5">
@@ -325,17 +342,32 @@ function CrisisRoomView() {
               onClick={() => setMobileLeft(false)}
             >
               <div
-                className="h-full w-[85%] max-w-80 bg-canvas shadow-2xl"
+                className="flex h-full w-[85%] max-w-80 flex-col bg-canvas shadow-2xl"
                 onClick={(e) => e.stopPropagation()}
               >
-                <LeftPanel
-                  activeEventId={activeEventId}
-                  onSelectEvent={handleSelectEvent}
-                  onSelectCommune={(r) => selectCommune(r.id, true)}
-                  onClose={() => setMobileLeft(false)}
-                  districtId={districtId}
-                  onDistrictChange={handleDistrictChange}
-                />
+                <div className="min-h-0 flex-1">
+                  <LeftPanel
+                    activeEventId={activeEventId}
+                    onSelectEvent={handleSelectEvent}
+                    onSelectCommune={(r) => selectCommune(r.id, true)}
+                    onClose={() => setMobileLeft(false)}
+                    districtId={districtId}
+                    onDistrictChange={handleDistrictChange}
+                  />
+                </div>
+                {canCreate ? (
+                  <div className="border-t border-brand/10 p-2">
+                    <AdministrativeInterventionPanel title="Salle de crise">
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => setCreateOpen(true)}
+                      >
+                        <Plus className="size-4" /> Créer un événement exceptionnel
+                      </Button>
+                    </AdministrativeInterventionPanel>
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}

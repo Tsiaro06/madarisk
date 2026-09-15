@@ -23,12 +23,12 @@ import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
 import { useToast } from '@/components/ui/Toast';
 import { Check, Trash2, XCircle } from 'lucide-react';
 import { cn, formatDate, formatNumber } from '@/lib/utils';
-import { canManageOps } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
 import { useCrisisStore } from '@/stores/crisisStore';
 import { useActiveEvent } from '@/stores/activeEvent';
 import { EventChronologieTab } from '@/components/events/EventChronologieTab';
 import { EventBilanTab } from '@/components/events/EventBilanTab';
+import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 
 const STATUSES: EventStatus[] = ['BROUILLON', 'PREVISION', 'ACTIF', 'SUIVI', 'CLOTURE'];
 const PHASES: RiskPhase[] = ['AVANT', 'PENDANT', 'APRES', 'RETABLISSEMENT'];
@@ -114,6 +114,7 @@ export function EvenementDetailPage() {
     riskLevel: 'ELEVE',
   });
   const [riskPhase, setRiskPhase] = useState<RiskPhase>('PENDANT');
+  const [removeCommuneId, setRemoveCommuneId] = useState('');
   const [selectedMapCommune, setSelectedMapCommune] = useState<{
     communeId: string;
     communeName: string;
@@ -387,16 +388,14 @@ export function EvenementDetailPage() {
             </Card>
           ) : null}
 
-      {canManageOps(role) ? (
-        <>
-          <section className="rounded-xl border border-line bg-surface p-4 shadow-sm">
+      <section className="rounded-xl border border-line bg-surface p-4 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <h2 className="font-display text-base text-ink">Parcours de gestion</h2>
                 <p className="text-xs text-muted">
                   {allStepsDone
-                    ? 'Les 4 étapes sont finalisées — passez au suivi ci-dessous (cycle de vie, carte, communes exposées).'
-                    : `Étape active : n°${activeStep} — complétez les sections dans l'ordre.`}
+                    ? 'Les 4 étapes sont finalisées — le suivi automatique se poursuit (cycle de vie, carte, communes exposées).'
+                    : `Étape active : n°${activeStep} — les données sont produites automatiquement.`}
                 </p>
               </div>
               {allStepsDone ? (
@@ -412,247 +411,11 @@ export function EvenementDetailPage() {
                 </li>
               ))}
             </ol>
-          </section>
-
-          <Card
-            title="Cycle de vie"
-            description={
-              nextStatus
-                ? `Statut actuel : ${ev.status} · prochaine étape : ${nextStatus}`
-                : `Statut actuel : ${ev.status} · cycle de vie terminé`
-            }
-          >
-            <ol className="flex flex-wrap items-center gap-y-3">
-              {STATUSES.map((s, i) => {
-                const idx = STATUSES.indexOf(ev.status);
-                const done = i < idx;
-                const at = i === idx;
-                const allowed = isStatusTransitionAllowed(s);
-                return (
-                  <li key={s} className="flex items-center">
-                    <button
-                      type="button"
-                      disabled={!allowed || statusM.isPending}
-                      onClick={() => statusM.mutate(s)}
-                      className={cn(
-                        'flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition',
-                        at
-                          ? 'border-brand bg-brand text-white shadow-sm'
-                          : done
-                            ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                            : allowed
-                              ? 'border-line bg-white text-muted hover:border-brand/40 hover:text-brand'
-                              : 'cursor-not-allowed border-line bg-canvas text-slate-400',
-                      )}
-                    >
-                      <span className="flex size-4 items-center justify-center">
-                        {done ? (
-                          <Check className="size-3" />
-                        ) : (
-                          <span className="text-[10px] font-bold">{i + 1}</span>
-                        )}
-                      </span>
-                      {s}
-                    </button>
-                    {i < STATUSES.length - 1 ? (
-                      <span
-                        className={cn(
-                          'mx-2 h-px w-4 sm:w-6',
-                          done || at ? 'bg-emerald-300' : 'bg-line',
-                        )}
-                      />
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ol>
             <p className="mt-3 text-xs text-muted">
-              L&apos;événement avance uniquement dans l&apos;ordre BROUILLON → PREVISION → ACTIF →
-              SUIVI → CLOTURE.
-              {role === 'SUPER_ADMIN'
-                ? ' Retour à BROUILLON possible seulement si l’événement n’a aucune donnée (trajectoire, zones, exposition, alertes, risques, rapports).'
-                : ' Le retour en arrière est réservé aux SUPER_ADMIN.'}
+              Ces étapes sont alimentées automatiquement. Les interventions manuelles de
+              correction ou de relance sont réservées à l&apos;intervention administrative.
             </p>
-          </Card>
-
-          <div className="grid gap-5 lg:grid-cols-2">
-            <Card title="Point de trajectoire" description={`Étape 1 · ${isTrackRequired ? 'le chemin emprunté par le phénomène' : 'optionnelle — le chemin du phénomène s’il se déplace'}`}>
-              <div className="space-y-2">
-                <Input
-                  label="Latitude"
-                  value={trackPoint.lat}
-                  onChange={(e) => setTrackPoint((p) => ({ ...p, lat: e.target.value }))}
-                />
-                <Input
-                  label="Longitude"
-                  value={trackPoint.lng}
-                  onChange={(e) => setTrackPoint((p) => ({ ...p, lng: e.target.value }))}
-                />
-                <Select
-                  label="Type"
-                  value={trackPoint.trackType}
-                  onChange={(e) => setTrackPoint((p) => ({ ...p, trackType: e.target.value }))}
-                  options={[
-                    { value: 'OBSERVEE', label: 'OBSERVEE' },
-                    { value: 'PREVUE', label: 'PREVUE' },
-                  ]}
-                />
-                <Button
-                  className="w-full"
-                  loading={trackM.isPending}
-                  onClick={() => trackM.mutate()}
-                >
-                  Ajouter le point
-                </Button>
-                <p className="text-xs text-muted">
-                  {trackCount >= 2
-                    ? `${trackCount} point${trackCount > 1 ? 's' : ''} ajouté${trackCount > 1 ? 's' : ''} — la ligne est tracée, vous pouvez passer à l'étape 2.`
-                    : isTrackRequired
-                      ? `Ajoutez au moins 2 points (OBSERVEE = passé, PREVUE = prévu) pour tracer la ligne. ${trackCount} point${trackCount > 1 ? 's' : ''} ajouté${trackCount > 1 ? 's' : ''}.`
-                      : `Optionnel — vous pouvez tracer une trajectoire si le phénomène se déplace, sinon passez directement à la « Zone polygonale » (étape 2).`}{' '}
-                  Astuce : cliquez la carte « Trajectoire / zones » pour préremplir lat/lng.
-                </p>
-              </div>
-            </Card>
-
-            <Card title="Bande tampon" description="Étape 2 · élargit la trajectoire d'un rayon, puis lance automatiquement l'exposition et les risques">
-              <form
-                className="space-y-2"
-                onSubmit={areaForm.handleSubmit((v) => areaM.mutate(v))}
-              >
-                <Select
-                  label="Phase"
-                  {...areaForm.register('phase')}
-                  options={PHASES.map((p) => ({ value: p, label: p }))}
-                />
-                <Select
-                  label="Niveau"
-                  {...areaForm.register('riskLevel')}
-                  options={LEVELS.map((p) => ({ value: p, label: p }))}
-                />
-                <Input
-                  label="Rayon (km)"
-                  type="number"
-                  min={1}
-                  max={500}
-                  {...areaForm.register('radiusKm')}
-                  error={areaForm.formState.errors.radiusKm?.message}
-                />
-                <Button type="submit" loading={areaM.isPending} disabled={trackCount < 2} className="w-full">
-                  Calculer
-                </Button>
-                <p className="text-xs text-muted">
-                  {trackCount < 2
-                    ? `Nécessite au moins 2 points de trajectoire (actuellement ${trackCount}). Pour un événement sans trajectoire, utilisez la « Zone polygonale » à côté.`
-                    : "Élargit la trajectoire d'un rayon, puis lance automatiquement l'exposition (étape 3) et les risques (étape 4)."}
-                </p>
-              </form>
-            </Card>
-
-            <Card title="Zone polygonale (dessin)" description="Étape 2 · périmètre tracé à la main — recommandé pour les événements sans trajectoire">
-              <div className="space-y-2">
-                <Select
-                  label="Phase"
-                  value={polyForm.phase}
-                  onChange={(e) => setPolyForm((p) => ({ ...p, phase: e.target.value as RiskPhase }))}
-                  options={PHASES.map((p) => ({ value: p, label: p }))}
-                />
-                <Select
-                  label="Niveau"
-                  value={polyForm.riskLevel}
-                  onChange={(e) =>
-                    setPolyForm((p) => ({ ...p, riskLevel: e.target.value as RiskLevel }))
-                  }
-                  options={LEVELS.map((p) => ({ value: p, label: p }))}
-                />
-                <PolygonDrawMap points={polygonPoints} onChange={setPolygonPoints} height={240} />
-                <div className="flex gap-2">
-                  <Button
-                    className="flex-1"
-                    variant="secondary"
-                    disabled={polygonPoints.length === 0}
-                    onClick={() => setPolygonPoints((p) => p.slice(0, -1))}
-                  >
-                    Annuler le point
-                  </Button>
-                  <Button
-                    className="flex-1"
-                    variant="outline"
-                    disabled={polygonPoints.length === 0}
-                    onClick={() => setPolygonPoints([])}
-                  >
-                    Effacer
-                  </Button>
-                </div>
-                <Button
-                  className="w-full"
-                  loading={polygonM.isPending}
-                  disabled={polygonPoints.length < 3}
-                  onClick={() => {
-                    const ring: Polygon['coordinates'][number] = [
-                      ...polygonPoints.map(([lat, lng]) => [lng, lat] as [number, number]),
-                      [polygonPoints[0][1], polygonPoints[0][0]],
-                    ];
-                    polygonM.mutate({
-                      phase: polyForm.phase,
-                      riskLevel: polyForm.riskLevel,
-                      geometry: { type: 'Polygon', coordinates: [ring] },
-                    });
-                  }}
-                >
-                  Définir la zone ({polygonPoints.length} point{polygonPoints.length > 1 ? 's' : ''})
-                </Button>
-                <p className="text-xs text-muted">
-                  Tracez le périmètre touché à la main (≥ 3 points).
-                  {isTrackRequired
-                    ? ' Alternative au tracé automatique sur trajectoire.'
-                    : ' Méthode recommandée car ce type d’événement n’a pas de trajectoire. Alimente les étapes 3 (exposition) et 4 (évaluation).'}
-                </p>
-              </div>
-            </Card>
-
-            <Card title="Exposition & évaluation" description="Étapes 3 et 4 · communes exposées puis niveaux de risque par phase">
-              <div className="space-y-2">
-                <Button
-                  className="w-full"
-                  variant="secondary"
-                  loading={exposureM.isPending}
-                  disabled={zoneCount === 0}
-                  onClick={() => exposureM.mutate()}
-                >
-                  Calculer exposition (toutes zones)
-                </Button>
-                <div className="flex items-end gap-2">
-                  <Select
-                    label="Phase"
-                    value={riskPhase}
-                    disabled={zoneCount === 0}
-                    onChange={(e) => setRiskPhase(e.target.value as RiskPhase)}
-                    options={PHASES.map((p) => ({ value: p, label: p }))}
-                    className="flex-1 [&>select]:h-9"
-                  />
-                  <Button
-                    className="shrink-0"
-                    variant="outline"
-                    loading={risksM.isPending}
-                    disabled={zoneCount === 0}
-                    onClick={() => risksM.mutate(riskPhase)}
-                  >
-                    Recalculer les risques
-                  </Button>
-                </div>
-                <p className="text-xs text-muted">
-                  {zoneCount === 0
-                    ? "Étape 3 · calculez d'abord une zone d'influence ou tracez une zone polygonale."
-                    : hasExposure
-                      ? 'Recalcul risques : scores puis niveaux par commune pour la phase choisie.'
-                      : 'Exposition pas encore calculée — lancez « Calculer exposition » puis « Recalculer les risques ». Sélectionnez la phase phare (PENDANT = au plus fort de la crise).'}
-                </p>
-              </div>
-            </Card>
-          </div>
-        </>
-      ) : null}
+          </section>
 
       <Card
         title="Carte — trajectoire, zones & risques"
@@ -664,8 +427,7 @@ export function EvenementDetailPage() {
           <>
             <div className="mb-3 flex items-center justify-between gap-3">
               <p className="text-xs text-muted">
-                Cliquez un point pour préremplir la trajectoire, une commune pour la retirer
-                de l&apos;exposition.
+                Cliquez un point ou une commune exposée pour en voir l&apos;évaluation.
               </p>
               <Select
                 label="Phase"
@@ -713,50 +475,10 @@ export function EvenementDetailPage() {
                 }
               }}
             />
-            {riskFeatureCount > 0 && canManageOps(role) ? (
+            {riskFeatureCount > 0 ? (
               <div className="mt-3 rounded-lg border border-brand/15 bg-brand-soft/20 px-3 py-2 text-xs text-muted">
-                Cliquez une commune sur la carte pour la retirer de l’exposition, ou utilisez le
+                Cliquez une commune sur la carte pour consulter son évaluation, ou utilisez le
                 tableau « Communes exposées » ci-dessous.
-              </div>
-            ) : null}
-            {canManageOps(role) && selectedMapCommune ? (
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand/15 bg-white px-3 py-2">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-ink">{selectedMapCommune.communeName}</p>
-                  <p className="text-xs text-muted">
-                    Niveau :{' '}
-                    {selectedMapCommune.riskLevel ? (
-                      <Badge tone={tone(selectedMapCommune.riskLevel as RiskLevel)}>
-                        {RISK_LABELS[selectedMapCommune.riskLevel as RiskLevel]}
-                      </Badge>
-                    ) : (
-                      '—'
-                    )}
-                    {selectedMapCommune.riskScore != null
-                      ? ` · Score : ${formatNumber(selectedMapCommune.riskScore)}`
-                      : ''}
-                  </p>
-                </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="shrink-0"
-                  loading={removeExposedM.isPending}
-                  onClick={() => {
-                    if (
-                      !window.confirm(
-                        `Retirer ${selectedMapCommune.communeName} de l'exposition ?`,
-                      )
-                    ) {
-                      return;
-                    }
-                    removeExposedM.mutate(selectedMapCommune.communeId, {
-                      onSuccess: () => setSelectedMapCommune(null),
-                    });
-                  }}
-                >
-                  <XCircle className="size-3.5" /> Retirer de l’exposition
-                </Button>
               </div>
             ) : null}
             {areas?.features?.length ? (
@@ -785,17 +507,6 @@ export function EvenementDetailPage() {
                             {String(props.riskLevel ?? '—')}
                           </p>
                         </div>
-                        {canManageOps(role) ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="shrink-0"
-                            loading={deleteAreaM.isPending && deleteAreaM.variables === areaId}
-                            onClick={() => deleteAreaM.mutate(areaId)}
-                          >
-                            <Trash2 className="size-3.5" /> Supprimer
-                          </Button>
-                        ) : null}
                       </li>
                     );
                   })}
@@ -838,10 +549,10 @@ export function EvenementDetailPage() {
             title="Aucune exposition calculée"
             description={
               exposedPhase
-                ? `Aucune évaluation pour la phase ${exposedPhase} — lancez « Phase recalcul risques » avec cette phase.`
+                ? `Aucune évaluation pour la phase ${exposedPhase}.`
                 : zoneCount > 0
-                  ? 'Lancez « Calculer exposition (toutes zones) » — étape 3.'
-                  : 'Créez d\'abord une zone d\'influence ou tracez une zone polygonale (étape 2).'
+                  ? 'L’exposition est recalculée automatiquement lors de la mise à jour des zones.'
+                  : 'Aucune zone d\'influence n\'est définie pour le moment (générée automatiquement).'
             }
           />
         ) : (
@@ -855,7 +566,6 @@ export function EvenementDetailPage() {
                   <th className="px-3 py-2.5">Distance</th>
                   <th className="px-3 py-2.5">Score</th>
                   <th className="px-3 py-2.5">Niveau</th>
-                  {canManageOps(role) && <th className="px-3 py-2.5">Actions</th>}
                 </tr>
               </thead>
               <tbody>
@@ -885,22 +595,6 @@ export function EvenementDetailPage() {
                         '—'
                       )}
                     </td>
-                    {canManageOps(role) && (
-                      <td className="px-3 py-2.5">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded border border-red-300 bg-white px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-                          disabled={removeExposedM.isPending}
-                          onClick={() => {
-                            if (!window.confirm(`Retirer ${row.communeName} de l'exposition ?`)) return;
-                            removeExposedM.mutate(row.communeId);
-                          }}
-                        >
-                          <XCircle className="size-3.5" />
-                          Retirer
-                        </button>
-                      </td>
-                    )}
                   </tr>
                 ))}
               </tbody>
@@ -908,6 +602,379 @@ export function EvenementDetailPage() {
           </div>
         )}
       </Card>
+
+      <AdministrativeInterventionPanel
+        title={`Événement ${ev.eventCode} — corrections et relances`}
+      >
+        <Card
+          title="Cycle de vie"
+          description={
+            nextStatus
+              ? `Statut actuel : ${ev.status} · prochaine étape automatique : ${nextStatus}`
+              : `Statut actuel : ${ev.status} · cycle de vie terminé`
+          }
+        >
+          <ol className="flex flex-wrap items-center gap-y-3">
+            {STATUSES.map((s, i) => {
+              const idx = STATUSES.indexOf(ev.status);
+              const done = i < idx;
+              const at = i === idx;
+              const allowed = isStatusTransitionAllowed(s);
+              return (
+                <li key={s} className="flex items-center">
+                  <button
+                    type="button"
+                    disabled={!allowed || statusM.isPending}
+                    onClick={() => {
+                      if (!window.confirm(`Faire passer l'événement au statut « ${s} » ?`)) {
+                        return;
+                      }
+                      statusM.mutate(s);
+                    }}
+                    className={cn(
+                      'flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition',
+                      at
+                        ? 'border-brand bg-brand text-white shadow-sm'
+                        : done
+                          ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                          : allowed
+                            ? 'border-line bg-white text-muted hover:border-brand/40 hover:text-brand'
+                            : 'cursor-not-allowed border-line bg-canvas text-slate-400',
+                    )}
+                  >
+                    <span className="flex size-4 items-center justify-center">
+                      {done ? (
+                        <Check className="size-3" />
+                      ) : (
+                        <span className="text-[10px] font-bold">{i + 1}</span>
+                      )}
+                    </span>
+                    {s}
+                  </button>
+                  {i < STATUSES.length - 1 ? (
+                    <span
+                      className={cn(
+                        'mx-2 h-px w-4 sm:w-6',
+                        done || at ? 'bg-emerald-300' : 'bg-line',
+                      )}
+                    />
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+          <p className="mt-3 text-xs text-muted">
+            L&apos;événement avance automatiquement dans l&apos;ordre BROUILLON → PREVISION →
+            ACTIF → SUIVI → CLOTURE. Le retour en arrière est réservé aux SUPER_ADMIN (et
+            uniquement si l&apos;événement n&apos;a aucune donnée).
+          </p>
+        </Card>
+
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card
+            title="Point de trajectoire"
+            description={`Étape 1 · ${isTrackRequired ? 'le chemin emprunté par le phénomène' : 'optionnelle — le chemin du phénomène s’il se déplace'}`}
+          >
+            <div className="space-y-2">
+              <Input
+                label="Latitude"
+                value={trackPoint.lat}
+                onChange={(e) => setTrackPoint((p) => ({ ...p, lat: e.target.value }))}
+              />
+              <Input
+                label="Longitude"
+                value={trackPoint.lng}
+                onChange={(e) => setTrackPoint((p) => ({ ...p, lng: e.target.value }))}
+              />
+              <Select
+                label="Type"
+                value={trackPoint.trackType}
+                onChange={(e) => setTrackPoint((p) => ({ ...p, trackType: e.target.value }))}
+                options={[
+                  { value: 'OBSERVEE', label: 'OBSERVEE' },
+                  { value: 'PREVUE', label: 'PREVUE' },
+                ]}
+              />
+              <Button className="w-full" loading={trackM.isPending} onClick={() => trackM.mutate()}>
+                Ajouter le point
+              </Button>
+              <p className="text-xs text-muted">
+                {trackCount >= 2
+                  ? `${trackCount} point${trackCount > 1 ? 's' : ''} ajouté${trackCount > 1 ? 's' : ''} — la ligne est tracée.`
+                  : isTrackRequired
+                    ? `Ajoutez au moins 2 points (OBSERVEE = passé, PREVUE = prévu). ${trackCount} point${trackCount > 1 ? 's' : ''} ajouté${trackCount > 1 ? 's' : ''}.`
+                    : `Optionnel — vous pouvez tracer une trajectoire si le phénomène se déplace, sinon passez directement à la « Zone polygonale » (étape 2).`}
+              </p>
+            </div>
+          </Card>
+
+          <Card title="Bande tampon" description="Étape 2 · élargit la trajectoire d'un rayon puis relance l'exposition et les risques">
+            <form className="space-y-2" onSubmit={areaForm.handleSubmit((v) => areaM.mutate(v))}>
+              <Select
+                label="Phase"
+                {...areaForm.register('phase')}
+                options={PHASES.map((p) => ({ value: p, label: p }))}
+              />
+              <Select
+                label="Niveau"
+                {...areaForm.register('riskLevel')}
+                options={LEVELS.map((p) => ({ value: p, label: p }))}
+              />
+              <Input
+                label="Rayon (km)"
+                type="number"
+                min={1}
+                max={500}
+                {...areaForm.register('radiusKm')}
+                error={areaForm.formState.errors.radiusKm?.message}
+              />
+              <Button type="submit" loading={areaM.isPending} disabled={trackCount < 2} className="w-full">
+                Relancer le calcul de zone
+              </Button>
+              <p className="text-xs text-muted">
+                {trackCount < 2
+                  ? `Nécessite au moins 2 points de trajectoire (actuellement ${trackCount}). Pour un événement sans trajectoire, utilisez la « Zone polygonale ».`
+                  : "Élargit la trajectoire d'un rayon, puis relance l'exposition (étape 3) et les risques (étape 4)."}
+              </p>
+            </form>
+          </Card>
+
+          <Card title="Zone polygonale (dessin)" description="Étape 2 · périmètre tracé à la main — recommandé pour les événements sans trajectoire">
+            <div className="space-y-2">
+              <Select
+                label="Phase"
+                value={polyForm.phase}
+                onChange={(e) => setPolyForm((p) => ({ ...p, phase: e.target.value as RiskPhase }))}
+                options={PHASES.map((p) => ({ value: p, label: p }))}
+              />
+              <Select
+                label="Niveau"
+                value={polyForm.riskLevel}
+                onChange={(e) =>
+                  setPolyForm((p) => ({ ...p, riskLevel: e.target.value as RiskLevel }))
+                }
+                options={LEVELS.map((p) => ({ value: p, label: p }))}
+              />
+              <PolygonDrawMap points={polygonPoints} onChange={setPolygonPoints} height={240} />
+              <div className="flex gap-2">
+                <Button
+                  className="flex-1"
+                  variant="secondary"
+                  disabled={polygonPoints.length === 0}
+                  onClick={() => setPolygonPoints((p) => p.slice(0, -1))}
+                >
+                  Annuler le point
+                </Button>
+                <Button
+                  className="flex-1"
+                  variant="outline"
+                  disabled={polygonPoints.length === 0}
+                  onClick={() => setPolygonPoints([])}
+                >
+                  Effacer
+                </Button>
+              </div>
+              <Button
+                className="w-full"
+                loading={polygonM.isPending}
+                disabled={polygonPoints.length < 3}
+                onClick={() => {
+                  const ring: Polygon['coordinates'][number] = [
+                    ...polygonPoints.map(([lat, lng]) => [lng, lat] as [number, number]),
+                    [polygonPoints[0][1], polygonPoints[0][0]],
+                  ];
+                  polygonM.mutate({
+                    phase: polyForm.phase,
+                    riskLevel: polyForm.riskLevel,
+                    geometry: { type: 'Polygon', coordinates: [ring] },
+                  });
+                }}
+              >
+                Définir la zone ({polygonPoints.length} point{polygonPoints.length > 1 ? 's' : ''})
+              </Button>
+            </div>
+          </Card>
+
+          <Card title="Exposition & évaluation" description="Étapes 3 et 4 · communes exposées puis niveaux de risque par phase">
+            <div className="space-y-2">
+              <Button
+                className="w-full"
+                variant="secondary"
+                loading={exposureM.isPending}
+                disabled={zoneCount === 0}
+                onClick={() => {
+                  if (
+                    !window.confirm(
+                      "Relancer le calcul d'exposition pour toutes les zones ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.",
+                    )
+                  ) {
+                    return;
+                  }
+                  exposureM.mutate();
+                }}
+              >
+                Relancer le calcul d’exposition
+              </Button>
+              <div className="flex items-end gap-2">
+                <Select
+                  label="Phase"
+                  value={riskPhase}
+                  disabled={zoneCount === 0}
+                  onChange={(e) => setRiskPhase(e.target.value as RiskPhase)}
+                  options={PHASES.map((p) => ({ value: p, label: p }))}
+                  className="flex-1 [&>select]:h-9"
+                />
+                <Button
+                  className="shrink-0"
+                  variant="outline"
+                  loading={risksM.isPending}
+                  disabled={zoneCount === 0}
+                  onClick={() => {
+                    if (
+                      !window.confirm(
+                        `Relancer le calcul des risques pour la phase ${riskPhase} ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.`,
+                      )
+                    ) {
+                      return;
+                    }
+                    risksM.mutate(riskPhase);
+                  }}
+                >
+                  Relancer le calcul des risques
+                </Button>
+              </div>
+            </div>
+          </Card>
+        </div>
+
+        {selectedMapCommune ? (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-brand/15 bg-white px-3 py-2">
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-ink">{selectedMapCommune.communeName}</p>
+              <p className="text-xs text-muted">
+                Niveau :{' '}
+                {selectedMapCommune.riskLevel ? (
+                  <Badge tone={tone(selectedMapCommune.riskLevel as RiskLevel)}>
+                    {RISK_LABELS[selectedMapCommune.riskLevel as RiskLevel]}
+                  </Badge>
+                ) : (
+                  '—'
+                )}
+                {selectedMapCommune.riskScore != null
+                  ? ` · Score : ${formatNumber(selectedMapCommune.riskScore)}`
+                  : ''}
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="shrink-0"
+              loading={removeExposedM.isPending}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    `Retirer ${selectedMapCommune.communeName} de l'exposition ?\n\nCette action retire une donnée du résultat automatique. Vérifiez la source avant de continuer.`,
+                  )
+                ) {
+                  return;
+                }
+                removeExposedM.mutate(selectedMapCommune.communeId, {
+                  onSuccess: () => setSelectedMapCommune(null),
+                });
+              }}
+            >
+              <XCircle className="size-3.5" /> Retirer une commune exposée erronée
+            </Button>
+          </div>
+        ) : (
+          <>
+            {areas?.features?.length ? (
+              <div className="space-y-1.5">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Supprimer une zone erronée
+                </p>
+                {areas.features.map((f) => {
+                  const props = (f.properties ?? {}) as Record<string, unknown>;
+                  const areaId = String(props.areaId ?? '');
+                  const isBuffer = props.radiusKm != null;
+                  return (
+                    <div
+                      key={areaId}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-line bg-white px-3 py-2"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-ink">
+                          {isBuffer
+                            ? `Bande tampon · ${String(props.radiusKm)} km`
+                            : 'Zone polygonale'}
+                        </p>
+                        <p className="text-xs text-muted">
+                          Phase : {String(props.phase ?? '—')} · Niveau :{' '}
+                          {String(props.riskLevel ?? '—')}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0"
+                        loading={deleteAreaM.isPending && deleteAreaM.variables === areaId}
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              'Supprimer cette zone erronée ?\n\nCette action retire une donnée du résultat automatique. Vérifiez la source avant de continuer.',
+                            )
+                          ) {
+                            return;
+                          }
+                          deleteAreaM.mutate(areaId);
+                        }}
+                      >
+                        <Trash2 className="size-3.5" /> Supprimer une zone erronée
+                      </Button>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+
+            {exposed.length ? (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Retirer une commune exposée erronée
+                </p>
+                <div className="flex items-end gap-2">
+                  <Select
+                    label="Commune"
+                    className="flex-1 [&>select]:h-9"
+                    value={removeCommuneId}
+                    onChange={(e) => setRemoveCommuneId(e.target.value)}
+                    options={exposed.map((r) => ({ value: r.communeId, label: r.communeName }))}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0"
+                    disabled={!removeCommuneId}
+                    loading={removeExposedM.isPending}
+                    onClick={() => {
+                      if (
+                        !window.confirm(
+                          "Retirer cette commune de l'exposition ?\n\nCette action retire une donnée du résultat automatique. Vérifiez la source avant de continuer.",
+                        )
+                      ) {
+                        return;
+                      }
+                      removeExposedM.mutate(removeCommuneId);
+                    }}
+                  >
+                    <XCircle className="size-3.5" /> Retirer une commune exposée erronée
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
+      </AdministrativeInterventionPanel>
         </>
       ) : activeTab === 'chronologie' ? (
         <EventChronologieTab eventId={ev.id} />

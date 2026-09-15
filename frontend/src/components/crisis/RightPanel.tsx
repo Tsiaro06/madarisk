@@ -62,6 +62,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Select } from '@/components/ui/Select';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
+import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { formatDate, formatNumber } from '@/lib/utils';
 
 interface RightPanelProps {
@@ -204,6 +205,28 @@ export function RightPanel({
     },
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur recalcul', 'error'),
   });
+
+  const refreshWeather = () => {
+    if (
+      !window.confirm(
+        'Relancer la synchronisation des observations de cette commune ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.',
+      )
+    ) {
+      return;
+    }
+    refreshM.mutate();
+  };
+
+  const recalcRisk = () => {
+    if (
+      !window.confirm(
+        'Relancer le calcul des risques pour cette commune et cette phase ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.',
+      )
+    ) {
+      return;
+    }
+    recalcM.mutate();
+  };
 
   const exportM = useMutation({
     mutationFn: () =>
@@ -358,17 +381,7 @@ export function RightPanel({
         ) : null}
 
         {/* Météo */}
-        <Card
-          title="Météo"
-          actions={
-            canOps ? (
-              <Button size="sm" variant="secondary" onClick={() => refreshM.mutate()} loading={refreshM.isPending}>
-                <RefreshCw className="size-3.5" /> Rafraîchir
-              </Button>
-            ) : null
-          }
-          className="!p-4"
-        >
+        <Card title="Météo" className="!p-4">
           {latestQ.isLoading || forecastQ.isLoading ? (
             <Spinner label="Chargement météo…" />
           ) : latest ? (
@@ -480,6 +493,21 @@ export function RightPanel({
               <p className="mt-1 text-right text-[11px] text-muted">Source : observations locales</p>
             </div>
           ) : null}
+
+          <AdministrativeInterventionPanel compact className="mt-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={refreshWeather}
+              loading={refreshM.isPending}
+            >
+              <RefreshCw className="size-3.5" /> Relancer la synchronisation de cette commune
+            </Button>
+            <p className="text-xs text-muted">
+              Relance la collecte des observations météo pour cette commune (collecte normalement
+              automatique).
+            </p>
+          </AdministrativeInterventionPanel>
         </Card>
 
         {/* Risque détaillé */}
@@ -519,8 +547,8 @@ export function RightPanel({
                 Aucune évaluation de risque enregistrée.
               </p>
             )}
-            {canOps ? (
-              <div className="mt-3 flex items-end gap-2 border-t border-line pt-3">
+            <AdministrativeInterventionPanel compact className="mt-3">
+              <div className="flex items-end gap-2">
                 <Select
                   label="Phase"
                   value={recalcPhase}
@@ -528,11 +556,16 @@ export function RightPanel({
                   options={PHASES.map((p) => ({ value: p, label: PHASE_LABELS[p] }))}
                   className="flex-1 [&>select]:h-9"
                 />
-                <Button size="sm" variant="outline" onClick={() => recalcM.mutate()} loading={recalcM.isPending}>
-                  Recalculer
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={recalcRisk}
+                  loading={recalcM.isPending}
+                >
+                  Relancer le calcul des risques
                 </Button>
               </div>
-            ) : null}
+            </AdministrativeInterventionPanel>
           </Card>
         ) : null}
 
@@ -579,9 +612,11 @@ export function RightPanel({
               <ExternalLink className="size-4" /> Fiche complète de la commune
             </Button>
           </Link>
-          <Button variant="outline" onClick={() => exportM.mutate()} loading={exportM.isPending}>
-            <FileDown className="size-4" /> Exporter en CSV
-          </Button>
+          {canOps ? (
+            <Button variant="outline" onClick={() => exportM.mutate()} loading={exportM.isPending}>
+              <FileDown className="size-4" /> Exporter en CSV
+            </Button>
+          ) : null}
         </div>
       </div>
     </div>

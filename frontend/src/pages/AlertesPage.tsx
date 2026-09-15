@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Plus, Radio } from 'lucide-react';
 import { alertsApi } from '@/api';
 import type { AlertStatus, AlertType, SeverityLevel } from '@/types';
 import { ApiClientError } from '@/api/client';
@@ -12,10 +13,17 @@ import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Pagination } from '@/components/ui/Pagination';
+import { RefreshDataButton } from '@/components/ui/RefreshDataButton';
+import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { useToast } from '@/components/ui/Toast';
-import { formatDate } from '@/lib/utils';
-import { canManageOps } from '@/lib/roles';
-import { useAuthStore } from '@/stores/authStore';
+import { cn, formatDate } from '@/lib/utils';
+
+const STATUS_GROUPS = [
+  { value: '', label: 'Toutes' },
+  { value: 'PUBLIEE', label: 'Alertes actives' },
+  { value: 'BROUILLON', label: 'Préparation' },
+  { value: 'ARCHIVEE', label: 'Archives' },
+];
 
 const ALERT_TYPES: AlertType[] = [
   'CYCLONE',
@@ -39,7 +47,6 @@ function statusTone(s: AlertStatus) {
 export function AlertesPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const role = useAuthStore((s) => s.user?.role);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
@@ -64,6 +71,12 @@ export function AlertesPage() {
         type: type || undefined,
       }),
   });
+
+  const rows = listQ.data?.data ?? [];
+  const lastUpdatedAt = rows.reduce<string | null>((acc, a) => {
+    const t = a.updatedAt ?? a.publishedAt ?? a.createdAt;
+    return acc == null || t > acc ? t : acc;
+  }, null);
 
   const createM = useMutation({
     mutationFn: () => {
@@ -122,6 +135,28 @@ export function AlertesPage() {
     },
   });
 
+  const publishAlert = (id: string) => {
+    if (
+      !window.confirm(
+        'Publier cette alerte ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.',
+      )
+    ) {
+      return;
+    }
+    publishM.mutate(id);
+  };
+
+  const archiveAlert = (id: string) => {
+    if (
+      !window.confirm(
+        'Archiver cette alerte ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.',
+      )
+    ) {
+      return;
+    }
+    archiveM.mutate(id);
+  };
+
   const onCreate = (e: FormEvent) => {
     e.preventDefault();
     createM.mutate();
@@ -131,10 +166,51 @@ export function AlertesPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl text-ink">Alertes</h1>
-          <p className="text-sm text-muted">Diffusion et suivi des messages d&apos;urgence</p>
+          <h1 className="font-display text-3xl text-ink">
+            Alertes générées automatiquement
+          </h1>
+          <p className="text-sm text-muted">
+            Consultez les vigilances, alertes actives et alertes archivées produites par la
+            surveillance automatique.
+          </p>
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
+            <Radio className="size-3.5 shrink-0 text-emerald-600" />
+            <span className="font-medium text-ink">Surveillance automatique active</span>
+            {lastUpdatedAt ? (
+              <>
+                <span>· Dernière mise à jour :</span>
+                <span className="font-medium text-ink">{formatDate(lastUpdatedAt)}</span>
+              </>
+            ) : (
+              <span>· Informations de synchronisation non disponibles.</span>
+            )}
+          </p>
         </div>
-        {canManageOps(role) ? <Button onClick={() => setOpen(true)}>Nouvelle alerte</Button> : null}
+        <RefreshDataButton
+          queryKey={['alerts']}
+          onRefresh={() => void qc.refetchQueries({ queryKey: ['alerts'] })}
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {STATUS_GROUPS.map((g) => (
+          <button
+            key={g.value}
+            type="button"
+            onClick={() => {
+              setStatus(g.value);
+              setPage(1);
+            }}
+            className={cn(
+              'rounded-full border px-3 py-1.5 text-xs font-medium transition',
+              status === g.value
+                ? 'border-brand bg-brand text-white shadow-sm'
+                : 'border-line bg-surface text-muted hover:text-ink',
+            )}
+          >
+            {g.label}
+          </button>
+        ))}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 max-w-xl">
@@ -191,30 +267,30 @@ export function AlertesPage() {
                         {formatDate(a.publishedAt || a.createdAt)}
                       </p>
                     </div>
-                    {canManageOps(role) ? (
-                      <div className="flex gap-2">
-                        {a.status === 'BROUILLON' ? (
-                          <Button
-                            size="sm"
-                            loading={publishM.isPending}
-                            onClick={() => publishM.mutate(a.id)}
-                          >
-                            Publier
-                          </Button>
-                        ) : null}
-                        {a.status !== 'ARCHIVEE' ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            loading={archiveM.isPending}
-                            onClick={() => archiveM.mutate(a.id)}
-                          >
-                            Archiver
-                          </Button>
-                        ) : null}
-                      </div>
-                    ) : null}
                   </div>
+                  <AdministrativeInterventionPanel compact className="mt-2">
+                    <div className="flex gap-2">
+                      {a.status === 'BROUILLON' ? (
+                        <Button
+                          size="sm"
+                          loading={publishM.isPending}
+                          onClick={() => publishAlert(a.id)}
+                        >
+                          Publier
+                        </Button>
+                      ) : null}
+                      {a.status !== 'ARCHIVEE' ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          loading={archiveM.isPending}
+                          onClick={() => archiveAlert(a.id)}
+                        >
+                          Archiver
+                        </Button>
+                      ) : null}
+                    </div>
+                  </AdministrativeInterventionPanel>
                 </li>
               ))}
             </ul>
@@ -227,15 +303,25 @@ export function AlertesPage() {
         )}
       </Card>
 
+      <AdministrativeInterventionPanel title="Alertes">
+        <Button variant="outline" onClick={() => setOpen(true)}>
+          <Plus className="size-4" /> Créer une alerte exceptionnelle
+        </Button>
+        <p className="text-xs text-muted">
+          La publication et l&apos;archivage sont gérés automatiquement. L&apos;intervention
+          manuelle est réservée aux alertes exceptionnelles ou à une relance contrôlée.
+        </p>
+      </AdministrativeInterventionPanel>
+
       {open ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           role="dialog"
           aria-modal="true"
-          aria-label="Nouvelle alerte"
+          aria-label="Créer une alerte exceptionnelle"
         >
           <form onSubmit={onCreate} className="w-full max-w-lg space-y-3 rounded-2xl bg-white p-5 shadow-2xl">
-            <h2 className="font-display text-xl">Nouvelle alerte</h2>
+            <h2 className="font-display text-xl">Créer une alerte exceptionnelle</h2>
             <Input
               label="Titre"
               value={form.title}

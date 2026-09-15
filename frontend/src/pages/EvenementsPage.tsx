@@ -4,8 +4,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { Polygon } from 'geojson';
+import { Plus, Radio } from 'lucide-react';
 import { eventsApi } from '@/api';
-import type { EventStatus, EventType, RiskLevel, RiskPhase, SeverityLevel } from '@/types';
+import type { EventListItem, EventStatus, EventType, RiskLevel, RiskPhase, SeverityLevel } from '@/types';
 import { ApiClientError } from '@/api/client';
 import { createEventSchema } from '@/schemas/forms';
 import { Card } from '@/components/ui/Card';
@@ -18,10 +19,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Pagination } from '@/components/ui/Pagination';
 import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
+import { RefreshDataButton } from '@/components/ui/RefreshDataButton';
+import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/lib/utils';
-import { canManageOps } from '@/lib/roles';
-import { useAuthStore } from '@/stores/authStore';
 import { useCrisisStore } from '@/stores/crisisStore';
 import type { z } from 'zod';
 
@@ -53,7 +54,6 @@ type CreateEventForm = z.infer<typeof createEventSchema>;
 export function EvenementsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const role = useAuthStore((s) => s.user?.role);
   const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
@@ -82,6 +82,14 @@ export function EvenementsPage() {
     queryKey: ['events', page, status],
     queryFn: () => eventsApi.list({ page, limit: 12, status: status || undefined }),
   });
+
+  const events = listQ.data?.data ?? [];
+  const lastUpdate = events.reduce<EventListItem | null>(
+    (latest, e) => (latest == null || e.updatedAt > latest.updatedAt ? e : latest),
+    null,
+  );
+  const lastUpdatedAt = lastUpdate?.updatedAt ?? null;
+  const lastSource = lastUpdate?.sourceName ?? null;
 
   const createM = useMutation({
     mutationFn: async (body: CreateEventForm) => {
@@ -132,12 +140,30 @@ export function EvenementsPage() {
     <div className="space-y-5">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-3xl text-ink">Événements</h1>
-          <p className="text-sm text-muted">Suivi opérationnel des crises</p>
+          <h1 className="font-display text-3xl text-ink">
+            Événements détectés automatiquement
+          </h1>
+          <p className="text-sm text-muted">
+            Suivez les aléas détectés, leurs zones d&apos;exposition et leur évolution.
+          </p>
+          <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
+            <Radio className="size-3.5 shrink-0 text-emerald-600" />
+            <span className="font-medium text-ink">Surveillance automatique active</span>
+            {lastUpdatedAt ? (
+              <>
+                <span>· Dernière mise à jour :</span>
+                <span className="font-medium text-ink">{formatDate(lastUpdatedAt)}</span>
+                {lastSource ? <span>· Source : {lastSource}</span> : null}
+              </>
+            ) : (
+              <span>· Informations de synchronisation non disponibles.</span>
+            )}
+          </p>
         </div>
-        {canManageOps(role) ? (
-          <Button onClick={() => setOpen(true)}>Nouvel événement</Button>
-        ) : null}
+        <RefreshDataButton
+          queryKey={['events']}
+          onRefresh={() => void qc.refetchQueries({ queryKey: ['events'] })}
+        />
       </div>
 
       <div className="max-w-xs">
@@ -164,7 +190,10 @@ export function EvenementsPage() {
         ) : listQ.isLoading ? (
           <Spinner />
         ) : (listQ.data?.data.length ?? 0) === 0 ? (
-          <EmptyState title="Aucun événement" description="Créez un événement pour démarrer le suivi." />
+          <EmptyState
+            title="Aucun événement"
+            description="Aucun aléa n'est détecté ou suivi pour le moment. Les événements sont générés automatiquement."
+          />
         ) : (
           <>
             <div className="overflow-x-auto">
@@ -208,18 +237,28 @@ export function EvenementsPage() {
         )}
       </Card>
 
+      <AdministrativeInterventionPanel title="Événements">
+        <Button variant="outline" onClick={() => setOpen(true)}>
+          <Plus className="size-4" /> Créer un événement exceptionnel
+        </Button>
+        <p className="text-xs text-muted">
+          Création manuelle réservée aux exceptions (événement non détecté
+          automatiquement). Le parcours standard repose sur la détection automatique.
+        </p>
+      </AdministrativeInterventionPanel>
+
       {open ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
           role="dialog"
           aria-modal="true"
-          aria-label="Créer un événement"
+          aria-label="Créer un événement exceptionnel"
         >
           <form
             onSubmit={form.handleSubmit((values) => createM.mutate(values))}
             className="w-full max-w-3xl space-y-3 overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
           >
-            <h2 className="font-display text-xl">Nouvel événement</h2>
+            <h2 className="font-display text-xl">Créer un événement exceptionnel</h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <Input label="Code" {...form.register('eventCode')} error={form.formState.errors.eventCode?.message} />
               <Input label="Nom" {...form.register('name')} error={form.formState.errors.name?.message} />

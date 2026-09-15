@@ -14,6 +14,7 @@ import {
 } from "@/services/weather.service";
 import type { WeatherMetric, WeatherViewMode } from "@/types/weather";
 import { WeatherModeBadge } from "./WeatherModeBadge";
+import { AdministrativeInterventionPanel } from "@/components/admin/AdministrativeInterventionPanel";
 
 interface DistrictOption {
   value: string;
@@ -35,7 +36,6 @@ interface WeatherControlsProps {
   onDateChange: (date: string) => void;
   onHourChange: (hour: number | null) => void;
   onDistrictChange: (districtId: string) => void;
-  canRefresh: boolean;
   isRefreshing: boolean;
   refreshProgress: string | null;
   onRefresh: () => void;
@@ -56,7 +56,6 @@ export function WeatherControls({
   onDateChange,
   onHourChange,
   onDistrictChange,
-  canRefresh,
   isRefreshing,
   refreshProgress,
   onRefresh,
@@ -183,30 +182,28 @@ export function WeatherControls({
         </p>
       </div>
 
-      {canRefresh ? (
-        <div className="border-t border-line pt-3">
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full"
-            disabled={isRefreshing}
-            onClick={onRefresh}
-          >
-            <RefreshCw
-              className={cn("size-4", isRefreshing && "animate-spin")}
-            />
-            {isRefreshing
-              ? "Rafraîchissement…"
-              : districtId
-                ? "Rafraîchir ce district"
-                : "Rafraîchir tout le pays"}
-          </Button>
-          <p className="mt-1.5 text-xs text-muted">
-            {refreshProgress ??
-              "Synchronise les observations récentes (Open-Meteo) pour toutes les communes."}
-          </p>
-        </div>
-      ) : null}
+      <AdministrativeInterventionPanel compact>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full"
+          disabled={isRefreshing}
+          onClick={onRefresh}
+        >
+          <RefreshCw
+            className={cn("size-4", isRefreshing && "animate-spin")}
+          />
+          {isRefreshing
+            ? "Relance…"
+            : districtId
+              ? "Relancer la synchronisation de ce district"
+              : "Relancer la synchronisation nationale"}
+        </Button>
+        <p className="mt-1.5 text-xs text-muted">
+          {refreshProgress ??
+            "Synchronise les observations récentes (Open-Meteo) pour toutes les communes."}
+        </p>
+      </AdministrativeInterventionPanel>
     </div>
   );
 }

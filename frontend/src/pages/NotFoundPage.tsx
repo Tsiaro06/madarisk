@@ -13,7 +13,7 @@ export function NotFoundPage() {
         La ressource demandée n&apos;existe pas ou a été déplacée.
       </p>
       <Link to="/">
-        <Button>Retour au dashboard</Button>
+        <Button>Retour à la salle de crise</Button>
       </Link>
     </div>
   );

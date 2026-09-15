@@ -8,7 +8,6 @@ import {
   Menu,
   PanelLeft,
   PanelRight,
-  Plus,
   RefreshCw,
   Settings,
 } from "lucide-react";
@@ -19,8 +18,6 @@ import { useActiveEvent } from "@/stores/activeEvent";
 import { cn } from "@/lib/utils";
 
 interface CrisisHeaderProps {
-  canCreate: boolean;
-  onOpenCreate: () => void;
   leftOpen: boolean;
   onToggleLeft: () => void;
   rightOpen: boolean;
@@ -30,8 +27,6 @@ interface CrisisHeaderProps {
 }
 
 export function CrisisHeader({
-  canCreate,
-  onOpenCreate,
   leftOpen,
   onToggleLeft,
   rightOpen,
@@ -135,26 +130,14 @@ export function CrisisHeader({
           <PanelRight className="size-4" />
         </button>
 
-        {canCreate ? (
-          <button
-            type="button"
-            onClick={onOpenCreate}
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-deep"
-          >
-            <Plus className="size-4" />
-            <span className="hidden md:inline">Créer un événement</span>
-            <span className="md:hidden">Créer</span>
-          </button>
-        ) : null}
-
         <button
           type="button"
           onClick={onRefresh}
           className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink transition hover:bg-gray-50"
-          title="Actualiser immédiatement la salle de crise (météo, événements, risques, alertes)"
+          title="Actualiser les données de la salle de crise (météo, événements, risques, alertes)"
         >
           <RefreshCw className={cn('size-4 text-brand', refreshing && 'animate-spin')} />
-          <span className="hidden md:inline">Actualiser maintenant</span>
+          <span className="hidden md:inline">Actualiser les données</span>
         </button>
 
         <button

@@ -38,12 +38,12 @@ interface NavItem {
 }
 
 const NAV: NavItem[] = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/', label: 'Salle de crise', icon: LayoutDashboard },
   { to: '/territoires', label: 'Territoires', icon: MapPinned },
-  { to: '/evenements', label: 'Événements', icon: Zap },
+  { to: '/evenements', label: 'Événements détectés', icon: Zap },
   { to: '/meteo', label: 'Météo', icon: CloudSun },
-  { to: '/risques', label: 'Risques', icon: Shield },
-  { to: '/alertes', label: 'Alertes', icon: Siren },
+  { to: '/risques', label: 'Risques (évaluation auto.)', icon: Shield },
+  { to: '/alertes', label: 'Alertes automatiques', icon: Siren },
   { to: '/imports', label: 'Imports', icon: FileUp, roles: ['ANALYSTE_SIG', 'SUPER_ADMIN'] },
   { to: '/matching', label: 'Matching', icon: GitCompare, roles: ['ANALYSTE_SIG', 'SUPER_ADMIN'] },
   { to: '/rapports', label: 'Rapports', icon: FileText },
