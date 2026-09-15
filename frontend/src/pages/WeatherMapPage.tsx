@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Info, Settings2, X } from "lucide-react";
+import { ArrowLeft, Database, Info, Settings2, X } from "lucide-react";
 import { territoriesApi, weatherApi } from "@/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -13,9 +13,14 @@ import {
   WeatherCommuneDetailsPanel,
   type SelectedCommune,
 } from "@/components/weather/WeatherCommuneDetailsPanel";
+import { WeatherModeBadge } from "@/components/weather/WeatherModeBadge";
 import { useWeatherMapLayer } from "@/hooks/useWeatherMapLayer";
 import { canManageOps } from "@/lib/roles";
-import { addDaysToToday, todayISO } from "@/services/weather.service";
+import {
+  addDaysToToday,
+  getWeatherViewMode,
+  todayISO,
+} from "@/services/weather.service";
 import { useAuthStore } from "@/stores/authStore";
 import type { WeatherMetric } from "@/types/weather";
 import type { FeatureCollection } from "geojson";
@@ -54,7 +59,22 @@ export function WeatherMapPage() {
     staleTime: 60_000,
   });
 
+  const monitoringQ = useQuery({
+    queryKey: ["weather", "monitoring"],
+    queryFn: () => weatherApi.monitoring(),
+    staleTime: 60_000,
+  });
+
   const weather = useWeatherMapLayer({ metric, date, hour, districtId });
+
+  const mode = getWeatherViewMode(date, hour);
+
+  const sourceName =
+    monitoringQ.data?.sources.find((s) => s.isActive)?.name ??
+    monitoringQ.data?.sources[0]?.name ??
+    "Open-Meteo";
+  const lastSyncAt = monitoringQ.data?.sync.observations.lastSuccessAt ?? null;
+  const lastDataAt = weather.latestObservationAt ?? lastSyncAt;
 
   const selectedFeature = useMemo(() => {
     if (!selectedId || !communesQ.data) return null;
@@ -100,6 +120,15 @@ export function WeatherMapPage() {
     !weather.query.isLoading &&
     weather.layer !== null &&
     weather.layer.features.length === 0;
+
+  const layerEmpty =
+    !weather.query.isLoading &&
+    weather.layer !== null &&
+    weather.layer.features.length === 0;
+
+  const noDataForHistory = mode === "HISTORIQUE" && layerEmpty;
+  const noDataForObservation =
+    mode === "OBSERVATION" && layerEmpty && !forecastUnavailable;
 
   const layerHadNoData = useRef(true);
   useEffect(() => {
@@ -172,9 +201,13 @@ export function WeatherMapPage() {
       metric={metric}
       date={date}
       hour={hour}
+      mode={mode}
       districtId={districtId}
       districts={districtOptions}
       maxDate={maxDate}
+      sourceName={sourceName}
+      lastDataAt={lastDataAt}
+      lastSyncAt={lastSyncAt}
       onMetricChange={setMetric}
       onDateChange={setDate}
       onHourChange={setHour}
@@ -195,8 +228,12 @@ export function WeatherMapPage() {
       point={selectedPoint}
       layerLoading={weather.query.isLoading}
       metric={metric}
+      mode={mode}
       date={date}
       hour={hour}
+      sourceName={sourceName}
+      lastDataAt={lastDataAt}
+      lastSyncAt={lastSyncAt}
       onClose={mobileDetails ? () => setMobileDetails(false) : undefined}
     />
   );
@@ -219,21 +256,35 @@ export function WeatherMapPage() {
             Observations et prévisions par commune — indépendant des événements
           </p>
         </div>
-        <div className="ml-auto flex shrink-0 gap-2 lg:hidden">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setMobileFilters((v) => !v)}
-          >
-            <Settings2 className="size-4" /> Filtres
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setMobileDetails((v) => !v)}
-          >
-            <Info className="size-4" /> Détails
-          </Button>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <div className="hidden items-center gap-2 rounded-lg bg-gray-50 px-3 py-1.5 lg:flex">
+            <Database className="size-3.5 text-muted" />
+            <span className="text-xs text-muted">
+              {sourceName}
+              {lastDataAt ? (
+                <span className="ml-1 hidden xl:inline">
+                  · à jour au {new Date(lastDataAt).toLocaleDateString("fr-FR")}
+                </span>
+              ) : null}
+            </span>
+          </div>
+          <WeatherModeBadge mode={mode} />
+          <div className="flex shrink-0 gap-2 lg:hidden">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMobileFilters((v) => !v)}
+            >
+              <Settings2 className="size-4" /> Filtres
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setMobileDetails((v) => !v)}
+            >
+              <Info className="size-4" /> Détails
+            </Button>
+          </div>
         </div>
       </header>
 
@@ -260,7 +311,13 @@ export function WeatherMapPage() {
           {forecastUnavailable ? (
             <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 px-3 py-2 text-sm text-amber-800 shadow-sm">
               Prévisions momentanément indisponibles : la limite de requêtes
-              Open-Meteo est atteinte. Réessai automatique quelques minutes.
+              Open-Meteo est atteinte. Réessai automatique dans quelques minutes.
+            </div>
+          ) : noDataForHistory || noDataForObservation ? (
+            <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-sky-300 bg-sky-50/95 px-3 py-2 text-sm text-sky-800 shadow-sm">
+              {noDataForHistory
+                ? "Aucune observation enregistrée pour cette date. Sélectionnez une date plus récente ou effectuez un rafraîchissement."
+                : "Aucune observation météo disponible pour aujourd’hui. Effectuez un rafraîchissement pour synchroniser les données."}
             </div>
           ) : null}
 

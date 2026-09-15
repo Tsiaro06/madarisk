@@ -1,5 +1,5 @@
 import type { PathOptions } from "leaflet";
-import type { WeatherForecastData } from "@/types";
+import type { WeatherForecastData, WeatherObservation } from "@/types";
 import {
   getWeatherColor,
   NO_DATA_BORDER,
@@ -8,6 +8,7 @@ import {
   WEATHER_METRICS_ORDER,
   WEATHER_METRIC_CONFIGS,
   type WeatherMetric,
+  type WeatherViewMode,
 } from "@/types/weather";
 
 export { getWeatherValue } from "@/types/weather";
@@ -100,6 +101,28 @@ export function buildForecastSeries(
     time,
     value: values[i] ?? null,
   }));
+}
+
+export function buildHistorySeries(
+  observations: WeatherObservation[],
+  metric: WeatherMetric,
+): WeatherForecastPoint[] {
+  const cfg = WEATHER_METRIC_CONFIGS[metric];
+  const key = cfg.property;
+  return observations
+    .filter((obs) => Number.isFinite(obs[key] as number))
+    .map((obs) => ({ time: obs.observedAt, value: obs[key] as number }));
+}
+
+export function getWeatherViewMode(
+  date: string,
+  hour: number | null,
+  today = todayISO(),
+): WeatherViewMode {
+  if (date > today) return "PREVISION";
+  if (date === today && hour != null) return "PREVISION";
+  if (date === today) return "OBSERVATION";
+  return "HISTORIQUE";
 }
 
 export function formatShortDate(dateISO: string): string {

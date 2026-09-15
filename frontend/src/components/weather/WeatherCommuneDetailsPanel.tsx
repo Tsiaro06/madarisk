@@ -17,7 +17,9 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Spinner } from "@/components/ui/Spinner";
 import { Button } from "@/components/ui/Button";
 import {
+  addDaysToISO,
   buildForecastSeries,
+  buildHistorySeries,
   formatForecastTick,
   formatShortDate,
   getWeatherValue,
@@ -28,8 +30,10 @@ import {
   WEATHER_METRICS_ORDER,
   WEATHER_METRIC_CONFIGS,
   type WeatherMetric,
+  type WeatherViewMode,
 } from "@/types/weather";
 import type { WeatherMapFeatureProperties } from "@/types";
+import { WeatherModeBadge } from "./WeatherModeBadge";
 
 export interface SelectedCommune {
   id: string;
@@ -43,8 +47,12 @@ interface WeatherCommuneDetailsPanelProps {
   point: WeatherMapFeatureProperties | null;
   layerLoading: boolean;
   metric: WeatherMetric;
+  mode: WeatherViewMode;
   date: string;
   hour: number | null;
+  sourceName: string;
+  lastDataAt: string | null;
+  lastSyncAt: string | null;
   onClose?: () => void;
 }
 
@@ -63,20 +71,40 @@ export function WeatherCommuneDetailsPanel({
   point,
   layerLoading,
   metric,
+  mode,
   date,
   hour,
+  sourceName,
+  lastDataAt,
+  lastSyncAt,
   onClose,
 }: WeatherCommuneDetailsPanelProps) {
+  const isHistory = mode === "HISTORIQUE";
+
   const forecastQ = useQuery({
     queryKey: ["weather", "forecast", commune?.id],
     queryFn: () => (commune ? weatherApi.forecast(commune.id) : null),
-    enabled: Boolean(commune),
+    enabled: Boolean(commune) && !isHistory,
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
     refetchInterval: (q) =>
-      q.state.status === "error" && isRateLimited(q.state.error)
+      !isHistory && q.state.status === "error" && isRateLimited(q.state.error)
         ? 60_000
         : false,
+  });
+
+  const historyQ = useQuery({
+    queryKey: ["weather", "history", commune?.id, date],
+    queryFn: () =>
+      commune
+        ? weatherApi.history(commune.id, {
+            dateFrom: addDaysToISO(date, -6),
+            dateTo: addDaysToISO(date, 1),
+            page: 1,
+            limit: 50,
+          })
+        : null,
+    enabled: Boolean(commune) && isHistory,
   });
 
   const displayDate = date ? formatShortDate(date) : "—";
@@ -85,12 +113,14 @@ export function WeatherCommuneDetailsPanel({
 
   const config = WEATHER_METRIC_CONFIGS[metric];
 
-  const chartData = forecastQ.data
-    ? buildForecastSeries(forecastQ.data, metric)
-    : [];
+  const chartData = isHistory
+    ? buildHistorySeries(historyQ.data?.data ?? [], metric)
+    : forecastQ.data
+      ? buildForecastSeries(forecastQ.data, metric)
+      : [];
 
   const selectedHourValue = useMemo(() => {
-    if (hour == null || !forecastQ.data) return null;
+    if (isHistory || hour == null || !forecastQ.data) return null;
     const cfg = WEATHER_METRIC_CONFIGS[metric];
     const values = forecastQ.data.hourly[cfg.forecastProperty] ?? [];
     const targetPrefix = `${date}T${String(hour).padStart(2, "0")}:`;
@@ -99,10 +129,10 @@ export function WeatherCommuneDetailsPanel({
     );
     const value = idx >= 0 ? values[idx] : null;
     return typeof value === "number" && Number.isFinite(value) ? value : null;
-  }, [date, forecastQ.data, hour, metric]);
+  }, [date, forecastQ.data, hour, isHistory, metric]);
 
   const mainValue =
-    hour != null
+    hour != null && !isHistory
       ? (selectedHourValue ?? getWeatherValue(point, metric))
       : getWeatherValue(point, metric);
 
@@ -120,9 +150,12 @@ export function WeatherCommuneDetailsPanel({
     <div className="space-y-3 p-3">
       <header className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h2 className="truncate font-display text-lg text-ink">
-            {commune.name}
-          </h2>
+          <div className="flex items-center gap-2">
+            <h2 className="truncate font-display text-lg text-ink">
+              {commune.name}
+            </h2>
+            <WeatherModeBadge mode={mode} />
+          </div>
           {commune.adminCode || commune.districtName ? (
             <p className="text-xs text-muted">
               {[commune.adminCode, commune.districtName]
@@ -153,21 +186,42 @@ export function WeatherCommuneDetailsPanel({
         <>
           <Card className="!p-4">
             <p className="text-xs text-muted">
-              {hour != null
-                ? `${config.label} prévu à ${displayHour}`
-                : `${config.label} sélectionné`}
+              {isHistory
+                ? `${config.label} observé autour de cette date`
+                : hour != null
+                  ? `${config.label} prévu à ${displayHour}`
+                  : `${config.label} sélectionné`}
             </p>
             <p className="font-display text-3xl text-ink">
               {formatWeatherValue(metric, mainValue)}
             </p>
             <p className="mt-1 text-xs text-muted">
-              {hour != null && selectedHourValue != null
+              {!isHistory && hour != null && selectedHourValue != null
                 ? `Prévision du ${displayDate} · ${displayHour}`
                 : point?.observedAt
                   ? `Actualisé le ${formatDate(point.observedAt)}`
-                  : "Aucune observation"}
+                  : "Aucune donnée pour cette commune"}
             </p>
-            <p className="mt-0.5 text-xs text-muted">Source : Open-Meteo</p>
+            <div className="mt-2 space-y-1 border-t border-line pt-2 text-xs text-muted">
+              <p>
+                <span className="font-medium text-ink">Source :</span>{" "}
+                {sourceName || "—"}
+              </p>
+              <p>
+                <span className="font-medium text-ink">Date de donnée :</span>{" "}
+                {point?.observedAt
+                  ? formatDate(point.observedAt)
+                  : lastDataAt
+                    ? formatDate(lastDataAt)
+                    : "—"}
+              </p>
+              <p>
+                <span className="font-medium text-ink">
+                  Dernière synchronisation :
+                </span>{" "}
+                {lastSyncAt ? formatDate(lastSyncAt) : "—"}
+              </p>
+            </div>
           </Card>
 
           <Card title="Toutes les métriques" className="!p-4">
@@ -186,11 +240,71 @@ export function WeatherCommuneDetailsPanel({
           </Card>
 
           <Card
-            title={`Prévisions — ${config.label}`}
-            description={`Horaires Open-Meteo, en ${config.unit}`}
+            title={
+              isHistory
+                ? `Historique — ${config.label}`
+                : `Prévisions — ${config.label}`
+            }
+            description={
+              isHistory
+                ? `Observations enregistrées autour du ${displayDate}, en ${config.unit}`
+                : `Horaires Open-Meteo, en ${config.unit}`
+            }
             className="!p-4"
           >
-            {forecastQ.isLoading ? (
+            {isHistory ? (
+              historyQ.isLoading ? (
+                <Spinner label="Chargement de l'historique…" />
+              ) : historyQ.isError ? (
+                <EmptyState
+                  title="Historique indisponible"
+                  description={
+                    historyQ.error instanceof Error
+                      ? historyQ.error.message
+                      : "Échec du chargement des observations passées."
+                  }
+                />
+              ) : chartData.length === 0 ? (
+                <EmptyState
+                  title="Aucune observation pour cette période"
+                  description="Aucune donnée d’observation n’est enregistrée autour de cette date pour cette commune."
+                />
+              ) : (
+                <div className="h-40">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={chartData}
+                      margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
+                      <XAxis
+                        dataKey="time"
+                        tickFormatter={formatForecastTick}
+                        tick={{ fontSize: 10 }}
+                        minTickGap={32}
+                      />
+                      <YAxis tick={{ fontSize: 10 }} width={52} />
+                      <Tooltip
+                        formatter={(value) => [
+                          `${String(value)} ${config.unit}`,
+                          config.label,
+                        ]}
+                        labelFormatter={formatForecastTick}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="value"
+                        name={config.label}
+                        stroke="#1d4ed8"
+                        strokeWidth={2}
+                        dot={false}
+                        isAnimationActive={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )
+            ) : forecastQ.isLoading ? (
               <Spinner label="Chargement des prévisions…" />
             ) : forecastQ.isError ? (
               <EmptyState

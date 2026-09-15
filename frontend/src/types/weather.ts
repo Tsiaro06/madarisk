@@ -7,6 +7,14 @@ export type WeatherMetric =
   | "pressure_msl"
   | "wind_speed_10m";
 
+export type WeatherViewMode = "OBSERVATION" | "PREVISION" | "HISTORIQUE";
+
+export const WEATHER_VIEW_MODE_LABELS: Record<WeatherViewMode, string> = {
+  OBSERVATION: "Observation",
+  PREVISION: "Prévision",
+  HISTORIQUE: "Historique",
+};
+
 export type WeatherMapPropertyKey =
   | "temperatureC"
   | "humidityPercent"

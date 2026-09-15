@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { RefreshCw } from "lucide-react";
 import {
   addDaysToToday,
@@ -12,7 +12,8 @@ import {
   todayISO,
   WEATHER_METRIC_OPTIONS,
 } from "@/services/weather.service";
-import type { WeatherMetric } from "@/types/weather";
+import type { WeatherMetric, WeatherViewMode } from "@/types/weather";
+import { WeatherModeBadge } from "./WeatherModeBadge";
 
 interface DistrictOption {
   value: string;
@@ -23,9 +24,13 @@ interface WeatherControlsProps {
   metric: WeatherMetric;
   date: string;
   hour: number | null;
+  mode: WeatherViewMode;
   districtId: string;
   districts: DistrictOption[];
   maxDate: string | null;
+  sourceName: string;
+  lastDataAt: string | null;
+  lastSyncAt: string | null;
   onMetricChange: (metric: WeatherMetric) => void;
   onDateChange: (date: string) => void;
   onHourChange: (hour: number | null) => void;
@@ -40,9 +45,13 @@ export function WeatherControls({
   metric,
   date,
   hour,
+  mode,
   districtId,
   districts,
   maxDate,
+  sourceName,
+  lastDataAt,
+  lastSyncAt,
   onMetricChange,
   onDateChange,
   onHourChange,
@@ -73,6 +82,19 @@ export function WeatherControls({
         onChange={(e) => onMetricChange(e.target.value as WeatherMetric)}
         options={WEATHER_METRIC_OPTIONS}
       />
+
+      <div className="rounded-lg bg-brand-soft/60 px-3 py-2.5">
+        <p className="mb-1 text-xs uppercase tracking-wide text-muted">
+          Période consultée
+        </p>
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-sm font-medium text-ink">
+            {date ? formatShortDate(date) : "—"}
+            {hour != null ? ` · ${String(hour).padStart(2, "0")}h` : ""}
+          </span>
+          <WeatherModeBadge mode={mode} />
+        </div>
+      </div>
 
       <div className="grid grid-cols-2 gap-3">
         <Input
@@ -145,6 +167,21 @@ export function WeatherControls({
         options={districts}
         placeholder="Tous les districts"
       />
+
+      <div className="space-y-1.5 rounded-lg bg-gray-50 px-3 py-2.5 text-xs text-muted">
+        <p>
+          <span className="font-medium text-ink">Source :</span>{" "}
+          {sourceName || "—"}
+        </p>
+        <p>
+          <span className="font-medium text-ink">Date des données :</span>{" "}
+          {lastDataAt ? formatDate(lastDataAt) : "—"}
+        </p>
+        <p>
+          <span className="font-medium text-ink">Synchronisation :</span>{" "}
+          {lastSyncAt ? formatDate(lastSyncAt) : "—"}
+        </p>
+      </div>
 
       {canRefresh ? (
         <div className="border-t border-line pt-3">
