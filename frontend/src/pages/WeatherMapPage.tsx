@@ -130,6 +130,11 @@ export function WeatherMapPage() {
   const noDataForObservation =
     mode === "OBSERVATION" && layerEmpty && !forecastUnavailable;
 
+  const staleHours =
+    typeof lastSyncAt === "string"
+      ? Math.max(0, Math.floor((Date.now() - new Date(lastSyncAt).getTime()) / 3_600_000))
+      : null;
+
   const layerHadNoData = useRef(true);
   useEffect(() => {
     const nowHasData = (weather.layer?.features?.length ?? 0) > 0;
@@ -308,7 +313,17 @@ export function WeatherMapPage() {
             />
           )}
 
-          {forecastUnavailable ? (
+          {weather.query.isError ? (
+            <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-red-300 bg-red-50/95 px-3 py-2 text-sm text-red-800 shadow-sm">
+              Impossible de charger la couche météo pour ces paramètres. Vérifiez la
+              connexion ou réessayez dans quelques minutes.
+            </div>
+          ) : staleHours !== null && staleHours >= 24 ? (
+            <div className="absolute left-1/2 top-3 z-30 w-[min(30rem,90vw)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 px-3 py-2 text-sm text-amber-800 shadow-sm">
+              Données météo potentiellement périmées : dernière synchronisation des
+              observations il y a {staleHours} h. Lancez un rafraîchissement pour actualiser.
+            </div>
+          ) : forecastUnavailable ? (
             <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 px-3 py-2 text-sm text-amber-800 shadow-sm">
               Prévisions momentanément indisponibles : la limite de requêtes
               Open-Meteo est atteinte. Réessai automatique dans quelques minutes.

@@ -41,6 +41,8 @@ const envSchema = z.object({
 
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  GEMINI_TIMEOUT_MS: z.coerce.number().default(30000),
+  GEMINI_MAX_RETRIES: z.coerce.number().int().min(0).default(2),
   AI_SUPER_ADMIN_VIEW_CONVERSATIONS: z
     .string()
     .transform((v) => v === 'true')

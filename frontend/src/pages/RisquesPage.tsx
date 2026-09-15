@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { AlertBanner } from '@/components/ui/AlertBanner';
 import { GeoJsonMap } from '@/components/maps/GeoJsonMap';
 import { useToast } from '@/components/ui/Toast';
 import { formatNumber } from '@/lib/utils';
@@ -77,6 +78,12 @@ export function RisquesPage() {
         <h1 className="font-display text-3xl text-ink">Risques</h1>
         <p className="text-sm text-muted">Priorisation et couche cartographique</p>
       </div>
+
+      {priorityQ.isError || mapQ.isError ? (
+        <AlertBanner tone="danger" title="Échec du chargement">
+          Impossible de charger les données de risque. Réessayez ou rechargez la page.
+        </AlertBanner>
+      ) : null}
 
       {canManageOps(role) ? (
         <Card title="Recalculer les risques" description="ADMIN / SUPER_ADMIN">

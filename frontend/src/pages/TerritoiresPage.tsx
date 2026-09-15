@@ -5,6 +5,7 @@ import { territoriesApi } from '@/api';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Spinner } from '@/components/ui/Spinner';
+import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { GeoJsonMap } from '@/components/maps/GeoJsonMap';
@@ -39,6 +40,8 @@ export function TerritoiresPage() {
 
   const meta = tab === 'districts' ? districtsQ.data?.meta : communesQ.data?.meta;
   const loading = tab === 'districts' ? districtsQ.isLoading : communesQ.isLoading;
+  const tabError =
+    tab === 'districts' ? districtsQ.isError : communesQ.isError || mapQ.isError;
 
   return (
     <div className="space-y-5">
@@ -46,6 +49,12 @@ export function TerritoiresPage() {
         <h1 className="font-display text-3xl text-ink">Territoires</h1>
         <p className="text-sm text-muted">Districts et communes de Madagascar</p>
       </div>
+
+      {tabError ? (
+        <AlertBanner tone="danger" title="Échec du chargement">
+          Impossible de charger les données du territoire. Réessayez ou rechargez la page.
+        </AlertBanner>
+      ) : null}
 
       <div className="flex flex-wrap items-end gap-3">
         <div className="inline-flex rounded-xl bg-gray-100 p-1">

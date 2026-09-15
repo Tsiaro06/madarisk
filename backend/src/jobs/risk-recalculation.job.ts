@@ -7,6 +7,7 @@ import { risksService } from '../services/risk.service';
 const SYSTEM_ACTOR = { id: 'system', role: 'SUPER_ADMIN' as const };
 
 let started = false;
+let running = false;
 
 export function startRiskRecalculationJob(): void {
   if (!env.ENABLE_SCHEDULED_JOBS) return;
@@ -15,8 +16,13 @@ export function startRiskRecalculationJob(): void {
 
   cron.schedule(env.RISK_RECALCULATION_CRON, () => {
     void (async () => {
-      logger.info('Job risque : démarrage du recalcul des événements actifs');
+      if (running) {
+        logger.warn('Job risque : exécution précédente toujours en cours, cycle ignoré');
+        return;
+      }
+      running = true;
       try {
+        logger.info('Job risque : démarrage du recalcul des événements actifs');
         const eventIds = await eventsRepository.listActiveEventIds();
         for (const eventId of eventIds) {
           try {
@@ -37,6 +43,8 @@ export function startRiskRecalculationJob(): void {
         logger.info({ events: eventIds.length }, 'Job risque : cycle de recalcul terminé');
       } catch (err) {
         logger.error({ err }, 'Job risque : échec du recalcul');
+      } finally {
+        running = false;
       }
     })();
   });

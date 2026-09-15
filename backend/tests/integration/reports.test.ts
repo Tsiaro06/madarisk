@@ -123,18 +123,19 @@ describe('Reports - contrôle d accès', () => {
     expect(pdf.status).toBe(403);
   });
 
-  it('autorise tout rôle authentifié pour les exports CSV/GeoJSON', async () => {
-    const csv = await request(app)
-      .post('/api/v1/reports/export/csv')
-      .set('Authorization', `Bearer ${client.token}`)
-      .send({ resourceType: 'communes' });
-    expect(csv.status).toBe(200);
-
-    const geojson = await request(app)
+  it('réserve les exports CSV/GeoJSON aux ADMIN / SUPER_ADMIN', async () => {
+    for (const url of ['/api/v1/reports/export/csv', '/api/v1/reports/export/geojson']) {
+      const res = await request(app)
+        .post(url)
+        .set('Authorization', `Bearer ${client.token}`)
+        .send({ resourceType: 'communes' });
+      expect(res.status).toBe(403);
+    }
+    const analysteRes = await request(app)
       .post('/api/v1/reports/export/geojson')
       .set('Authorization', `Bearer ${analyste.token}`)
       .send({ resourceType: 'communes', communeId: sampleCommuneId });
-    expect(geojson.status).toBe(200);
+    expect(analysteRes.status).toBe(403);
   });
 });
 

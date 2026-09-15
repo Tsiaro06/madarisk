@@ -3410,7 +3410,7 @@ paths:
   /reports/export/csv:
     post:
       tags: [Rapports & Exports]
-      summary: Exporter des données en CSV
+      summary: Exporter des données en CSV (ADMIN / SUPER_ADMIN)
       description: Export brut (communes, districts, événements, alertes, risques, communes exposées). Fichier renvoyé directement.
       security:
         - bearerAuth: []
@@ -3442,7 +3442,7 @@ paths:
   /reports/export/geojson:
     post:
       tags: [Rapports & Exports]
-      summary: Exporter des données en GeoJSON
+      summary: Exporter des données en GeoJSON (ADMIN / SUPER_ADMIN)
       description: FeatureCollection GeoJSON de communes, districts, zones d'événement ou risques.
       security:
         - bearerAuth: []

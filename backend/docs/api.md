@@ -142,8 +142,8 @@ Enums : `type` = `CYCLONE|INONDATION|SECHERESSE|FORTE_PLUIE|VENT_VIOLENT|GLISSEM
 |---|---|---|---|
 | GET | `/reports/dashboard` | ADMIN/SUPER_ADMIN | `dateFrom?`, `dateTo?` |
 | GET | `/reports/events/:eventId` | connecté | Rapport détaillé d'un événement |
-| POST | `/reports/export/csv` | connecté | `resourceType`: `communes|districts|events|alerts|risks|exposed-communes` + filtres |
-| POST | `/reports/export/geojson` | connecté | `resourceType`: `communes|districts|event-areas|risks` ; `eventId` requis si `event-areas` |
+| POST | `/reports/export/csv` | ADMIN/SUPER_ADMIN | `resourceType`: `communes|districts|events|alerts|risks|exposed-communes` + filtres |
+| POST | `/reports/export/geojson` | ADMIN/SUPER_ADMIN | `resourceType`: `communes|districts|event-areas|risks` ; `eventId` requis si `event-areas` |
 | POST | `/reports/export/pdf` | ADMIN/SUPER_ADMIN | Génération + fichier |
 | GET | `/reports` | ADMIN/SUPER_ADMIN | `format`, `reportType`, `eventId` |
 | GET | `/reports/:id/download` | ADMIN/SUPER_ADMIN | Téléchargement |

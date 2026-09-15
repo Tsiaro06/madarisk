@@ -551,7 +551,7 @@ export function RightPanel({
                         <MapPin className="size-3.5" /> Activer
                       </Button>
                       <Link to={`/evenements/${ev.id}`}>
-                        <Button size="sm" variant="ghost">
+                        <Button size="sm" variant="ghost" aria-label={`Ouvrir ${ev.name}`}>
                           <ExternalLink className="size-3.5" />
                         </Button>
                       </Link>

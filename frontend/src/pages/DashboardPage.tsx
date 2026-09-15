@@ -15,6 +15,7 @@ import { dashboardApi, risksApi } from '@/api';
 import { Card } from '@/components/ui/Card';
 import { Spinner } from '@/components/ui/Spinner';
 import { Badge } from '@/components/ui/Badge';
+import { AlertBanner } from '@/components/ui/AlertBanner';
 import { GeoJsonMap } from '@/components/maps/GeoJsonMap';
 import { formatDate, formatNumber } from '@/lib/utils';
 import { RISK_LABELS, type RiskLevel } from '@/types';
@@ -51,6 +52,12 @@ export function DashboardPage() {
   if (summaryQ.isLoading) return <Spinner />;
 
   const s = summaryQ.data;
+  const queriesWithError = [summaryQ, distQ, timelineQ, priorityQ, mapQ].filter((q) => q.isError);
+  const lastUpdatedAt = s?.lastUpdatedAt;
+  const staleMinutes =
+    typeof lastUpdatedAt === 'string'
+      ? Math.max(0, Math.round((Date.now() - new Date(lastUpdatedAt).getTime()) / 60_000))
+      : null;
   const kpis: { label: string; value: string | number | null | undefined }[] = [
     { label: 'Événements actifs', value: s?.activeEvents },
     { label: 'Prévisions', value: s?.forecastEvents },
@@ -80,6 +87,20 @@ export function DashboardPage() {
           Vue d&apos;ensemble · mise à jour {formatDate(s?.lastUpdatedAt)}
         </p>
       </div>
+
+      {queriesWithError.length > 0 ? (
+        <AlertBanner tone="danger" title="Chargement partiel">
+          Certaines données du tableau de bord n&apos;ont pas pu être chargées
+          ({queriesWithError.length} section(s) en erreur). Rechargez la page ou réessayez plus tard.
+        </AlertBanner>
+      ) : null}
+
+      {staleMinutes !== null && staleMinutes > 30 ? (
+        <AlertBanner tone="warning" title="Données potentiellement périmées">
+          Dernière mise à jour du calcul des risques il y a {staleMinutes} min — lancez un recalcul
+          depuis l&apos;espace Risques si nécessaire.
+        </AlertBanner>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {kpis.map((k) => (

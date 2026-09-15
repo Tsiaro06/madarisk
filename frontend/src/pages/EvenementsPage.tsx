@@ -15,6 +15,7 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Pagination } from '@/components/ui/Pagination';
 import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
 import { useToast } from '@/components/ui/Toast';
@@ -156,7 +157,11 @@ export function EvenementsPage() {
       </div>
 
       <Card>
-        {listQ.isLoading ? (
+        {listQ.isError ? (
+          <AlertBanner tone="danger" title="Échec du chargement">
+            Impossible de charger la liste des événements. Réessayez ou rechargez la page.
+          </AlertBanner>
+        ) : listQ.isLoading ? (
           <Spinner />
         ) : (listQ.data?.data.length ?? 0) === 0 ? (
           <EmptyState title="Aucun événement" description="Créez un événement pour démarrer le suivi." />
@@ -204,7 +209,12 @@ export function EvenementsPage() {
       </Card>
 
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Créer un événement"
+        >
           <form
             onSubmit={form.handleSubmit((values) => createM.mutate(values))}
             className="w-full max-w-3xl space-y-3 overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"

@@ -6,9 +6,12 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/lib/utils';
+import { canManageOps } from '@/lib/roles';
+import { useAuthStore } from '@/stores/authStore';
 
 interface ReportRow {
   id: string;
@@ -29,6 +32,8 @@ function downloadBlob(blob: Blob, filename: string) {
 
 export function RapportsPage() {
   const { toast } = useToast();
+  const role = useAuthStore((s) => s.user?.role);
+  const canExport = canManageOps(role);
   const [page, setPage] = useState(1);
 
   const listQ = useQuery({
@@ -64,22 +69,28 @@ export function RapportsPage() {
         <p className="text-sm text-muted">Exports opérationnels et historiques</p>
       </div>
 
-      <Card title="Exporter" description="Générer un fichier à partir du tableau de bord">
-        <div className="flex flex-wrap gap-2">
-          <Button loading={exportM.isPending} onClick={() => exportM.mutate('csv')}>
-            Export CSV
-          </Button>
-          <Button variant="secondary" loading={exportM.isPending} onClick={() => exportM.mutate('geojson')}>
-            Export GeoJSON
-          </Button>
-          <Button variant="outline" loading={exportM.isPending} onClick={() => exportM.mutate('pdf')}>
-            Export PDF
-          </Button>
-        </div>
-      </Card>
+      {canExport ? (
+        <Card title="Exporter" description="Générer un fichier à partir du tableau de bord">
+          <div className="flex flex-wrap gap-2">
+            <Button loading={exportM.isPending} onClick={() => exportM.mutate('csv')}>
+              Export CSV
+            </Button>
+            <Button variant="secondary" loading={exportM.isPending} onClick={() => exportM.mutate('geojson')}>
+              Export GeoJSON
+            </Button>
+            <Button variant="outline" loading={exportM.isPending} onClick={() => exportM.mutate('pdf')}>
+              Export PDF
+            </Button>
+          </div>
+        </Card>
+      ) : null}
 
       <Card title="Rapports générés">
-        {listQ.isLoading ? (
+        {listQ.isError ? (
+          <AlertBanner tone="danger" title="Échec du chargement">
+            Impossible de charger la liste des rapports. Réessayez ou rechargez la page.
+          </AlertBanner>
+        ) : listQ.isLoading ? (
           <Spinner />
         ) : rows.length === 0 ? (
           <EmptyState title="Aucun rapport enregistré" />

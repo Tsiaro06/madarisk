@@ -385,8 +385,8 @@ Explications détaillées du calcul dans [`docs/risk-engine.md`](docs/risk-engin
 |---|---|---|---|
 | `GET` | `/reports/dashboard` | ADMIN/SUPER_ADMIN | Rapport global (filtres dates) |
 | `GET` | `/reports/events/:eventId` | connecté | Rapport détaillé d'un événement |
-| `POST` | `/reports/export/csv` | connecté | Export CSV (`resourceType` : communes, districts, events, alerts, risks, exposed-communes) |
-| `POST` | `/reports/export/geojson` | connecté | Export GeoJSON (`resourceType` : communes, districts, event-areas, risks) |
+| `POST` | `/reports/export/csv` | ADMIN/SUPER_ADMIN | Export CSV (`resourceType` : communes, districts, events, alerts, risks, exposed-communes) |
+| `POST` | `/reports/export/geojson` | ADMIN/SUPER_ADMIN | Export GeoJSON (`resourceType` : communes, districts, event-areas, risks) |
 | `POST` | `/reports/export/pdf` | ADMIN/SUPER_ADMIN | Génération PDF (fichier renvoyé) |
 | `GET` | `/reports` | ADMIN/SUPER_ADMIN | Liste des rapports générés |
 | `GET` | `/reports/:id/download` | ADMIN/SUPER_ADMIN | Téléchargement |

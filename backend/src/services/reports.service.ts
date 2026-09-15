@@ -437,6 +437,9 @@ export const reportsService = {
     const context: ExportContext = { ...input };
     const filters = filtersFrom(context);
     const clientOnly = isRestrictedClient(actor.role);
+    if (clientOnly) {
+      throw AppError.forbidden("L'export CSV est réservé aux administrateurs");
+    }
 
     const rows = await (async (): Promise<Record<string, unknown>[]> => {
       switch (input.resourceType) {
@@ -481,6 +484,9 @@ export const reportsService = {
   ): Promise<{ filename: string; content: string; reportId: string }> {
     const context: ExportContext = { ...input };
     const filters = filtersFrom(context);
+    if (isRestrictedClient(actor.role)) {
+      throw AppError.forbidden("L'export GeoJSON est réservé aux administrateurs");
+    }
 
     const rows = await (async (): Promise<
       { props: Record<string, unknown>; geometry: unknown }[]

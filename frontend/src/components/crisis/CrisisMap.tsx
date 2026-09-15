@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { Layer } from 'leaflet';
 import L from 'leaflet';
-import { Layers, LocateFixed, Snowflake, Waves } from 'lucide-react';
+import { Layers, LocateFixed, Snowflake } from 'lucide-react';
 import type { EventListItem, EventTrack } from '@/types';
 import { RISK_COLORS, RISK_LABELS } from '@/types';
 import { RISK_LEVELS } from '@/lib/eventMeta';
@@ -115,7 +115,8 @@ function Legend() {
           Trajectoire prévue
         </li>
         <li className="flex items-center gap-2">
-          <Waves className="size-3.5 text-brand" /> Zone d&apos;influence
+          <span className="inline-block size-3 rounded-sm border-2 border-[#e03131] bg-[#e03131]/15" />
+          Zone d&apos;influence
         </li>
         <li className="flex items-center gap-2">
           <Snowflake className="size-3.5 text-accent" /> Observation météo
@@ -390,6 +391,7 @@ export function CrisisMap({
             <select
               value={mapPhase}
               onChange={(e) => onMapPhaseChange(e.target.value)}
+              aria-label="Phase affichée"
               className="w-full rounded-lg border border-brand/20 bg-white px-2 py-1.5 text-xs text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
             >
               <option value="">Dernière évaluation</option>

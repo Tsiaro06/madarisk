@@ -33,12 +33,14 @@ router.get(
 
 router.post(
   '/export/csv',
+  authorize('ADMIN', 'SUPER_ADMIN'),
   validate({ body: csvExportSchema }),
   asyncHandler(reportsController.exportCsv),
 );
 
 router.post(
   '/export/geojson',
+  authorize('ADMIN', 'SUPER_ADMIN'),
   validate({ body: geojsonExportSchema }),
   asyncHandler(reportsController.exportGeoJson),
 );

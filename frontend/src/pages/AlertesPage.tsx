@@ -10,6 +10,7 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Pagination } from '@/components/ui/Pagination';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/lib/utils';
@@ -160,7 +161,11 @@ export function AlertesPage() {
       </div>
 
       <Card>
-        {listQ.isLoading ? (
+        {listQ.isError ? (
+          <AlertBanner tone="danger" title="Échec du chargement">
+            Impossible de charger les alertes. Réessayez ou rechargez la page.
+          </AlertBanner>
+        ) : listQ.isLoading ? (
           <Spinner />
         ) : (listQ.data?.data.length ?? 0) === 0 ? (
           <EmptyState title="Aucune alerte" />
@@ -223,7 +228,12 @@ export function AlertesPage() {
       </Card>
 
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Nouvelle alerte"
+        >
           <form onSubmit={onCreate} className="w-full max-w-lg space-y-3 rounded-2xl bg-white p-5 shadow-2xl">
             <h2 className="font-display text-xl">Nouvelle alerte</h2>
             <Input

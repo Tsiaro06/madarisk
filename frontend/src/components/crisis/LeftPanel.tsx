@@ -264,12 +264,14 @@ export function LeftPanel({
             type="date"
             value={draft.startedAfter}
             onChange={(e) => setDraft((d) => ({ ...d, startedAfter: e.target.value }))}
+            aria-label="Début de période"
             className="h-9 rounded-lg border border-brand/20 bg-white px-3 text-sm text-ink outline-none"
           />
           <input
             type="date"
             value={draft.startedBefore}
             onChange={(e) => setDraft((d) => ({ ...d, startedBefore: e.target.value }))}
+            aria-label="Fin de période"
             className="h-9 rounded-lg border border-brand/20 bg-white px-3 text-sm text-ink outline-none"
           />
         </div>
@@ -277,6 +279,7 @@ export function LeftPanel({
           value={draft.search}
           onChange={(e) => setDraft((d) => ({ ...d, search: e.target.value }))}
           placeholder="Recherche texte…"
+          aria-label="Rechercher un événement"
           className="[&>input]:h-9"
         />
         <Button size="sm" className="w-full" onClick={apply}>

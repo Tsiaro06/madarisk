@@ -12,6 +12,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatNumber } from '@/lib/utils';
+import { canManageOps } from '@/lib/roles';
+import { useAuthStore } from '@/stores/authStore';
 
 const RISK_LEVELS: RiskLevel[] = ['FAIBLE', 'MODERE', 'ELEVE', 'EXTREME'];
 
@@ -44,6 +46,8 @@ interface ExportProps {
 
 function EventExports({ eventId, eventCode }: ExportProps) {
   const { toast } = useToast();
+  const role = useAuthStore((s) => s.user?.role);
+  const canExport = canManageOps(role);
 
   const pdfM = useMutation({
     mutationFn: () => reportsApi.exportPdf({ eventId, title: `Rapport ${eventCode}` }),
@@ -76,25 +80,33 @@ function EventExports({ eventId, eventCode }: ExportProps) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button size="sm" loading={pdfM.isPending} onClick={() => pdfM.mutate()}>
-        <FileText className="size-3.5" /> Rapport PDF
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        loading={csvM.isPending}
-        onClick={() => csvM.mutate()}
-      >
-        <Download className="size-3.5" /> Communes exposées (CSV)
-      </Button>
-      <Button
-        size="sm"
-        variant="outline"
-        loading={geojsonM.isPending}
-        onClick={() => geojsonM.mutate()}
-      >
-        <Download className="size-3.5" /> Zones (GeoJSON)
-      </Button>
+      {!canExport ? (
+        <p className="text-xs text-muted">
+          Exports réservés aux administrateurs (ADMIN / SUPER_ADMIN).
+        </p>
+      ) : (
+        <>
+          <Button size="sm" loading={pdfM.isPending} onClick={() => pdfM.mutate()}>
+            <FileText className="size-3.5" /> Rapport PDF
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            loading={csvM.isPending}
+            onClick={() => csvM.mutate()}
+          >
+            <Download className="size-3.5" /> Communes exposées (CSV)
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            loading={geojsonM.isPending}
+            onClick={() => geojsonM.mutate()}
+          >
+            <Download className="size-3.5" /> Zones (GeoJSON)
+          </Button>
+        </>
+      )}
     </div>
   );
 }

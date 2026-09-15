@@ -690,7 +690,6 @@ export function EvenementDetailPage() {
                 } as FeatureCollection
               }
               height={420}
-              showLegend={riskFeatureCount > 0}
               onFeatureClick={(f) => {
                 const props = (f.properties ?? {}) as Record<string, unknown>;
                 const geom = f.geometry;
@@ -828,7 +827,11 @@ export function EvenementDetailPage() {
             ]}
           />
         </div>
-        {exposedQ.isLoading ? (
+        {exposedQ.isError ? (
+          <AlertBanner tone="danger" title="Échec du chargement">
+            Impossible de charger les communes exposées. Réessayez ou rechargez la page.
+          </AlertBanner>
+        ) : exposedQ.isLoading ? (
           <Spinner />
         ) : exposed.length === 0 ? (
           <EmptyState
