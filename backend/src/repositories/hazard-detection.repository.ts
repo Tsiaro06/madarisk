@@ -441,11 +441,21 @@ export const hazardDetectionRepository = {
     toStatus: EventStatus;
     reason: string | null;
     source: string;
+    actorType?: 'SYSTEM' | 'USER';
+    actorId?: string | null;
   }): Promise<void> {
     await db.query(
       `INSERT INTO event_status_history (event_id, from_status, to_status, reason, actor_type, actor_id, source)
-       VALUES ($1, $2, $3, $4, 'SYSTEM', NULL, $5)`,
-      [data.eventId, data.fromStatus, data.toStatus, data.reason, data.source],
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        data.eventId,
+        data.fromStatus,
+        data.toStatus,
+        data.reason,
+        data.actorType ?? 'SYSTEM',
+        data.actorId ?? null,
+        data.source,
+      ],
     );
   },
 

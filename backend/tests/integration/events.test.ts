@@ -284,6 +284,76 @@ describe('Événements - transitions de statut', () => {
   });
 });
 
+describe('Événements - chronologie (Phase 8)', () => {
+  it('trace un changement de statut manuel dans event_status_history', async () => {
+    const { id } = await createEvent(adminToken);
+    await request(app)
+      .patch(`/api/v1/events/${id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'PREVISION' })
+      .expect('Content-Type', /json/);
+
+    const rows = await db.query(
+      `SELECT from_status, to_status, actor_type, source
+       FROM event_status_history
+       WHERE event_id = $1`,
+      [id],
+    );
+    const entry = rows.rows.find(
+      (r: { from_status: string; to_status: string }) =>
+        r.from_status === 'BROUILLON' && r.to_status === 'PREVISION',
+    );
+    expect(entry).toBeDefined();
+    expect(entry.actor_type).toBe('USER');
+    expect(entry.source).toBe('MANUAL_UI');
+  });
+
+  it('GET /events/:id/history expose les changements manuels', async () => {
+    const { id } = await createEvent(adminToken);
+    await request(app)
+      .patch(`/api/v1/events/${id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'PREVISION' });
+    await request(app)
+      .patch(`/api/v1/events/${id}/status`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ status: 'ACTIF' });
+
+    const res = await request(app)
+      .get(`/api/v1/events/${id}/history`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.eventId).toBe(id);
+    const timeline = res.body.data.timeline as Array<{
+      kind: string;
+      fromStatus: string | null;
+      toStatus: string | null;
+      source: string;
+      actorType: string;
+      recordedAt: string;
+    }>;
+    expect(Array.isArray(timeline)).toBe(true);
+    expect(timeline.length).toBeGreaterThanOrEqual(2);
+
+    const manual = timeline.find(
+      (e) => e.kind === 'STATUS_CHANGE' && e.fromStatus === 'BROUILLON' && e.toStatus === 'PREVISION',
+    );
+    expect(manual).toBeDefined();
+    expect(manual!.source).toBe('MANUAL_UI');
+    expect(manual!.actorType).toBe('USER');
+    expect(manual!.recordedAt).toBeDefined();
+    expect(timeline.every((e) => e.recordedAt)).toBe(true);
+  });
+
+  it('404 sur un événement inexistant pour la chronologie', async () => {
+    const res = await request(app)
+      .get(`/api/v1/events/${'00000000-0000-0000-0000-000000000000'}/history`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('Événements - trajectoires', () => {
   it('ajoute un point de trajectoire avec geom calculé', async () => {
     const { id } = await createEvent(adminToken);

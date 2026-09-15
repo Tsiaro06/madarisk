@@ -27,6 +27,8 @@ import { canManageOps } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
 import { useCrisisStore } from '@/stores/crisisStore';
 import { useActiveEvent } from '@/stores/activeEvent';
+import { EventChronologieTab } from '@/components/events/EventChronologieTab';
+import { EventBilanTab } from '@/components/events/EventBilanTab';
 
 const STATUSES: EventStatus[] = ['BROUILLON', 'PREVISION', 'ACTIF', 'SUIVI', 'CLOTURE'];
 const PHASES: RiskPhase[] = ['AVANT', 'PENDANT', 'APRES', 'RETABLISSEMENT'];
@@ -104,6 +106,7 @@ export function EvenementDetailPage() {
   const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
   const { activeEventId } = useActiveEvent();
   const [trackPoint, setTrackPoint] = useState({ lat: '', lng: '', trackType: 'PREVUE' });
+  const [activeTab, setActiveTab] = useState<'operations' | 'chronologie' | 'bilan'>('operations');
   const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
   const [exposedPhase, setExposedPhase] = useState('');
   const [polyForm, setPolyForm] = useState<{ phase: RiskPhase; riskLevel: RiskLevel }>({
@@ -354,11 +357,35 @@ export function EvenementDetailPage() {
         </div>
       </div>
 
-      {ev.description ? (
-        <Card>
-          <p className="text-sm text-ink">{ev.description}</p>
-        </Card>
-      ) : null}
+      <div className="flex flex-wrap gap-1 border-b border-line">
+        {(['operations', 'chronologie', 'bilan'] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => setActiveTab(t)}
+            className={cn(
+              'rounded-t-lg border-b-2 px-4 py-2 text-sm font-medium transition',
+              activeTab === t
+                ? 'border-brand bg-brand-soft text-brand-deep'
+                : 'border-transparent text-muted hover:text-ink',
+            )}
+          >
+            {t === 'operations'
+              ? 'Opérations'
+              : t === 'chronologie'
+                ? 'Chronologie'
+                : 'Bilan · Évaluation'}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === 'operations' ? (
+        <>
+          {ev.description ? (
+            <Card>
+              <p className="text-sm text-ink">{ev.description}</p>
+            </Card>
+          ) : null}
 
       {canManageOps(role) ? (
         <>
@@ -878,6 +905,12 @@ export function EvenementDetailPage() {
           </div>
         )}
       </Card>
+        </>
+      ) : activeTab === 'chronologie' ? (
+        <EventChronologieTab eventId={ev.id} />
+      ) : (
+        <EventBilanTab eventId={ev.id} />
+      )}
     </div>
   );
 }

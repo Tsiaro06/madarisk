@@ -2,6 +2,7 @@ import { AppError } from '../utils/app-error';
 import { logger } from '../config/logger';
 import { usersRepository } from '../repositories/users.repository';
 import { eventsRepository } from '../repositories/events.repository';
+import { hazardDetectionRepository } from '../repositories/hazard-detection.repository';
 import { exposureRepository } from '../repositories/exposure.repository';
 import { exposureService } from './exposure.service';
 import {
@@ -236,6 +237,21 @@ export const eventsService = {
       oldValue: { status: current },
       newValue: { status: next },
       ipAddress: getIp(req),
+    });
+
+    // La chronologie de l'événement (event_status_history) doit refléter
+    // les transitions manuelles en plus des transitions automatiques du moteur.
+    await hazardDetectionRepository.writeStatusHistory({
+      eventId: id,
+      fromStatus: current,
+      toStatus: next,
+      reason:
+        next === 'BROUILLON'
+          ? 'Retour à BROUILLON par un SUPER_ADMIN'
+          : 'Changement de statut manuel',
+      source: 'MANUAL_UI',
+      actorType: 'USER',
+      actorId: actor.id,
     });
 
     return updated!;
@@ -479,7 +495,7 @@ export const eventsService = {
 
     const deleted = await eventsRepository.deleteArea(id, areaId);
     if (!deleted) {
-      throw AppError.notFound('Zone introuvable ou n\'appartient pas à cet événement');
+      throw AppError.notFound("Zone introuvable ou n'appartient pas à cet événement");
     }
 
     await usersRepository.writeAudit({
@@ -504,7 +520,10 @@ export const eventsService = {
     try {
       await eventsRepository.calculateExposure(id, null);
     } catch (err) {
-      logger.warn({ err, eventId: id }, "Recalcul automatique de l'exposition échoué après suppression de zone");
+      logger.warn(
+        { err, eventId: id },
+        "Recalcul automatique de l'exposition échoué après suppression de zone",
+      );
     }
 
     await eventsRepository.deleteRiskAssessments(id);
@@ -528,7 +547,7 @@ export const eventsService = {
     req: RequestContext,
   ): Promise<void> {
     if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
-      throw AppError.forbidden("Seuls ADMIN et SUPER_ADMIN peuvent retirer une commune exposée");
+      throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent retirer une commune exposée');
     }
 
     await this.ensureExists(id);
@@ -617,9 +636,7 @@ export const eventsService = {
     req: RequestContext,
   ): Promise<ExposureRecalculationResult> {
     if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
-      throw AppError.forbidden(
-        'Seuls ADMIN et SUPER_ADMIN peuvent recalculer l\'exposition',
-      );
+      throw AppError.forbidden("Seuls ADMIN et SUPER_ADMIN peuvent recalculer l'exposition");
     }
 
     await this.ensureExists(id);

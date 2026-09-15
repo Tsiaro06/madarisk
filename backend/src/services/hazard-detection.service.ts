@@ -27,7 +27,7 @@ import type {
   DetectionSignal,
   EventTimelineEntry,
 } from '../types/detection.types';
-import type { EventStatus, SeverityLevel } from '../types/event.types';
+import type { EventStatus, EventRiskDistribution, SeverityLevel } from '../types/event.types';
 import { AppError } from '../utils/app-error';
 import type { ScopeResolution } from '../repositories/hazard-detection.repository';
 import type { DetectionCommuneRow } from '../types/exposure.types';
@@ -50,6 +50,10 @@ function maxSeverity(a: SeverityLevel, b: SeverityLevel): SeverityLevel {
 
 function snapshotTrigger(trigger: 'SCHEDULED' | 'MANUAL'): string {
   return trigger === 'MANUAL' ? 'MANUAL_DETECTION' : 'AUTO_DETECTION';
+}
+
+function riskLevelSummary(dist: EventRiskDistribution | null): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(dist ?? {}));
 }
 
 const HISTORY_SOURCE = 'HAZARD_DETECTION';
@@ -449,15 +453,21 @@ async function recordSnapshot(
   trigger: 'SCHEDULED' | 'MANUAL',
 ): Promise<void> {
   const exposed = await hazardDetectionRepository.countExposedCommunes(eventId);
+  const riskDistribution = await eventsRepository.getRiskDistribution(eventId);
   await hazardDetectionRepository.writeSnapshot({
     eventId,
     trigger: snapshotTrigger(trigger),
     status,
     severity,
     exposedCommuneCount: exposed,
-    riskLevelSummary: {},
+    riskLevelSummary: riskLevelSummary(riskDistribution),
     metricValues: { [best.metric]: best.value },
-    details: { source: HISTORY_SOURCE },
+    details: {
+      source: HISTORY_SOURCE,
+      metric: best.metric,
+      value: best.value,
+      commune: best.communeName,
+    },
   });
 }
 
@@ -526,13 +536,14 @@ async function applyDecrease(
           source: HISTORY_SOURCE,
         });
         await hazardDetectionRepository.beginMonitoring(row.eventId, nowIso);
+        const riskDistribution = await eventsRepository.getRiskDistribution(row.eventId);
         await hazardDetectionRepository.writeSnapshot({
           eventId: row.eventId,
           trigger: snapshotTrigger(ctx.trigger),
           status: 'SUIVI',
           severity: 'FAIBLE',
           exposedCommuneCount: await hazardDetectionRepository.countExposedCommunes(row.eventId),
-          riskLevelSummary: {},
+          riskLevelSummary: riskLevelSummary(riskDistribution),
           metricValues: {},
           details: { source: HISTORY_SOURCE, reason: 'Danger en baisse' },
         });
@@ -556,7 +567,9 @@ async function applyDecrease(
           status: 'CLOTURE',
           severity: 'FAIBLE',
           exposedCommuneCount: await hazardDetectionRepository.countExposedCommunes(row.eventId),
-          riskLevelSummary: {},
+          riskLevelSummary: riskLevelSummary(
+            await eventsRepository.getRiskDistribution(row.eventId),
+          ),
           metricValues: {},
           details: { source: HISTORY_SOURCE, reason: 'Fin du suivi' },
         });

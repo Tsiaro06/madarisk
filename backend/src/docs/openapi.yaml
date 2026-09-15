@@ -2811,6 +2811,10 @@ paths:
     get:
       tags: [Événements]
       summary: Chronologie d un événement (historique de statuts et snapshots)
+      description: >
+        Timeline fusionnée de l événement : changements de statut (transitions
+        automatiques du moteur de détection et transitions manuelles via
+        PATCH /events/{id}/status) et snapshots d évaluation.
       security:
         - bearerAuth: []
       operationId: getEventHistory
@@ -4643,7 +4647,12 @@ components:
       enum: [RUNNING, SUCCESS, FAILED, PARTIAL]
     EventTimelineEntry:
       type: object
-      description: Entrée de chronologie (changement de statut ou snapshot)
+      description: >
+        Entrée de chronologie (changement de statut ou snapshot). Pour un
+        changement manuel : source=MANUAL_UI, actorType=USER. Pour une
+        transition automatique du moteur : source=HAZARD_DETECTION,
+        actorType=SYSTEM. Les snapshots portent les valeurs métriques
+        observées et, quand disponible, le résumé de risque dans details.
       properties:
         recordedAt: { type: string, format: date-time }
         kind: { type: string, enum: [STATUS_CHANGE, SNAPSHOT] }

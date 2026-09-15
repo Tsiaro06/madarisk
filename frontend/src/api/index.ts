@@ -13,9 +13,11 @@ import type {
   CommuneListItem,
   DashboardSummary,
   DistrictListItem,
+  EventBilan,
   EventListItem,
-  EventTrack,
   EventsTimelineEntry,
+  EventTimeline,
+  EventTrack,
   ExposedCommuneRow,
   PriorityCommune,
   RiskAssessment,
@@ -85,6 +87,7 @@ export const eventsApi = {
     apiPatch<EventListItem>(`/events/${id}`, body),
   updateStatus: (id: string, status: string) =>
     apiPatch(`/events/${id}/status`, { status }),
+  history: (id: string) => apiGet<EventTimeline>(`/events/${id}/history`),
   remove: (id: string) => apiDelete(`/events/${id}`),
   tracks: (id: string) => apiGet<EventTrack[]>(`/events/${id}/tracks`),
   trackGeoJson: (id: string) =>
@@ -202,7 +205,7 @@ export const matchingApi = {
 export const reportsApi = {
   dashboard: (params?: Record<string, string | undefined>) =>
     apiGet("/reports/dashboard", { params }),
-  event: (eventId: string) => apiGet(`/reports/events/${eventId}`),
+  event: (eventId: string) => apiGet<EventBilan>(`/reports/events/${eventId}`),
   list: (params?: Record<string, string | number | undefined>) =>
     apiGetPage("/reports", { params }),
   exportCsv: (body: unknown) => apiBlob("/reports/export/csv", body),

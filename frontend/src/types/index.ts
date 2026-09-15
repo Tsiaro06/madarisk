@@ -149,6 +149,82 @@ export interface EventsTimelineEntry {
   byType: Record<string, number>;
 }
 
+export interface EventTimelineEntry {
+  recordedAt: string;
+  kind: 'STATUS_CHANGE' | 'SNAPSHOT';
+  fromStatus: EventStatus | null;
+  toStatus: EventStatus | null;
+  reason: string | null;
+  source: string;
+  actorType: string;
+  severity: SeverityLevel | null;
+  exposedCommuneCount: number | null;
+  metricValues: Record<string, unknown> | null;
+  details: Record<string, unknown> | null;
+}
+
+export interface EventTimeline {
+  eventId: string;
+  timeline: EventTimelineEntry[];
+}
+
+export interface EventBilan {
+  event: {
+    id: string;
+    eventCode: string;
+    name: string;
+    type: EventType;
+    status: EventStatus;
+    severity: SeverityLevel;
+    description: string | null;
+    startedAt: string | null;
+    expectedEndAt: string | null;
+    endedAt: string | null;
+    sourceName: string | null;
+    sourceUrl: string | null;
+    createdAt: string;
+  } | null;
+  areas: { type: 'FeatureCollection'; features: Array<Record<string, unknown>> };
+  exposedCommunes: Array<{
+    communeId: string;
+    communeName: string;
+    districtId: string | null;
+    districtName: string | null;
+    distanceToTrackKm: string | null;
+    isInsideInfluenceArea: boolean;
+    exposedPopulation: string | null;
+    riskScore: string | null;
+    riskLevel: RiskLevel | null;
+  }>;
+  exposedPopulation: number;
+  riskDistribution: Record<string, number>;
+  riskCount: number;
+  weather: {
+    available: boolean;
+    latestObservedAt: string | null;
+    latest: {
+      temperatureC: string | null;
+      windSpeedKmh: string | null;
+      precipitationMm: string | null;
+      humidityPercent: string | null;
+      observedAt: string | null;
+      communeName: string;
+    } | null;
+  };
+  alerts: Array<{
+    id: string;
+    title: string;
+    type: string;
+    severity: string;
+    status: string;
+    message: string | null;
+    districtId: string | null;
+    communeId: string | null;
+    publishedAt: string | null;
+    expiresAt: string | null;
+  }>;
+}
+
 export interface DistrictListItem {
   id: string;
   adminCode: string;

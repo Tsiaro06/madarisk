@@ -47,7 +47,10 @@ export const createDetectionRuleSchema = z
       .array(
         z.object({
           level: severityLevelEnum,
-          min: z.number().min(0, 'min supérieur ou égal à 0').max(100, 'min inférieur ou égal à 100'),
+          min: z
+            .number()
+            .min(0, 'min supérieur ou égal à 0')
+            .max(100, 'min inférieur ou égal à 100'),
         }),
       )
       .default([]),

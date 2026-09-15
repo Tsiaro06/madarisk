@@ -118,7 +118,7 @@ export const eventsController = {
     if (!req.user) throw AppError.unauthorized();
     const { id, communeId } = req.validatedParams as { id: string; communeId: string };
     await eventsService.removeExposedCommune(id, communeId, req.user, req);
-    res.status(200).json(successResponse(null, 'Commune retirée de l\'exposition'));
+    res.status(200).json(successResponse(null, "Commune retirée de l'exposition"));
   },
 
   calculateExposure: async (req: Request, res: Response): Promise<void> => {

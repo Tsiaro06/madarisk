@@ -713,10 +713,10 @@ export const eventsRepository = {
   },
 
   async deleteRiskAssessmentsForCommune(eventId: string, communeId: string): Promise<void> {
-    await db.query(
-      `DELETE FROM risk_assessments WHERE event_id = $1 AND commune_id = $2`,
-      [eventId, communeId],
-    );
+    await db.query(`DELETE FROM risk_assessments WHERE event_id = $1 AND commune_id = $2`, [
+      eventId,
+      communeId,
+    ]);
   },
 
   async countTracks(eventId: string): Promise<number> {

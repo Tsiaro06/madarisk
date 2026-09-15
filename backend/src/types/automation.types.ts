@@ -2,14 +2,15 @@ import type { SeverityLevel } from './event.types';
 
 export type DetectionOperator = 'GT' | 'GE' | 'LT' | 'LE' | 'EQ' | 'BETWEEN';
 
-export const DETECTION_OPERATORS: DetectionOperator[] = [
-  'GT', 'GE', 'LT', 'LE', 'EQ', 'BETWEEN',
-];
+export const DETECTION_OPERATORS: DetectionOperator[] = ['GT', 'GE', 'LT', 'LE', 'EQ', 'BETWEEN'];
 
 export type AutomationRunStatus = 'RUNNING' | 'SUCCESS' | 'FAILED' | 'PARTIAL';
 
 export const AUTOMATION_RUN_STATUSES: AutomationRunStatus[] = [
-  'RUNNING', 'SUCCESS', 'FAILED', 'PARTIAL',
+  'RUNNING',
+  'SUCCESS',
+  'FAILED',
+  'PARTIAL',
 ];
 
 export interface SeverityRule {

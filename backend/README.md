@@ -327,8 +327,20 @@ Système de suivi des **cyclones** (et autres aléas) avec cycle de vie `BROUILL
 | `POST` | `/events/:id/exposure/calculate` | ADMIN | Calcul d'exposition (population, ménages, superficie) |
 | `POST` | `/events/:id/risks/recalculate` | ADMIN | Recalcul des risques des communes exposées |
 | `GET` | `/events/:id/exposed-communes` | connecté | Communes exposées (paginées, filtres) |
+| `GET` | `/events/:id/history` | connecté | Chronologie (statuts + évaluations, sources `MANUAL_UI` / `HAZARD_DETECTION`) |
 
 Exemples (création de cyclone, point de trajectoire, zone d'influence) dans Swagger.
+
+### Suivi automatique & chronologie d'événement
+
+Le moteur de détection automatise le cycle de vie : chaque transition est tracée dans `event_status_history` et chaque évaluation dans `event_snapshots`. La chronologie est exposée par `GET /events/:id/history` et alimente l'onglet « Chronologie » de l'application.
+
+- `PREVISION → ACTIF` : première observation réelle rattachée à l'événement.
+- `ACTIF → SUIVI` : après `DETECTION_NORMAL_CYCLES_BEFORE_MONITORING` cycles normaux consécutifs (défaut **3**).
+- `SUIVI → CLOTURE` : après `DETECTION_MONITORING_HOURS` heures de suivi (défaut **24**).
+- `DETECTION_DEDUPE_HOURS` (défaut **48h**) évite les doublons entre exécutions.
+- Passe automatique : source `HAZARD_DETECTION`. Changement manuel via `PATCH /events/:id/status` : source `MANUAL_UI`, avec l'identité de l'opérateur (`actor_type`/`actor_id`).
+- Les passages automatiques se font lors des exécutions planifiées (actives si `ENABLE_SCHEDULED_JOBS=true`) selon les règles de détection actives par aléa.
 
 ## 18. Météo & moteur de risque (Phase 8)
 
