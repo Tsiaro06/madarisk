@@ -29,6 +29,7 @@ import { useActiveEvent } from '@/stores/activeEvent';
 import { EventChronologieTab } from '@/components/events/EventChronologieTab';
 import { EventBilanTab } from '@/components/events/EventBilanTab';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
+import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
 
 const STATUSES: EventStatus[] = ['BROUILLON', 'PREVISION', 'ACTIF', 'SUIVI', 'CLOTURE'];
 const PHASES: RiskPhase[] = ['AVANT', 'PENDANT', 'APRES', 'RETABLISSEMENT'];
@@ -121,6 +122,17 @@ export function EvenementDetailPage() {
     riskLevel?: string;
     riskScore?: number;
   } | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    variant: 'warning' | 'destructive' | 'primary';
+    actionLabel: string;
+    onConfirm: () => void;
+    contextLabel?: string;
+    contextValue?: string;
+  }>({ open: false, title: '', variant: 'warning', actionLabel: '', onConfirm: () => {} });
+  const closeConfirm = () => setConfirmState((s) => ({ ...s, open: false }));
 
   const areaForm = useForm<AreaForm>({
     resolver: zodResolver(calculateAreaSchema),
@@ -182,6 +194,7 @@ export function EvenementDetailPage() {
       toast('Statut mis à jour', 'success');
       invalidateEvent();
       void qc.invalidateQueries({ queryKey: ['events'] });
+      closeConfirm();
     },
     onError: (err) => {
       toast(err instanceof ApiClientError ? err.message : 'Erreur statut', 'error');
@@ -193,6 +206,7 @@ export function EvenementDetailPage() {
     onSuccess: () => {
       toast('Exposition recalculée', 'success');
       void qc.invalidateQueries({ queryKey: ['event', id, 'exposed'] });
+      closeConfirm();
     },
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
   });
@@ -226,6 +240,7 @@ export function EvenementDetailPage() {
       void qc.invalidateQueries({ queryKey: ['event', id, 'areas'] });
       void qc.invalidateQueries({ queryKey: ['event', id, 'exposed'] });
       void qc.invalidateQueries({ queryKey: ['event', id, 'exposed', 'any'] });
+      closeConfirm();
     },
     onError: (err) =>
       toast(err instanceof ApiClientError ? err.message : 'Erreur suppression zone', 'error'),
@@ -233,7 +248,10 @@ export function EvenementDetailPage() {
 
   const risksM = useMutation({
     mutationFn: (phase: RiskPhase) => eventsApi.recalculateRisks(id, { phase }),
-    onSuccess: () => toast('Risques recalculés', 'success'),
+    onSuccess: () => {
+      toast('Risques recalculés', 'success');
+      closeConfirm();
+    },
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
   });
 
@@ -246,6 +264,8 @@ export function EvenementDetailPage() {
       if (activeEventId === id) {
         void qc.invalidateQueries({ queryKey: ['crisis', 'risk-map'] });
       }
+      setSelectedMapCommune(null);
+      closeConfirm();
     },
     onError: (err) =>
       toast(err instanceof ApiClientError ? err.message : 'Erreur retrait commune', 'error'),
@@ -626,10 +646,15 @@ export function EvenementDetailPage() {
                     type="button"
                     disabled={!allowed || statusM.isPending}
                     onClick={() => {
-                      if (!window.confirm(`Faire passer l'événement au statut « ${s} » ?`)) {
-                        return;
-                      }
-                      statusM.mutate(s);
+                      setConfirmState({
+                        open: true,
+                        title: `Faire passer l'événement au statut « ${s} »\u00a0?`,
+                        variant: 'warning',
+                        actionLabel: 'Confirmer le changement de statut',
+                        contextLabel: 'Statut',
+                        contextValue: s,
+                        onConfirm: () => statusM.mutate(s),
+                      });
                     }}
                     className={cn(
                       'flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-semibold transition',
@@ -803,14 +828,13 @@ export function EvenementDetailPage() {
                 loading={exposureM.isPending}
                 disabled={zoneCount === 0}
                 onClick={() => {
-                  if (
-                    !window.confirm(
-                      "Relancer le calcul d'exposition pour toutes les zones ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.",
-                    )
-                  ) {
-                    return;
-                  }
-                  exposureM.mutate();
+                  setConfirmState({
+                    open: true,
+                    title: "Relancer le calcul d'exposition pour toutes les zones\u00a0?",
+                    variant: 'warning',
+                    actionLabel: 'Confirmer le recalcul',
+                    onConfirm: () => exposureM.mutate(),
+                  });
                 }}
               >
                 Relancer le calcul d’exposition
@@ -830,14 +854,15 @@ export function EvenementDetailPage() {
                   loading={risksM.isPending}
                   disabled={zoneCount === 0}
                   onClick={() => {
-                    if (
-                      !window.confirm(
-                        `Relancer le calcul des risques pour la phase ${riskPhase} ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.`,
-                      )
-                    ) {
-                      return;
-                    }
-                    risksM.mutate(riskPhase);
+                    setConfirmState({
+                      open: true,
+                      title: `Relancer le calcul des risques pour la phase ${riskPhase}\u00a0?`,
+                      variant: 'warning',
+                      actionLabel: 'Confirmer le recalcul',
+                      contextLabel: 'Phase',
+                      contextValue: riskPhase,
+                      onConfirm: () => risksM.mutate(riskPhase),
+                    });
                   }}
                 >
                   Relancer le calcul des risques
@@ -871,15 +896,14 @@ export function EvenementDetailPage() {
               className="shrink-0"
               loading={removeExposedM.isPending}
               onClick={() => {
-                if (
-                  !window.confirm(
-                    `Retirer ${selectedMapCommune.communeName} de l'exposition ?\n\nCette action retire une donnée du résultat automatique. Vérifiez la source avant de continuer.`,
-                  )
-                ) {
-                  return;
-                }
-                removeExposedM.mutate(selectedMapCommune.communeId, {
-                  onSuccess: () => setSelectedMapCommune(null),
+                setConfirmState({
+                  open: true,
+                  title: `Retirer ${selectedMapCommune.communeName} de l'exposition\u00a0?`,
+                  variant: 'destructive',
+                  actionLabel: 'Confirmer le retrait',
+                  contextLabel: 'Commune',
+                  contextValue: selectedMapCommune.communeName,
+                  onConfirm: () => removeExposedM.mutate(selectedMapCommune.communeId),
                 });
               }}
             >
@@ -919,14 +943,17 @@ export function EvenementDetailPage() {
                         className="shrink-0"
                         loading={deleteAreaM.isPending && deleteAreaM.variables === areaId}
                         onClick={() => {
-                          if (
-                            !window.confirm(
-                              'Supprimer cette zone erronée ?\n\nCette action retire une donnée du résultat automatique. Vérifiez la source avant de continuer.',
-                            )
-                          ) {
-                            return;
-                          }
-                          deleteAreaM.mutate(areaId);
+                          setConfirmState({
+                            open: true,
+                            title: 'Supprimer cette zone erronée\u00a0?',
+                            variant: 'destructive',
+                            actionLabel: 'Confirmer la suppression',
+                            contextLabel: 'Zone',
+                            contextValue: isBuffer
+                              ? `Bande tampon · ${String(props.radiusKm)} km`
+                              : 'Zone polygonale',
+                            onConfirm: () => deleteAreaM.mutate(areaId),
+                          });
                         }}
                       >
                         <Trash2 className="size-3.5" /> Supprimer une zone erronée
@@ -957,14 +984,13 @@ export function EvenementDetailPage() {
                     disabled={!removeCommuneId}
                     loading={removeExposedM.isPending}
                     onClick={() => {
-                      if (
-                        !window.confirm(
-                          "Retirer cette commune de l'exposition ?\n\nCette action retire une donnée du résultat automatique. Vérifiez la source avant de continuer.",
-                        )
-                      ) {
-                        return;
-                      }
-                      removeExposedM.mutate(removeCommuneId);
+                      setConfirmState({
+                        open: true,
+                        title: "Retirer cette commune de l'exposition\u00a0?",
+                        variant: 'destructive',
+                        actionLabel: 'Confirmer le retrait',
+                        onConfirm: () => removeExposedM.mutate(removeCommuneId),
+                      });
                     }}
                   >
                     <XCircle className="size-3.5" /> Retirer une commune exposée erronée
@@ -981,6 +1007,24 @@ export function EvenementDetailPage() {
       ) : (
         <EventBilanTab eventId={ev.id} />
       )}
+      <AdministrativeActionConfirmDialog
+        open={confirmState.open}
+        onOpenChange={(open) => setConfirmState((s) => ({ ...s, open }))}
+        title={confirmState.title}
+        description={confirmState.description}
+        variant={confirmState.variant}
+        actionLabel={confirmState.actionLabel}
+        isPending={
+          statusM.isPending ||
+          exposureM.isPending ||
+          risksM.isPending ||
+          deleteAreaM.isPending ||
+          removeExposedM.isPending
+        }
+        onConfirm={confirmState.onConfirm}
+        contextLabel={confirmState.contextLabel}
+        contextValue={confirmState.contextValue}
+      />
     </div>
   );
 }

@@ -1,110 +1,307 @@
-# Audit UI — MadaRisk Map (adaptation à l'automatisation)
+# Rapport Phase B — Adaptation UI au fonctionnement automatisé
 
 Date : 15 septembre 2026
-Périmètre : **frontend uniquement** (aucun fichier modifié — rapport en lecture seule)
+Périmètre : **frontend uniquement** — aucun fichier backend ni base de données modifié
 
 ---
 
-## 1. Résumé de ce qui a été fait
+## 1. Contexte et objectif
 
-Contexte : les fonctionnalités d'automatisation de MadaRisk Map sont terminées (synchronisation météo automatique, détection automatique des aléas, création/mise à jour automatique des événements, calcul automatique des zones exposées / communes exposées / risques, génération et mise à jour automatique des alertes, mise à jour automatique du dashboard et de la carte, suivi / évaluation / clôture automatiques).
+Les fonctionnalités d'automatisation de MadaRisk Map sont terminées : synchronisation météo, détection automatique des aléas, création/mise à jour auto des événements, calcul auto des zones exposées/communes exposées/risques, génération/mise à jour auto des alertes.
 
-Objectif de cette étape : adapter l'interface existante, encore orientée CRUD manuel, au fonctionnement automatique — **sans rien modifier**. Analyse en lecture seule uniquement.
+L'interface, encore orientée CRUD manuel, a été adaptée au fonctionnement automatisé selon le parcours cible :
 
-### Actions réalisées
-1. Recensé toutes les interfaces et actions encore orientées création / modification / suppression / déclenchement manuels.
-2. Croisé chaque action avec sa visibilité par rôle (`canManageOps`, `canManageUsers`, `canManageImports`, `canManageRiskConfig`, « tous ») et l'endpoint backend réellement appelé (`src/api/index.ts` + vérification dans `openapi.yaml`).
-3. Vérifié les pages : Dashboard, Événements, Détail événement, Alertes, Risques, Météo, Rapports, Administration, Imports, Matching, Config. risque, Territoires, Salle de crise.
-4. Vérifié les composants : CrisisHeader, CreateEventModal, LeftPanel, RightPanel, EventBilanTab, EventChronologieTab, AppShell, guards (RequireAuth / RequireRole).
-5. Vérifié les routes et guards de rôles (`routes/AppRouter.tsx`, `lib/roles.ts`).
-6. Émis une décision pour chaque action en visant le parcours cible :
-
-```text
+```
 Surveiller → Filtrer → Consulter → Comprendre → Voir sur la carte → Consulter le bilan
 ```
 
-Les actions manuelles éventuelles doivent être relogées dans une section **« Intervention administrative »** (visible uniquement pour les rôles autorisés), réservée aux exceptions : correction, relance contrôlée, invalidation ou création manuelle exceptionnelle.
-
-> **Aucune modification n'a été effectuée ni ne sera faite avant validation explicite.**
+Toutes les actions manuelles ont été relogées dans une section **« Intervention administrative »** (visible uniquement pour les rôles autorisés).
 
 ---
 
-## 2. Tableau d'audit
+## 2. Fichiers créés
 
-| Page / composant | Bouton ou action actuelle | Rôle visible | Route ou endpoint appelé | Décision recommandée | Justification |
-|---|---|---|---|---|---|
-| DashboardPage | — (aucune action CRUD, lecture seule) | Tous connectés | — (queries en GET) | Garder | Le dashboard est le point d'entrée lecture du flux automatique (KPIs, carte, priorités auto-calculées). Rien à changer. |
-| Sidebar (AppShell) | Liens Dashboard → Config. risque (`/configurations-risque`) | Dashboard/Territoires/Événements/Météo/Risques/Alertes/Rapports : tous ; Imports/Matching : ANALYSTE_SIG+SUPER_ADMIN ; Administration/Config. risque : SUPER_ADMIN | Navigation uniquement | Garder | La navigation vers une future section « Intervention administrative » pourra y être ajoutée ; les restrictions actuelles par rôle sont correctes. |
-| Header (CrisisHeader + AppShell) | « Déconnexion », « Mot de passe », « Tous les modules », « Voir la météo » | Tous | Navigation / `authApi.logout` | Garder | Actions de compte/navigation, sans rapport avec le CRUD manuel. |
-| CrisisRoomPage / CrisisHeader:141 | « Créer un événement » / « Créer » (ouvre CreateEventModal) | ADMIN, SUPER_ADMIN (`canManageOps`) | `eventsApi.create` POST /events (+ `addTrack` + `createPolygonArea` si dessin) | Masquer du flux principal | La salle de crise est l'écran central de surveillance : la création manuelle y est contraire au mode automatique (événements auto-générés). Virtuellement doublonnée avec « Nouvel événement » d'Événements. À supprimer du header et à reloger dans la section « Intervention administrative » (création exceptionnelle, toujours ADMIN/SUPER_ADMIN ; endpoint existe ; aucun risque de casse du header si on retire juste le bouton). |
-| CreateEventModal (CrisisRoom) | Formulaire de création + « Créer l'événement » | ADMIN, SUPER_ADMIN | `eventsApi.create` POST /events (+tracks/polygon) | Déplacer dans « Intervention administrative » | Contenu du modal : inutile dans le flux courant ; à conserver uniquement dans l'espace admin (endpoint existe). Ne conserver qu'UN seul point d'entrée de création pour éviter la duplication avec EvenementsPage. |
-| EvenementsPage:139,346 | « Nouvel événement » → modal « Créer » | ADMIN, SUPER_ADMIN (`canManageOps`) | `eventsApi.create` POST /events (+ `addTrack` + `createPolygonArea`) | Déplacer dans « Intervention administrative » | La page Événements doit devenir un écran de surveillance/filtrage (événements auto-générés). La création manuelle = exception (correction/relance) pour ADMIN/SUPER_ADMIN uniquement. Endpoint réel. Risque faible : bouton à masquer de la toolbar, accès conservé via section admin. |
-| EvenementDetailPage:354 | « Activer en crise » | Tous connectés | Aucun (store `useCrisisStore`) | Garder | Pose le contexte actif pour la carte — purement visuel, correspond à « Voir sur la carte » du parcours cible. Aucun endpoint, aucune donnée créée. |
-| EvenementDetailPage:436 | Statuts du cycle de vie (BROUILLON → CLOTURE), boutons cliquables | ADMIN, SUPER_ADMIN (+ retour BROUILLON : SUPER_ADMIN) | `eventsApi.updateStatus` PATCH /events/{id}/status | Déplacer dans « Intervention administrative » | Le suivi/évaluation/clôture sont désormais automatiques. Forcer le statut devient une correction exceptionnelle (invalidation, relance) réservée ADMIN/SUPER_ADMIN. Endpoint existe. Risque : section à isoler dans un espace admin ; sinon la page conserve ses onglets lecture. |
-| EvenementDetailPage:500 | « Ajouter le point » (point de trajectoire) | ADMIN, SUPER_ADMIN | `eventsApi.addTrack` POST /events/{id}/tracks | Déplacer dans « Intervention administrative » | Les trajectoires (OBSERVEE/PREVUE) doivent être alimentées par l'automatisation/détection. La saisie manuelle = exception. Endpoint réel. Risque faible (formulaire sous `canManageOps`). |
-| EvenementDetailPage:541 | « Calculer » (bande tampon / zone d'influence) | ADMIN, SUPER_ADMIN | `eventsApi.calculateArea` POST /events/{id}/areas/calculate | Déplacer dans « Intervention administrative » | Le calcul des zones d'exposition fait partie de la chaîne automatique. Déclenchement manuel = relance contrôlée. Endpoint réel. |
-| EvenementDetailPage:587 | « Définir la zone (N points) » (polygone dessiné) | ADMIN, SUPER_ADMIN | `eventsApi.createPolygonArea` POST /events/{id}/areas/polygon | Déplacer dans « Intervention administrative » | Dessin manuel d'une zone = exception (événement sans trajectoire). Endpoint réel. |
-| EvenementDetailPage:623 | « Calculer exposition (toutes zones) » | ADMIN, SUPER_ADMIN | `eventsApi.calculateExposure` POST /events/{id}/exposure/calculate | Déplacer dans « Intervention administrative » | L'exposition est auto-calculée ; le bouton n'est qu'une relance manuelle de l'étape 3. Endpoint réel. |
-| EvenementDetailPage:642 | « Recalculer les risques » (par phase) | ADMIN, SUPER_ADMIN | `eventsApi.recalculateRisks` POST /events/{id}/risks/recalculate | Déplacer dans « Intervention administrative » | Relance manuelle d'un calcul désormais automatique (et couvert aussi par le job de recalcul). À renommer en « Recalcul forcé » une fois relogé. Endpoint réel. |
-| EvenementDetailPage:789 | « Supprimer » (zone d'influence) | ADMIN, SUPER_ADMIN | `eventsApi.deleteArea` DELETE /events/{id}/areas/{areaId} | Déplacer dans « Intervention administrative » | Invalidation d'une zone fautive = gestion d'exception. Endpoint réel. Risque : cette suppression recalcule l'exposition côté serveur (comportement conservé). |
-| EvenementDetailPage:740,899 | « Retirer de l'exposition » / « Retirer » (commune exposée) | ADMIN, SUPER_ADMIN (colonne Actions) | `eventsApi.removeExposedCommune` DELETE /events/{id}/exposed-communes/{communeId} | Déplacer dans « Intervention administrative » | Corriger une commune à tort dans l'exposition = exception. Endpoint réel. |
-| AlertesPage:137,289 | « Nouvelle alerte » → modal « Créer » | ADMIN, SUPER_ADMIN | `alertsApi.create` POST /alerts | Déplacer dans « Intervention administrative » | Alertes auto-générées/publiées par le système. Création manuelle = alerte exceptionnelle. Endpoint réel. Risque faible. |
-| AlertesPage:202 | « Publier » (si statut BROUILLON) | ADMIN, SUPER_ADMIN | `alertsApi.publish` POST /alerts/{id}/publish | Déplacer dans « Intervention administrative » | La publication est automatique ; la publier à la main = relance contrôlée (ex. BROUILLON laissé en attente). Endpoint réel. |
-| AlertesPage:210 | « Archiver » (si ≠ ARCHIVEE) | ADMIN, SUPER_ADMIN | `alertsApi.archive` POST /alerts/{id}/archive | Déplacer dans « Intervention administrative » | Archiver une alerte = gestion d'exception (retrait de diffusion). Endpoint réel. |
-| RisquesPage:110 | « Recalculer » (global ou par événement + phase) | ADMIN, SUPER_ADMIN | `risksApi.recalculate` POST /risks/recalculate | Déplacer dans « Intervention administrative » | La page Risques doit être prioritairement de surveillance. Le recalcul manuel global est une relance contrôlée. Renommer éventuellement « Relancer le calcul des risques ». Endpoint réel. |
-| WeatherMapPage / WeatherControls:186 | « Rafraîchir ce district » / « Rafraîchir tout le pays » | ADMIN, SUPER_ADMIN (`canRefresh`) | `weatherApi.refresh` POST /weather/refresh/communes (boucle districts) | Déplacer dans « Intervention administrative » | La synchro météo est automatique (crons). Le rafraîchissement à la main = relance contrôlée explicite de l'exception. Endpoint réel. Risque faible. |
-| RightPanel (crise):365 | « Rafraîchir » (météo d'une commune) | ADMIN, SUPER_ADMIN (`canOps`) | `weatherApi.refresh` POST /weather/refresh/communes | Déplacer dans « Intervention administrative » | Idem synchro météo auto ; relance ponctuelle réservée aux admins. Endpoint réel. |
-| RightPanel (crise):531 | « Recalculer » (risque d'une commune, par phase) | ADMIN, SUPER_ADMIN (`canOps`) | `risksApi.recalculate` POST /risks/recalculate | Déplacer dans « Intervention administrative » | Recalcul isolé = relance contrôlée. Endpoint réel. |
-| RightPanel (crise):582 | « Exporter en CSV » (fiche commune) | **Tous connectés (non gated)** | `reportsApi.exportCsv` POST /reports/export/csv | Masquer du flux principal | Incohérence : l'endpoint `/reports/export/csv` est réservé ADMIN/SUPER_ADMIN (Phase 9) mais le bouton est visible pour CLIENT → 403 systématique. Le masquer hors section admin aligne l'UI sur le backend. Endpoint réel. Risque nul. |
-| EventBilanTab:89 | « Rapport PDF » | ADMIN, SUPER_ADMIN (`canExport`) | `reportsApi.exportPdf` POST /reports/export/pdf | Garder | Le bilan est la dernière étape du parcours (« Consulter le bilan ») ; l'export PDF est un outil de lecture/diffusion déjà limité aux admins. Endpoint réel. |
-| EventBilanTab:97 | « Communes exposées (CSV) » | ADMIN, SUPER_ADMIN | `reportsApi.exportCsv` POST /reports/export/csv | Garder | Export de lecture du bilan, déjà admin-only. Endpoint réel. |
-| EventBilanTab:104 | « Zones (GeoJSON) » | ADMIN, SUPER_ADMIN | `reportsApi.exportGeoJson` POST /reports/export/geojson | Garder | Idem, déjà admin-only. Endpoint réel. |
-| RapportsPage:75–81 | « Export CSV / GeoJSON / PDF » (card « Exporter ») | ADMIN, SUPER_ADMIN (`canExport`) | `reportsApi.exportCsv` / `exportGeoJson` / `exportPdf` POST /reports/export/* | Renommer (+ garder) | Ces exports génèrent à la demande des fichiers, mais avec l'automatisation, les rapports sont produits par le système. Renommer la card en « Exports manuels (intervention) » afin que l'utilisateur perçoive qu'il s'agit d'une exception, tout en la maintenant disponible (déjà admin-only). Endpoints réels. |
-| RapportsPage:116 | « Télécharger » (rapport de l'historique) | Tous (mais liste `/reports` déjà restreinte ADMIN/SUPER_ADMIN) | `reportsApi.download` GET /reports/{id}/download | Garder | Téléchargement d'un rapport généré = lecture. Inoffensif, l'accès aux données est déjà limité côté backend. |
-| ImportsPage:91 | « Envoyer » (upload GeoJSON/CSV/Shapefile) | ANALYSTE_SIG, SUPER_ADMIN (`canManageImports`, route requise) | `importsApi.upload` POST /imports | Garder | Import de données SIG = outil d'administration/données, hors flux utilisateur courant, déjà isolé derrière ses propres routes. |
-| MatchingPage:109,112 | « Approuver » / « Rejeter » (appariements) | ANALYSTE_SIG, SUPER_ADMIN | `matchingApi.approve`/`reject` POST /matching/{id}/approve \| /reject | Garder | Validation humaine de l'appariement automatique = contrôle qualité, déjà restreint. Fait partie du pipeline d'import, pas du flux utilisateur. |
-| AdminUsersPage:78,181 | « Nouvel utilisateur » + « Créer » | SUPER_ADMIN (route requise) | `usersApi.create` POST /users | Garder | Gestion des comptes = administration pure, hors automatisation. Endpoint réel. |
-| AdminUsersPage:115 | « Désactiver » / « Activer » | SUPER_ADMIN | `usersApi.setStatus` PATCH /users/{id}/status | Garder | Idem, administration. |
-| RiskConfigPage:86,165 | « Nouvelle configuration » + « Créer » | SUPER_ADMIN (route requise) | `risksApi.createConfiguration` POST /risk-configurations | Garder | Paramétrage du moteur qui pilote l'automatisation — doit rester en administration, sans changement. |
-| PasswordPage:71 | « Enregistrer » (changement mot de passe) | Tous connectés | `authApi.changePassword` PATCH /users/me/password | Garder | Compte utilisateur, sans lien avec le CRUD manuel. |
-| Territoires/CommuneDetail/DistrictDetail | — (aucune action CRUD) | — | GET uniquement | Garder | Pages de consultation ; conviennent au flux « Consulter/Filtrer ». |
-| EventChronologieTab | — (lecture seule) | Tous | GET /events/{id}/history | Garder | La chronologie est le cœur de « Comprendre » en mode automatique (historique détaillé). |
-| CrisisHeader:153 « Actualiser maintenant » (CrisisRoom) | Rafraîchissement des queries actives (`refetchQueries`) | Tous connectés | Aucun endpoint (client-side refetch) | Renommer | Ne crée/modifie rien : relit les données auto-synchronisées. Utile pour la surveillance. Renommer en « Actualiser les données » pour refléter la lecture et éviter toute confusion avec une action d'écriture. |
-| LeftPanel (crise):323 | Sélection d'événement « Actif » | Tous | Aucun (store) | Garder | Choisir le contexte affiché = filtre, conforme à « Faire/voir sur la carte ». |
+| Fichier | Rôle |
+|---|---|
+| `frontend/src/components/admin/AdministrativeInterventionPanel.tsx` | Panneau réutilisable « Intervention administrative » (géré par `canManageOps` — ADMIN/SUPER_ADMIN uniquement), accordéon replié par défaut, sous-titre, avertissement, note traçabilité ; mode `compact` pour actions en ligne. |
+| `frontend/src/components/ui/RefreshDataButton.tsx` | Bouton « Actualiser les données » basé sur `useIsFetching` (refetch lecture seule, aucun écriture). |
 
 ---
 
-## 3. Récapitulatif des décisions
+## 3. Fichiers modifiés
 
-- **Garder** (11) : Dashboard, navigation, « Activer en crise », exports Bilan (PDF/CSV/GeoJSON), « Télécharger », Imports, Matching, Administration (users), Config. risque, Mot de passe, Territoires, Chronologie, LeftPanel, « Actualiser maintenant » (avec renommage possible).
-- **Masquer du flux principal** (2) : « Créer un événement » du header de crise (relogée en admin), « Exporter en CSV » du RightPanel (à gater + reloger).
-- **Renommer** (2) : card « Exporter » de Rapports (→ « Exports manuels (intervention) »), « Actualiser maintenant » (→ « Actualiser les données »).
-- **Déplacer dans « Intervention administrative »** (14) : création événement, cycle de vie statuts, trajectoire, bande tampon, zone polygonale, exposition, recalcul risques (detail + globale + commune), retraits/suppressions (zone, commune), création alerte, publication, archivage, rafraîchissement météo (pays + commune).
-- **Supprimer** : aucun — aucun code réellement inutilisé n'a été identifié. Du code API reste sans bouton UI (`eventsApi.update/remove`, `alertsApi.update`, `matchingApi.run/manualLink`, `aiApi.remove`) mais doit être conservé (utilisé par l'automatisation backend et les flux non encore couverts).
+### CrisisHeader.tsx
+- Props `canCreate` / `onOpenCreate` supprimées, import `Plus` retiré
+- Bouton « Créer un événement » retiré (2 blocs dupliqués supprimés)
+- « Actualiser maintenant » → « Actualiser les données » (comportement refetch conservé)
+
+### CrisisRoomPage.tsx
+- Invocation `CrisisHeader` sans `canCreate` / `onOpenCreate`
+- État vide mis à jour (création = exception administrative)
+- Asides desktop (`lg:flex`) et mobile wrappés `flex-col` avec `AdministrativeInterventionPanel` en bas contenant bouton **« Créer un événement exceptionnel »** (ouvre `CreateEventModal` via `setCreateOpen`), affiché si `canManageOps(role)`
+
+### EvenementsPage.tsx
+- Titre → **« Événements détectés automatiquement »**
+- Sous-titre : « Suivez les aléas détectés, leurs zones d'exposition et leur évolution. »
+- Ligne sync : « Surveillance automatique active · Dernière mise à jour : {date} · Source : {source} » (calculée depuis `listQ.data.data` ; texte par défaut si absent)
+- `RefreshDataButton` ajouté (queryKey `['events']`)
+- « Nouvel événement » masqué du flux
+- `AdministrativeInterventionPanel` avec **« Créer un événement exceptionnel »** en bas de page
+- Modal renommée (titre + aria-label « Créer un événement exceptionnel »)
+- EmptyState mis à jour (« Aucun événement pour le moment. Les aléas sont normalement détectés et suivis automatiquement. »)
+
+### EvenementDetailPage.tsx
+- Recap « Parcours de gestion » en lecture seule (badges « Étape n/4 » / « Parcours terminé » + note « Ce parcours est maintenant géré automatiquement… »)
+- Carte read-only : hint « Carte en lecture seule — les zones d'influence et zones d'exposition sont calculées automatiquement… » ; zones sans bouton Supprimer ; barre de retrait commune supprimée du flux
+- Tableau « Communes exposées » sans colonne Actions
+- `AdministrativeInterventionPanel` ajouté en bas de l'onglet **Opérations** contenant :
+  - Cycle de vie (STATUSES, `window.confirm` avant chaque mutation)
+  - Point de trajectoire (formulaire)
+  - Bande tampon → **« Relancer le calcul de zone »**
+  - Polygone (dessin)
+  - **« Relancer le calcul d'exposition »**
+  - **« Relancer le calcul des risques »** (confirm)
+  - Retrait commune exposée (sélection sur carte + `select`)
+  - **« Supprimer une zone erronée »**
+  - **« Retirer une commune exposée erronée »** (sélection par ID)
+- Confirmations améliorées : « Cette action retire une donnée du résultat automatique… »
+- Import `canManageOps` retiré (plus utilisé)
+
+### AlertesPage.tsx
+- Titre → **« Alertes générées automatiquement »**
+- Sous-titre : « Consultez les vigilances, alertes actives et alertes archivées produites par la surveillance automatique. »
+- Ligne sync : « Surveillance automatique active · Dernière mise à jour : {max date} »
+- `RefreshDataButton` ajouté (queryKey `['alerts']`)
+- Filtres visuels par statut : **Toutes / Alertes actives / Préparation / Archives**
+- « Nouvelle alerte » masqué
+- **Par ligne** : Publier / Archiver dans `AdministrativeInterventionPanel` compact (confirm avant chaque action)
+- **En bas de page** : panneau admin avec **« Créer une alerte exceptionnelle »** + note explicative
+- Modal renommée (titre + aria-label « Créer une alerte exceptionnelle »)
+
+### RisquesPage.tsx
+- Sous-titre → **« Évaluation automatique des risques par commune et par événement »**
+- Ligne sync : « Surveillance automatique active · Informations de synchronisation non disponibles. »
+- `RefreshDataButton` ajouté (queryKey `['risks']`)
+- Carte « Recalculer les risques » retirée du flux principal → **AdministrativeInterventionPanel** avec bouton **« Relancer le calcul des risques »** (formulaire phase + événement conservé)
+
+### RightPanel.tsx
+- Rafraîchissement météo → panneau compact **« Relancer la synchronisation de cette commune »** (confirm)
+- Recalcul risque → panneau compact **« Relancer le calcul des risques »** (sélect phase conservé, confirm)
+- Bouton « Exporter en CSV » gaté `ADMIN/SUPER_ADMIN` uniquement (alignement UI/backend)
+- Import `AdministrativeInterventionPanel` ajouté
+
+### WeatherControls.tsx
+- Props `canRefresh` / `isRefreshing` retirées du composant (panneau gère l'affichage)
+- Bouton rafraîchissement → panneau compact : **« Relancer la synchronisation de ce district »** / **« Relancer la synchronisation nationale »** (selon `districtId`)
+
+### WeatherMapPage.tsx
+- Sous-titre adapté : « Observations et prévisions par commune — alimentées automatiquement par la surveillance »
+- Bouton **« Actualiser les données »** ajouté dans le header (refetch couche météo + communes + monitoring)
+- `handleRefresh` : `window.confirm` ajouté avant chaque relance
+- Textes progress/toast renommés : « Synchronisation du district… », « Synchronisation des données météo terminée. »
+
+### RapportsPage.tsx
+- Card « Exporter » remplacée par **AdministrativeInterventionPanel** avec titre **« Exports manuels (intervention) »**
+- Texte ajouté : « Les rapports automatiques sont disponibles dans l'historique. Utilisez ces exports pour une extraction ponctuelle ou une analyse administrative. »
+
+### AppShell.tsx
+- « Dashboard » → **« Salle de crise »**
+- « Événements » → **« Événements détectés »**
+- « Risques » → **« Risques (évaluation auto.) »**
+- « Alertes » → **« Alertes automatiques »**
+- Imports / Matching / Administration / Config. risque conservés et non masqués
+
+### ForbiddenPage.tsx / NotFoundPage.tsx
+- « Retour au dashboard » → **« Retour à la salle de crise »**
 
 ---
 
-## 4. Points d'attention détectés au passage
+## 4. Récapitulatif des décisions
 
-1. **Incohérence UI/backend** : `RightPanel:582` expose « Exporter en CSV » à tous, mais POST /reports/export/csv est ADMIN/SUPER_ADMIN → un CLIENT reçoit un 403. À gater.
-2. **Double point d'entrée de création d'événement** : header de crise (CrisisHeader) *et* toolbar Événements → à unifier en un seul accès admin.
-3. **Exports et recalculs manuels encore dans le flux** : à reloger sans supprimer (endpoints réels, à conserver pour les exceptions).
+### Actions déplacées dans « Intervention administrative » (14)
+1. Création événement (CreateEventModal)
+2. Cycle de vie statuts (BROUILLON → CLOTURE)
+3. Ajout point de trajectoire
+4. Calcul de zone (bande tampon)
+5. Dessin zone polygonale
+6. Calcul d'exposition
+7. Recalcul des risques (par événement + global)
+8. Suppression de zone erronée
+9. Retrait de commune exposée erronée (carte + select)
+10. Création d'alerte exceptionnelle
+11. Publication d'alerte (BROUILLON → PUBLIEE)
+12. Archivage d'alerte
+13. Rafraîchissement météo (commune / district / national)
+14. Exports manuels (CSV / GeoJSON / PDF)
+
+### Actions renommées (10)
+- « Actualiser maintenant » → « Actualiser les données »
+- « Créer un événement » → « Créer un événement exceptionnel »
+- « Nouvelle alerte » → « Créer une alerte exceptionnelle »
+- « Calculer » → « Relancer le calcul de zone »
+- « Calculer exposition » → « Relancer le calcul d'exposition »
+- « Recalculer les risques » → « Relancer le calcul des risques »
+- « Supprimer » (zone) → « Supprimer une zone erronée »
+- « Retirer » (commune) → « Retirer une commune exposée erronée »
+- « Rafraîchir ce district » → « Relancer la synchronisation de ce district »
+- « Rafraîchir tout le pays » → « Relancer la synchronisation nationale »
+- Card « Exporter » → « Exports manuels (intervention) »
+
+### Actions gardées inchangées (11)
+- Dashboard (lecture seule)
+- Navigation (AppShell)
+- « Activer en crise » (store local)
+- Exports du bilan (PDF/CSV/GeoJSON — EventBilanTab, déjà admin-only)
+- « Télécharger » rapport historique
+- Imports / Matching (ANALYSTE_SIG / SUPER_ADMIN)
+- Administration utilisateurs (SUPER_ADMIN)
+- Config. risque (SUPER_ADMIN)
+- Mot de passe
+- Territoires (consultation)
+- Chronologie (lecture seule)
+
+### Données API manquantes (non déplaçables sans backend)
+- Champ `source` / `lastUpdated` des événements automatiques pas encore systématiquement exposé → texte par défaut « Informations de synchronisation non disponibles. » affiché si absent
+- Motif auditable (`reason`) d'intervention non disponible côté API → confirmations `window.confirm` avec message d'avertissement ; extension backend nécessaire pour un vrai champ de journalisation
 
 ---
 
-## 5. Vision UI cible (proposée, pour validation ultérieure)
+## 5. Validations
+
+| Commande | Résultat |
+|---|---|
+| `npm run lint` (oxlint) | **0 erreur** (8 warnings pré-existantes, non liées à Phase B) |
+| `npm run build` (`tsc -b && vite build`) | **Build réussi** (tsc 0 erreur) |
+| `npx vitest run` | **14/14 tests passés** (RightPanel, LeftPanel, CrisisMap — aucune régression) |
+
+---
+
+## 6. Liste des fichiers modifiés (récapitulatif)
 
 ```
-Surveiller (Dashboard / salle de crise / Événements, Alertes)
-  → Filtrer (listes, panneaux, recherche)
-  → Consulter (fiches commune, détail événement lecture)
-  → Comprendre (chronologie, facteurs de risque, explications)
-  → Voir sur la carte (salle de crise, couches auto)
-  → Consulter le bilan (onglet Bilan + exports lecture)
-       └── « Intervention administrative » (réservé ADMIN/SUPER_ADMIN)
-            = force/recalc/correction/invalidation/création exceptionnelle
+frontend/src/components/admin/AdministrativeInterventionPanel.tsx   ← CREAT
+frontend/src/components/ui/RefreshDataButton.tsx                    ← CREAT
+frontend/src/components/crisis/CrisisHeader.tsx
+frontend/src/components/crisis/RightPanel.tsx
+frontend/src/components/weather/WeatherControls.tsx
+frontend/src/components/layout/AppShell.tsx
+frontend/src/pages/CrisisRoomPage.tsx
+frontend/src/pages/EvenementsPage.tsx
+frontend/src/pages/EvenementDetailPage.tsx
+frontend/src/pages/AlertesPage.tsx
+frontend/src/pages/RisquesPage.tsx
+frontend/src/pages/WeatherMapPage.tsx
+frontend/src/pages/RapportsPage.tsx
+frontend/src/pages/ForbiddenPage.tsx
+frontend/src/pages/NotFoundPage.tsx
 ```
 
 ---
 
-*Rapport généré en lecture seule. Aucune modification du frontend, du backend ou de la base de données n'a été effectuée.*
+# Rapport Phase C — Confirmations administratives (modale accessible)
+
+Date : 16 septembre 2026
+Périmètre : **frontend uniquement** — aucun fichier backend ni base de données modifié
+
+---
+
+## 1. Contexte et objectif
+
+Les `window.confirm` utilisés comme confirmations des actions administratives (Phase B) n'offraient aucune accessibilité ni consistance visuelle. Ils ont été remplacés par une modale réutilisable et accessible : **`AdministrativeActionConfirmDialog`**.
+
+---
+
+## 2. Fichiers créés
+
+| Fichier | Rôle |
+|---|---|
+| `frontend/src/components/ui/AdministrativeActionConfirmDialog.tsx` | Modale de confirmation réutilisable : `role="dialog"` + `aria-modal`, focus initial, piège de focus (Tab), fermeture Échap (bloquée pendant mutation), bouton de confirmation désactivé pendant l'action (« Traitement en cours… »), 3 variantes (`warning` ambre / `destructive` rouge / `primary` bleu), textes d'avertissement et de traçabilité, langue française. |
+| `frontend/src/components/ui/AdministrativeActionConfirmDialog.test.tsx` | 14 tests du composant (ouverture/fermeture, textes, variantes, focus, Échap, pending, libellés par défaut). |
+| `frontend/src/components/admin/AdministrativeInterventionPanel.test.tsx` | 5 tests de garde : panneau invisible pour CLIENT/ANALYSTE_SIG, actions visibles + panneau ouvrable pour ADMIN/SUPER_ADMIN. |
+| `frontend/src/components/crisis/RightPanel.admin.test.tsx` | 7 tests d'intégration : garde par rôle, ouverture de la modale, Annuler = 0 appel API, Confirmer = exactement 1 appel, pending désactivé, recalcul des risques = 1 appel. |
+
+---
+
+## 3. Fichiers modifiés
+
+### EvenementDetailPage.tsx (6 confirmations)
+- Changement de statut (cycle de vie) → modale `warning`, contexte Phase
+- « Relancer le calcul d'exposition » → modale `warning`
+- « Relancer le calcul des risques » (+ changement de phase) → modale `warning`, contexte Phase
+- Retrait commune exposée (carte + sélecteur) → modale `destructive`, contexte Commune
+- « Supprimer une zone erronée » → modale `destructive`, contexte Zone
+- `closeConfirm()` ajouté aux `onSuccess` de `statusM`, `exposureM`, `risksM`, `deleteAreaM`, `removeExposedM` ; `setSelectedMapCommune(null)` déplacé dans `onSuccess` de `removeExposedM`
+
+### AlertesPage.tsx (2 confirmations)
+- Publication d'alerte → modale `warning`
+- Archivage d'alerte → modale `destructive`
+- `publishAlert` / `archiveAlert` ouvrent la modale ; `closeConfirm()` dans les `onSuccess` de `publishM` / `archiveM`
+
+### WeatherMapPage.tsx (1 confirmation)
+- « Relancer la synchronisation » → modale `warning` via le nouveau `requestRefresh` branché sur `onRefresh` de `WeatherControls` ; `handleRefresh` dépouillé du `window.confirm` ; `closeConfirm()` dans le `finally`
+
+### RightPanel.tsx (2 confirmations)
+- « Relancer la synchronisation de cette commune » → modale `warning`
+- « Relancer le calcul des risques » → modale `warning`, contexte Commune
+- `closeConfirm()` dans les `onSuccess` de `refreshM` / `recalcM`
+
+### vitest.config.ts
+- `pool: 'threads'` ajouté : le pool par défaut `forks` provoque des timeouts de worker sur Windows + Node v24.15.0
+
+### package.json
+- `@testing-library/user-event` ajouté en devDependency (interactions utilisateur réalistes dans les tests)
+
+---
+
+## 4. Récapitulatif des décisions
+
+### Confirmations administrées par la modale (11)
+1. Changement de statut d'un événement (cycle de vie)
+2. Relance du calcul d'exposition
+3. Relance du calcul des risques (événement)
+4. Retrait d'une commune exposée erronée (carte)
+5. Retrait d'une commune exposée erronée (sélecteur)
+6. Suppression d'une zone erronée
+7. Publication d'alerte
+8. Archivage d'alerte
+9. Relance de la synchronisation météo (WeatherMapPage)
+10. Relance de la synchronisation météo (RightPanel)
+11. Recalcul des risques (RightPanel)
+
+### Actions administratives sans modale (5) — inchangées par conformité « ne pas ajouter de nouvelles actions »
+- Création d'un événement exceptionnel
+- Ajout d'un point de trajectoire
+- Relance du calcul de zone (bande tampon)
+- Dessin d'une zone polygonale
+- Création d'une alerte exceptionnelle
+
+### Design de la modale
+- Variantes : `warning` (synchronisations, recalculs, publications, changements de statut) ; `destructive` (suppressions, retraits, archivage) ; `primary` (autres actions non destructives)
+- Valeurs par défaut : « Annuler » / « Confirmer l'intervention »
+- Configurable : `title`, `description`, `actionLabel`, `cancelLabel`, `isPending`, `onConfirm`, `onOpenChange` + contexte optionnel (événement, commune, zone, alerte…)
+- Textes fixes : « Cette action exceptionnelle peut modifier des données générées automatiquement. Vérifiez la source avant de continuer. » et « Cette intervention est soumise à la traçabilité disponible côté système. »
+- Accessibilité : `role="dialog"`, `aria-modal`, focus sur l'ouverture, piège de focus, Échap, anti double-clic
+- Flux : fermeture + invalidation des queries TanStack sur succès (toasts conservés) ; message backend affiché en cas d'échec
+
+### Données API manquantes (inchangées)
+- Pas de champ backend `reason` / justification auditable : aucune saisie de motif n'est prétendue dans la modale ; la traçabilité reste celle fournie par le système (toasts, logs backend)
+
+---
+
+## 5. Validations
+
+| Commande | Résultat |
+|---|---|
+| `npm run lint` (oxlint) | **0 erreur** (9 warnings pré-existantes, non liées à la Phase C) |
+| `npm run build` (`tsc -b && vite build`) | **Build réussi** |
+| `npx vitest run` | **40/40 tests passés** (14 existants + 26 nouveaux) |
+
+---
+
+## 6. Note sur Git
+
+Les modifications Phase 9 (backend + frontend sécurité/UX), **Phase B** **et Phase C** (frontend) sont présentes en working tree, **non commitées**. Le commit peut être fait dès validation ou attendre les préférences.
+
+---
+
+*Rapport Phase C généré le 16 septembre 2026. Aucun fichier backend ni base de données n'a été modifié.*

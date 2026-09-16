@@ -15,6 +15,7 @@ import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Pagination } from '@/components/ui/Pagination';
 import { RefreshDataButton } from '@/components/ui/RefreshDataButton';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
+import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { cn, formatDate } from '@/lib/utils';
 
@@ -51,6 +52,17 @@ export function AlertesPage() {
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
   const [open, setOpen] = useState(false);
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    variant: 'warning' | 'destructive' | 'primary';
+    actionLabel: string;
+    onConfirm: () => void;
+    contextLabel?: string;
+    contextValue?: string;
+  }>({ open: false, title: '', variant: 'warning', actionLabel: '', onConfirm: () => {} });
+  const closeConfirm = () => setConfirmState((s) => ({ ...s, open: false }));
   const [form, setForm] = useState({
     title: '',
     message: '',
@@ -114,6 +126,7 @@ export function AlertesPage() {
     onSuccess: () => {
       toast('Alerte publiée', 'success');
       void qc.invalidateQueries({ queryKey: ['alerts'] });
+      closeConfirm();
     },
     onError: (err) => {
       const msg = err instanceof ApiClientError ? err.message : 'Erreur publication';
@@ -127,6 +140,7 @@ export function AlertesPage() {
     onSuccess: () => {
       toast('Alerte archivée', 'success');
       void qc.invalidateQueries({ queryKey: ['alerts'] });
+      closeConfirm();
     },
     onError: (err) => {
       const msg = err instanceof ApiClientError ? err.message : 'Erreur archivage';
@@ -136,25 +150,23 @@ export function AlertesPage() {
   });
 
   const publishAlert = (id: string) => {
-    if (
-      !window.confirm(
-        'Publier cette alerte ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.',
-      )
-    ) {
-      return;
-    }
-    publishM.mutate(id);
+    setConfirmState({
+      open: true,
+      title: 'Publier cette alerte\u00a0?',
+      variant: 'warning',
+      actionLabel: 'Confirmer la publication',
+      onConfirm: () => publishM.mutate(id),
+    });
   };
 
   const archiveAlert = (id: string) => {
-    if (
-      !window.confirm(
-        'Archiver cette alerte ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.',
-      )
-    ) {
-      return;
-    }
-    archiveM.mutate(id);
+    setConfirmState({
+      open: true,
+      title: 'Archiver cette alerte\u00a0?',
+      variant: 'destructive',
+      actionLabel: "Confirmer l'archivage",
+      onConfirm: () => archiveM.mutate(id),
+    });
   };
 
   const onCreate = (e: FormEvent) => {
@@ -378,6 +390,18 @@ export function AlertesPage() {
           </form>
         </div>
       ) : null}
+      <AdministrativeActionConfirmDialog
+        open={confirmState.open}
+        onOpenChange={(open) => setConfirmState((s) => ({ ...s, open }))}
+        title={confirmState.title}
+        description={confirmState.description}
+        variant={confirmState.variant}
+        actionLabel={confirmState.actionLabel}
+        isPending={publishM.isPending || archiveM.isPending}
+        onConfirm={confirmState.onConfirm}
+        contextLabel={confirmState.contextLabel}
+        contextValue={confirmState.contextValue}
+      />
     </div>
   );
 }

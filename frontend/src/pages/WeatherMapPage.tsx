@@ -16,6 +16,7 @@ import {
 import { WeatherModeBadge } from "@/components/weather/WeatherModeBadge";
 import { RefreshDataButton } from "@/components/ui/RefreshDataButton";
 import { useWeatherMapLayer } from "@/hooks/useWeatherMapLayer";
+import { AdministrativeActionConfirmDialog } from "@/components/ui/AdministrativeActionConfirmDialog";
 import { canManageOps } from "@/lib/roles";
 import {
   addDaysToToday,
@@ -41,6 +42,17 @@ export function WeatherMapPage() {
   const [mobileDetails, setMobileDetails] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshProgress, setRefreshProgress] = useState<string | null>(null);
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    variant: 'warning' | 'destructive' | 'primary';
+    actionLabel: string;
+    onConfirm: () => void;
+    contextLabel?: string;
+    contextValue?: string;
+  }>({ open: false, title: '', variant: 'warning', actionLabel: '', onConfirm: () => {} });
+  const closeConfirm = () => setConfirmState((s) => ({ ...s, open: false }));
 
   const districtsQ = useQuery({
     queryKey: ["weather", "districts"],
@@ -154,15 +166,6 @@ export function WeatherMapPage() {
 
   const handleRefresh = async () => {
     if (refreshing || !canRefresh) return;
-    if (
-      !window.confirm(
-        `Relancer la synchronisation des observations météo ${
-          districtId ? "de ce district" : "nationale"
-        } ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.`,
-      )
-    ) {
-      return;
-    }
     const districts = districtsQ.data ?? [];
     if (!districtId && districts.length === 0) {
       toast(
@@ -208,7 +211,26 @@ export function WeatherMapPage() {
     } finally {
       setRefreshing(false);
       setRefreshProgress(null);
+      closeConfirm();
     }
+  };
+
+  const requestRefresh = () => {
+    if (refreshing || !canRefresh) return;
+    const districtName = districtId
+      ? (districtOptions.find((d) => d.value === districtId)?.label ?? '')
+      : '';
+    setConfirmState({
+      open: true,
+      title: districtId
+        ? 'Relancer la synchronisation des observations météo de ce district\u00a0?'
+        : 'Relancer la synchronisation nationale des observations météo\u00a0?',
+      variant: 'warning',
+      actionLabel: 'Confirmer la synchronisation',
+      onConfirm: () => void handleRefresh(),
+      contextLabel: districtId ? 'District' : 'Territoire',
+      contextValue: districtId ? districtName : 'National',
+    });
   };
 
   const controls = (
@@ -232,7 +254,7 @@ export function WeatherMapPage() {
       }}
       isRefreshing={refreshing}
       refreshProgress={refreshProgress}
-      onRefresh={handleRefresh}
+      onRefresh={requestRefresh}
     />
   );
 
@@ -393,6 +415,18 @@ export function WeatherMapPage() {
           {detailsPanel}
         </aside>
       </div>
+      <AdministrativeActionConfirmDialog
+        open={confirmState.open}
+        onOpenChange={(open) => setConfirmState((s) => ({ ...s, open }))}
+        title={confirmState.title}
+        description={confirmState.description}
+        variant={confirmState.variant}
+        actionLabel={confirmState.actionLabel}
+        isPending={refreshing}
+        onConfirm={confirmState.onConfirm}
+        contextLabel={confirmState.contextLabel}
+        contextValue={confirmState.contextValue}
+      />
     </div>
   );
 }

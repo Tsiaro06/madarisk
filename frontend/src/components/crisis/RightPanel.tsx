@@ -63,6 +63,7 @@ import { Select } from '@/components/ui/Select';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
+import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
 import { formatDate, formatNumber } from '@/lib/utils';
 
 interface RightPanelProps {
@@ -129,6 +130,17 @@ export function RightPanel({
   const role = useAuthStore((s) => s.user?.role);
   const canOps = canManageOps(role);
   const [recalcPhase, setRecalcPhase] = useState<RiskPhase>('PENDANT');
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    variant: 'warning' | 'destructive' | 'primary';
+    actionLabel: string;
+    onConfirm: () => void;
+    contextLabel?: string;
+    contextValue?: string;
+  }>({ open: false, title: '', variant: 'warning', actionLabel: '', onConfirm: () => {} });
+  const closeConfirm = () => setConfirmState((s) => ({ ...s, open: false }));
 
   const latestQ = useQuery<WeatherObservation | null>({
     queryKey: ['weather', 'latest', communeId],
@@ -191,6 +203,7 @@ export function RightPanel({
       void qc.invalidateQueries({ queryKey: ['weather', 'forecast', communeId] });
       void qc.invalidateQueries({ queryKey: ['commune-detail', communeId] });
       void qc.invalidateQueries({ queryKey: ['weather', 'map-layer'] });
+      closeConfirm();
     },
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur météo', 'error'),
   });
@@ -202,30 +215,33 @@ export function RightPanel({
       void qc.invalidateQueries({ queryKey: ['risks-commune', communeId] });
       void qc.invalidateQueries({ queryKey: ['commune-detail', communeId] });
       void qc.invalidateQueries({ queryKey: ['risks', 'map-layer'] });
+      closeConfirm();
     },
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur recalcul', 'error'),
   });
 
   const refreshWeather = () => {
-    if (
-      !window.confirm(
-        'Relancer la synchronisation des observations de cette commune ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.',
-      )
-    ) {
-      return;
-    }
-    refreshM.mutate();
+    setConfirmState({
+      open: true,
+      title: 'Relancer la synchronisation des observations de cette commune\u00a0?',
+      variant: 'warning',
+      actionLabel: 'Confirmer la synchronisation',
+      onConfirm: () => refreshM.mutate(),
+      contextLabel: 'Commune',
+      contextValue: detail?.commune?.name ?? '',
+    });
   };
 
   const recalcRisk = () => {
-    if (
-      !window.confirm(
-        'Relancer le calcul des risques pour cette commune et cette phase ?\n\nCette action exceptionnelle peut modifier les données générées automatiquement.',
-      )
-    ) {
-      return;
-    }
-    recalcM.mutate();
+    setConfirmState({
+      open: true,
+      title: `Relancer le calcul des risques pour cette commune et cette phase (${recalcPhase})\u00a0?`,
+      variant: 'warning',
+      actionLabel: 'Confirmer le recalcul',
+      contextLabel: 'Commune',
+      contextValue: detail?.commune?.name ?? '',
+      onConfirm: () => recalcM.mutate(),
+    });
   };
 
   const exportM = useMutation({
@@ -619,6 +635,18 @@ export function RightPanel({
           ) : null}
         </div>
       </div>
+      <AdministrativeActionConfirmDialog
+        open={confirmState.open}
+        onOpenChange={(open) => setConfirmState((s) => ({ ...s, open }))}
+        title={confirmState.title}
+        description={confirmState.description}
+        variant={confirmState.variant}
+        actionLabel={confirmState.actionLabel}
+        isPending={refreshM.isPending || recalcM.isPending}
+        onConfirm={confirmState.onConfirm}
+        contextLabel={confirmState.contextLabel}
+        contextValue={confirmState.contextValue}
+      />
     </div>
   );
 }
