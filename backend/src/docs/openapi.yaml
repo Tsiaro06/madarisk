@@ -54,6 +54,11 @@ tags:
     description: Rapports, exports CSV / PDF / GeoJSON et téléchargement de rapports
   - name: Assistant IA
     description: Assistant de renseignement IA (Gemini) - (Phase 11)
+  - name: Démonstration
+    description: >-
+      Scénario de soutenance — DÉMO UNIQUEMENT. Ces routes n'existent que si
+      DEMO_MODE=true et que la base cible se termine par `_demo` (404 sinon).
+      Accessibles à ADMIN et SUPER_ADMIN uniquement.
 paths:
   /health:
     get:
@@ -3715,6 +3720,77 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /demo/scenario:
+    get:
+      tags: [Démonstration]
+      summary: État du scénario de démonstration (démo uniquement)
+      description: >-
+        Retourne l'étape courante, l'événement simulé et les compteurs associés.
+        Répond 404 hors mode démonstration.
+      security:
+        - bearerAuth: []
+      operationId: getDemoScenario
+      responses:
+        '200':
+          description: État du scénario simulé
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /demo/step:
+    post:
+      tags: [Démonstration]
+      summary: Charger une étape du scénario (démo uniquement)
+      description: >-
+        Applique une étape de manière déterministe (PREVISION, ACTIF, SUIVI,
+        CLOTURE). Reconstruit le scénario si l'étape demandée est antérieure.
+        Répond 404 hors mode démonstration.
+      security:
+        - bearerAuth: []
+      operationId: setDemoStep
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [step]
+              properties:
+                step:
+                  type: string
+                  enum: [PREVISION, ACTIF, SUIVI, CLOTURE]
+      responses:
+        '200':
+          description: Étape appliquée
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+  /demo/reset:
+    post:
+      tags: [Démonstration]
+      summary: Réinitialiser le scénario (démo uniquement)
+      description: >-
+        Supprime puis reconstruit le scénario simulé à l'étape 1. N'affecte
+        aucune donnée réelle. Répond 404 hors mode démonstration.
+      security:
+        - bearerAuth: []
+      operationId: resetDemoScenario
+      responses:
+        '200':
+          description: Scénario réinitialisé
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 components:
   securitySchemes:
     bearerAuth:

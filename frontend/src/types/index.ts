@@ -286,6 +286,7 @@ export interface AlertListRow {
   status: AlertStatus;
   title: string;
   message: string;
+  source?: string | null;
   createdBy: string | null;
   publishedAt: string | null;
   expiresAt: string | null;

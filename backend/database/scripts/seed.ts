@@ -1,7 +1,8 @@
 import pg from 'pg';
 import bcrypt from 'bcrypt';
+import path from 'path';
 
-async function run(): Promise<void> {
+export async function runBaseSeed(): Promise<void> {
   const { env } = await import('../../src/config/env');
   const { assertLocalDbWritable } = await import('./assert-local-db');
 
@@ -104,7 +105,14 @@ async function run(): Promise<void> {
   }
 }
 
-run().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+function isDirectInvocation(): boolean {
+  const entry = process.argv[1];
+  return entry ? path.resolve(entry) === path.resolve(__filename) : false;
+}
+
+if (isDirectInvocation()) {
+  runBaseSeed().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

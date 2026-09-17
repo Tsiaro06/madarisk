@@ -29,7 +29,7 @@ function getMigrationFiles(): string[] {
     .sort();
 }
 
-async function run(): Promise<void> {
+export async function runMigrations(): Promise<void> {
   const { env } = await import('../../src/config/env');
   const { assertLocalDbWritable } = await import('./assert-local-db');
 
@@ -92,7 +92,14 @@ async function run(): Promise<void> {
   }
 }
 
-run().catch((err) => {
-  console.error('\nMigration échouée:', err);
-  process.exit(1);
-});
+function isDirectInvocation(): boolean {
+  const entry = process.argv[1];
+  return entry ? path.resolve(entry) === path.resolve(__filename) : false;
+}
+
+if (isDirectInvocation()) {
+  runMigrations().catch((err) => {
+    console.error('\nMigration échouée:', err);
+    process.exit(1);
+  });
+}

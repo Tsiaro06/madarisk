@@ -4,6 +4,8 @@ import { ToastProvider } from '@/components/ui/Toast';
 import { useAuthStore } from '@/stores/authStore';
 import { AppRouter } from '@/routes/AppRouter';
 import { Spinner } from '@/components/ui/Spinner';
+import { DemoBanner } from '@/components/demo/DemoBanner';
+import { ScenarioPanel } from '@/components/demo/ScenarioPanel';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -38,8 +40,10 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ToastProvider>
+        <DemoBanner />
         <AuthBootstrap>
           <AppRouter />
+          <ScenarioPanel />
         </AuthBootstrap>
       </ToastProvider>
     </QueryClientProvider>

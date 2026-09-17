@@ -16,6 +16,7 @@ import alertsRoutes from './alerts.routes';
 import dashboardRoutes from './dashboard.routes';
 import reportsRoutes from './reports.routes';
 import aiRoutes from './ai.routes';
+import demoRoutes from './demo.routes';
 
 const router = Router();
 
@@ -36,5 +37,6 @@ router.use('/alerts', alertsRoutes);
 router.use('/dashboard', dashboardRoutes);
 router.use('/reports', reportsRoutes);
 router.use('/ai', aiRoutes);
+router.use('/demo', demoRoutes);
 
 export default router;

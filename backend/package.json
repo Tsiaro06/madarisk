@@ -18,7 +18,15 @@
     "test:coverage": "vitest run --coverage",
     "db:migrate": "tsx database/scripts/migrate.ts",
     "db:seed": "tsx database/scripts/seed.ts",
-    "db:check": "tsx database/scripts/check-database.ts"
+    "db:check": "tsx database/scripts/check-database.ts",
+    "demo:dev": "tsx watch database/scripts/demo/dev-demo.ts",
+    "db:demo:create": "tsx database/scripts/demo/create-demo-db.ts",
+    "db:demo:migrate": "tsx database/scripts/demo/migrate-demo.ts",
+    "db:demo:init": "tsx database/scripts/demo/init-demo-geography.ts",
+    "db:demo:seed": "tsx database/scripts/demo/seed-scenario.ts",
+    "db:demo:reset": "tsx database/scripts/demo/reset-demo.ts",
+    "db:demo:dump": "tsx database/scripts/demo/dump-demo.ts",
+    "db:demo:restore": "tsx database/scripts/demo/restore-demo.ts"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

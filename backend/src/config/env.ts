@@ -2,13 +2,30 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { z } from 'zod';
 
-// Charge toujours madarisk/backend/.env (indépendamment du cwd)
-dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+/**
+ * Le mode démonstration est demandé explicitement via NODE_ENV=demo dans le
+ * processus de démarrage. Dans ce cas uniquement, .env.demo est chargé en
+ * priorité. Sinon, le comportement reste strictement inchangé (.env).
+ */
+const startupNodeEnv = process.env.NODE_ENV;
+const demoRequestedAtStartup = startupNodeEnv === 'demo';
+
+if (demoRequestedAtStartup) {
+  dotenv.config({ path: path.resolve(__dirname, '../../.env.demo') });
+} else {
+  // Charge toujours madarisk/backend/.env (indépendamment du cwd)
+  dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+}
 dotenv.config(); // fallback éventuel .env local / variables déjà exportées
 
 const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+  NODE_ENV: z.enum(['development', 'production', 'test', 'demo']).default('development'),
   PORT: z.coerce.number().default(5000),
+
+  DEMO_MODE: z
+    .string()
+    .transform((v) => v === 'true')
+    .default('false'),
 
   DATABASE_URL: z.string().optional(),
 
@@ -106,4 +123,68 @@ function withUrlOverrides(data: z.infer<typeof envSchema>) {
   }
 }
 
+export const DEMO_DATABASE_SUFFIX = '_demo';
+
+/** Nom de base cible, sans jamais exposer les identifiants. */
+export function resolveDatabaseName(input: { databaseUrl?: string; dbName?: string }): string {
+  const url = input.databaseUrl?.trim();
+  if (url) {
+    try {
+      const name = new URL(url).pathname.replace(/^\//, '');
+      if (name) return name;
+    } catch {
+      // URL illisible : on retombe sur le nom explicite.
+    }
+  }
+  return (input.dbName ?? '').trim();
+}
+
+export function isDemoDatabaseName(name: string): boolean {
+  return name.length > 0 && name !== 'mada_risk' && name.endsWith(DEMO_DATABASE_SUFFIX);
+}
+
+export interface DemoEnvironmentCheck {
+  DEMO_MODE: boolean;
+  NODE_ENV: string;
+  ENABLE_SCHEDULED_JOBS: boolean;
+  DATABASE_URL?: string;
+  DB_NAME: string;
+}
+
+/** Retourne la liste des incohérences bloquantes du mode démonstration. */
+export function demoEnvironmentIssues(data: DemoEnvironmentCheck): string[] {
+  if (!data.DEMO_MODE) return [];
+
+  const issues: string[] = [];
+  const dbName = resolveDatabaseName({ databaseUrl: data.DATABASE_URL, dbName: data.DB_NAME });
+
+  if (data.NODE_ENV !== 'demo') {
+    issues.push("NODE_ENV doit valoir 'demo' lorsque DEMO_MODE=true.");
+  }
+  if (data.ENABLE_SCHEDULED_JOBS !== false) {
+    issues.push('ENABLE_SCHEDULED_JOBS doit être false en mode démonstration.');
+  }
+  if (!isDemoDatabaseName(dbName)) {
+    issues.push(
+      `La base cible doit se terminer par '${DEMO_DATABASE_SUFFIX}' (base détectée : ${
+        dbName || 'aucune'
+      }).`,
+    );
+  }
+
+  return issues;
+}
+
 export const env = withUrlOverrides(parsed.data);
+
+const demoIssues = demoEnvironmentIssues(env);
+if (demoIssues.length > 0) {
+  console.error('❌ Mode démonstration invalide :');
+  for (const issue of demoIssues) {
+    console.error(`  - ${issue}`);
+  }
+  console.error(
+    '\nRefus de démarrage : le mode démonstration doit rester strictement isolé de la base de production.',
+  );
+  process.exit(1);
+}

@@ -1,6 +1,8 @@
 node_modules/
 dist/
 .env
+.env.demo
+database/demo-dumps/
 uploads/imports/*
 uploads/reports/*
 !uploads/imports/.gitkeep

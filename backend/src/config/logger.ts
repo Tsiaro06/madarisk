@@ -24,7 +24,7 @@ export function reqSerializer(req: IncomingMessage): Record<string, unknown> {
 export const logger = pino({
   level: env.LOG_LEVEL,
   transport:
-    env.NODE_ENV === 'development'
+    env.NODE_ENV === 'development' || env.NODE_ENV === 'demo'
       ? { target: 'pino/file', options: { destination: 1 } }
       : undefined,
   formatters: {

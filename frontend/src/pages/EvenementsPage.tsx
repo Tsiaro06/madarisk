@@ -22,6 +22,8 @@ import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
 import { RefreshDataButton } from '@/components/ui/RefreshDataButton';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
+import { SimulatedBadge } from '@/components/demo/SimulatedBadge';
+import { isSimulatedEvent } from '@/config/demo';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/lib/utils';
 import { useCrisisStore } from '@/stores/crisisStore';
@@ -243,9 +245,12 @@ export function EvenementsPage() {
                     <tr key={ev.id} className="border-b border-line transition hover:bg-gray-50">
                       <td className="px-3 py-2.5 font-mono text-xs">{ev.eventCode}</td>
                       <td className="px-3 py-2.5">
-                        <Link className="font-medium text-brand hover:underline" to={`/evenements/${ev.id}`}>
-                          {ev.name}
-                        </Link>
+                        <span className="flex flex-wrap items-center gap-2">
+                          <Link className="font-medium text-brand hover:underline" to={`/evenements/${ev.id}`}>
+                            {ev.name}
+                          </Link>
+                          {isSimulatedEvent(ev) ? <SimulatedBadge /> : null}
+                        </span>
                       </td>
                       <td className="px-3 py-2.5">{ev.type}</td>
                       <td className="px-3 py-2.5">{ev.severity}</td>
