@@ -21,6 +21,7 @@ import { Pagination } from '@/components/ui/Pagination';
 import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
 import { RefreshDataButton } from '@/components/ui/RefreshDataButton';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
+import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/lib/utils';
 import { useCrisisStore } from '@/stores/crisisStore';
@@ -65,6 +66,17 @@ export function EvenementsPage() {
     phase: 'PENDANT',
     riskLevel: 'ELEVE',
   });
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    variant: 'warning' | 'destructive' | 'primary';
+    actionLabel: string;
+    onConfirm: () => void;
+    contextLabel?: string;
+    contextValue?: string;
+  }>({ open: false, title: '', variant: 'warning', actionLabel: '', onConfirm: () => {} });
+  const closeConfirm = () => setConfirmState((s) => ({ ...s, open: false }));
 
   const form = useForm<CreateEventForm>({
     resolver: zodResolver(createEventSchema),
@@ -122,6 +134,7 @@ export function EvenementsPage() {
       form.reset();
       setTrackPoints([]);
       setPolygonPoints([]);
+      closeConfirm();
       void qc.invalidateQueries({ queryKey: ['events'] });
       void qc.invalidateQueries({ queryKey: ['events', 'options'] });
     },
@@ -134,6 +147,23 @@ export function EvenementsPage() {
         }
       }
     },
+  });
+
+  const requestCreate = form.handleSubmit((values) => {
+    const isCyclone = values.type === 'CYCLONE';
+    const shapeSummary = isCyclone
+      ? `Trajectoire : ${trackPoints.length} point${trackPoints.length > 1 ? 's' : ''}`
+      : `Zone polygonale : ${polygonPoints.length} point${polygonPoints.length > 1 ? 's' : ''}`;
+    setConfirmState({
+      open: true,
+      title: 'Créer un événement exceptionnel\u00a0?',
+      variant: 'warning',
+      actionLabel: 'Confirmer la création',
+      description: `Code : ${values.eventCode} · Nom : ${values.name} · Type : ${values.type} · Sévérité : ${values.severity ?? '—'} · Statut : ${values.status ?? '—'} · ${shapeSummary}`,
+      contextLabel: 'Événement',
+      contextValue: values.name,
+      onConfirm: () => createM.mutate(values),
+    });
   });
 
   return (
@@ -255,7 +285,7 @@ export function EvenementsPage() {
           aria-label="Créer un événement exceptionnel"
         >
           <form
-            onSubmit={form.handleSubmit((values) => createM.mutate(values))}
+            onSubmit={requestCreate}
             className="w-full max-w-3xl space-y-3 overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl"
           >
             <h2 className="font-display text-xl">Créer un événement exceptionnel</h2>
@@ -388,6 +418,19 @@ export function EvenementsPage() {
           </form>
         </div>
       ) : null}
+
+      <AdministrativeActionConfirmDialog
+        open={confirmState.open}
+        onOpenChange={(open) => setConfirmState((s) => ({ ...s, open }))}
+        title={confirmState.title}
+        description={confirmState.description}
+        variant={confirmState.variant}
+        actionLabel={confirmState.actionLabel}
+        isPending={createM.isPending}
+        onConfirm={confirmState.onConfirm}
+        contextLabel={confirmState.contextLabel}
+        contextValue={confirmState.contextValue}
+      />
     </div>
   );
 }

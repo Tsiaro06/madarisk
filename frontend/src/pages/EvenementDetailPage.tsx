@@ -217,6 +217,7 @@ export function EvenementDetailPage() {
       toast('Zone d’influence calculée', 'success');
       void qc.invalidateQueries({ queryKey: ['event', id, 'areas'] });
       void qc.invalidateQueries({ queryKey: ['event', id, 'exposed'] });
+      closeConfirm();
     },
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
   });
@@ -229,6 +230,7 @@ export function EvenementDetailPage() {
       setPolygonPoints([]);
       void qc.invalidateQueries({ queryKey: ['event', id, 'areas'] });
       void qc.invalidateQueries({ queryKey: ['event', id, 'exposed'] });
+      closeConfirm();
     },
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
   });
@@ -283,6 +285,7 @@ export function EvenementDetailPage() {
       toast('Point de trajectoire ajouté', 'success');
       setTrackPoint({ lat: '', lng: '', trackType: 'PREVUE' });
       void qc.invalidateQueries({ queryKey: ['event', id, 'tracks-geojson'] });
+      closeConfirm();
     },
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
   });
@@ -720,7 +723,22 @@ export function EvenementDetailPage() {
                   { value: 'PREVUE', label: 'PREVUE' },
                 ]}
               />
-              <Button className="w-full" loading={trackM.isPending} onClick={() => trackM.mutate()}>
+              <Button
+                className="w-full"
+                loading={trackM.isPending}
+                onClick={() => {
+                  setConfirmState({
+                    open: true,
+                    title: 'Ajouter un point de trajectoire\u00a0?',
+                    variant: 'warning',
+                    actionLabel: "Confirmer l'ajout",
+                    description: `Latitude : ${trackPoint.lat || '—'} · Longitude : ${trackPoint.lng || '—'} · Type : ${trackPoint.trackType}`,
+                    contextLabel: 'Événement',
+                    contextValue: ev.eventCode,
+                    onConfirm: () => trackM.mutate(),
+                  });
+                }}
+              >
                 Ajouter le point
               </Button>
               <p className="text-xs text-muted">
@@ -734,7 +752,21 @@ export function EvenementDetailPage() {
           </Card>
 
           <Card title="Bande tampon" description="Étape 2 · élargit la trajectoire d'un rayon puis relance l'exposition et les risques">
-            <form className="space-y-2" onSubmit={areaForm.handleSubmit((v) => areaM.mutate(v))}>
+            <form
+              className="space-y-2"
+              onSubmit={areaForm.handleSubmit((v) => {
+                setConfirmState({
+                  open: true,
+                  title: 'Relancer le calcul de zone\u00a0?',
+                  variant: 'warning',
+                  actionLabel: 'Confirmer le recalcul de zone',
+                  description: `Bande tampon · Phase : ${v.phase} · Niveau : ${v.riskLevel} · Rayon : ${v.radiusKm} km`,
+                  contextLabel: 'Événement',
+                  contextValue: ev.eventCode,
+                  onConfirm: () => areaM.mutate(v),
+                });
+              })}
+            >
               <Select
                 label="Phase"
                 {...areaForm.register('phase')}
@@ -804,14 +836,25 @@ export function EvenementDetailPage() {
                 loading={polygonM.isPending}
                 disabled={polygonPoints.length < 3}
                 onClick={() => {
+                  if (polygonPoints.length < 3) return;
                   const ring: Polygon['coordinates'][number] = [
                     ...polygonPoints.map(([lat, lng]) => [lng, lat] as [number, number]),
                     [polygonPoints[0][1], polygonPoints[0][0]],
                   ];
-                  polygonM.mutate({
-                    phase: polyForm.phase,
-                    riskLevel: polyForm.riskLevel,
-                    geometry: { type: 'Polygon', coordinates: [ring] },
+                  setConfirmState({
+                    open: true,
+                    title: 'Définir une zone polygonale manuelle\u00a0?',
+                    variant: 'warning',
+                    actionLabel: 'Confirmer la zone polygonale',
+                    description: `Zone polygonale · ${polygonPoints.length} points dessinés · Phase : ${polyForm.phase} · Niveau : ${polyForm.riskLevel}`,
+                    contextLabel: 'Événement',
+                    contextValue: ev.eventCode,
+                    onConfirm: () =>
+                      polygonM.mutate({
+                        phase: polyForm.phase,
+                        riskLevel: polyForm.riskLevel,
+                        geometry: { type: 'Polygon', coordinates: [ring] },
+                      }),
                   });
                 }}
               >
@@ -1019,7 +1062,10 @@ export function EvenementDetailPage() {
           exposureM.isPending ||
           risksM.isPending ||
           deleteAreaM.isPending ||
-          removeExposedM.isPending
+          removeExposedM.isPending ||
+          areaM.isPending ||
+          polygonM.isPending ||
+          trackM.isPending
         }
         onConfirm={confirmState.onConfirm}
         contextLabel={confirmState.contextLabel}

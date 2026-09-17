@@ -38,6 +38,16 @@ const ALERT_TYPES: AlertType[] = [
 const SEVERITIES: SeverityLevel[] = ['FAIBLE', 'MODEREE', 'ELEVEE', 'EXTREME'];
 const STATUSES: AlertStatus[] = ['BROUILLON', 'PUBLIEE', 'ARCHIVEE', 'EXPIREE'];
 
+const EMPTY_ALERT_FORM = {
+  title: '',
+  message: '',
+  type: 'URGENCE' as AlertType,
+  severity: 'ELEVEE' as SeverityLevel,
+  eventId: '',
+  districtId: '',
+  communeId: '',
+};
+
 function statusTone(s: AlertStatus) {
   if (s === 'PUBLIEE') return 'danger' as const;
   if (s === 'BROUILLON') return 'neutral' as const;
@@ -63,15 +73,7 @@ export function AlertesPage() {
     contextValue?: string;
   }>({ open: false, title: '', variant: 'warning', actionLabel: '', onConfirm: () => {} });
   const closeConfirm = () => setConfirmState((s) => ({ ...s, open: false }));
-  const [form, setForm] = useState({
-    title: '',
-    message: '',
-    type: 'URGENCE' as AlertType,
-    severity: 'ELEVEE' as SeverityLevel,
-    eventId: '',
-    districtId: '',
-    communeId: '',
-  });
+  const [form, setForm] = useState(EMPTY_ALERT_FORM);
 
   const listQ = useQuery({
     queryKey: ['alerts', page, status, type],
@@ -113,6 +115,8 @@ export function AlertesPage() {
     onSuccess: () => {
       toast('Alerte créée', 'success');
       setOpen(false);
+      setForm(EMPTY_ALERT_FORM);
+      closeConfirm();
       void qc.invalidateQueries({ queryKey: ['alerts'] });
     },
     onError: (err) => {
@@ -171,7 +175,20 @@ export function AlertesPage() {
 
   const onCreate = (e: FormEvent) => {
     e.preventDefault();
-    createM.mutate();
+    setConfirmState({
+      open: true,
+      title: 'Créer une alerte exceptionnelle\u00a0?',
+      variant: 'warning',
+      actionLabel: 'Confirmer la création',
+      description: `Titre : ${form.title || '—'} · Type : ${form.type} · Sévérité : ${form.severity}${
+        form.eventId ? ` · Événement : ${form.eventId}` : ''
+      }${form.districtId ? ` · District : ${form.districtId}` : ''}${
+        form.communeId ? ` · Commune : ${form.communeId}` : ''
+      }`,
+      contextLabel: 'Alerte',
+      contextValue: form.title || 'Nouvelle alerte',
+      onConfirm: () => createM.mutate(),
+    });
   };
 
   return (
@@ -397,7 +414,7 @@ export function AlertesPage() {
         description={confirmState.description}
         variant={confirmState.variant}
         actionLabel={confirmState.actionLabel}
-        isPending={publishM.isPending || archiveM.isPending}
+        isPending={publishM.isPending || archiveM.isPending || createM.isPending}
         onConfirm={confirmState.onConfirm}
         contextLabel={confirmState.contextLabel}
         contextValue={confirmState.contextValue}
