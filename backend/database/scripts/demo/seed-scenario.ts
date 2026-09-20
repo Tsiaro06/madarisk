@@ -1,7 +1,7 @@
 import { loadDemoContext } from './demo-env';
 
 /**
- * Initialise le scénario « Cyclone Ankaratra » dans la base de démonstration.
+ * Initialise le scénario « Cyclone simulé en Analanjirofo » dans la base de démonstration.
  * Exécute d'abord le seed de base (organisation, configuration de risque,
  * utilisateurs) puis reconstruit le scénario de manière idempotente.
  */
@@ -31,7 +31,7 @@ export async function runScenarioSeed(): Promise<void> {
   }
 }
 
-const DEMO_PLACEHOLDER = 'SCÉNARIO DE DÉMONSTRATION — Cyclone Ankaratra';
+const DEMO_PLACEHOLDER = 'SCÉNARIO DE DÉMONSTRATION — Cyclone simulé en Analanjirofo';
 
 const entry = process.argv[1];
 const invokedDirectly = entry ? /seed-scenario\.(ts|js)$/.test(entry) : false;
