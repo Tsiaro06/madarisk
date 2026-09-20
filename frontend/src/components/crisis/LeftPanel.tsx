@@ -166,7 +166,7 @@ export function LeftPanel({
       </div>
 
       {/* Recherche commune */}
-      <div className="border-b border-line p-3">
+      <div className="border-b border-line p-4">
         <Input
           label="Rechercher une commune"
           value={communeQuery}
@@ -175,7 +175,7 @@ export function LeftPanel({
             if (e.key === 'Enter') e.preventDefault();
           }}
           placeholder="Nom ou code (min 2 caractères)"
-          className="[&>input]:h-9"
+          className="[&>input]:h-10"
         />
         {searchQ.isLoading ? <p className="mt-1 text-xs text-muted">Recherche…</p> : null}
         {communeResults.length > 0 ? (
@@ -212,7 +212,7 @@ export function LeftPanel({
       </div>
 
       {/* Filtres événements */}
-      <div className="space-y-2 border-b border-line p-3">
+      <div className="space-y-3 border-b border-line p-4">
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
           <Cpu className="size-3.5" /> Filtrer les événements
         </div>
@@ -221,7 +221,7 @@ export function LeftPanel({
           onChange={(e) => setDraft((d) => ({ ...d, type: e.target.value }))}
           placeholder="Tous les types"
           options={EVENT_TYPES.map((t: EventType) => ({ value: t, label: EVENT_TYPE_LABELS[t] }))}
-          className="[&>select]:h-9"
+          className="[&>select]:h-10"
         />
         <Select
           value={draft.status}
@@ -234,14 +234,14 @@ export function LeftPanel({
               label: EVENT_STATUS_LABELS[s],
             })),
           ]}
-          className="[&>select]:h-9"
+          className="[&>select]:h-10"
         />
         <Select
           value={draft.severity}
           onChange={(e) => setDraft((d) => ({ ...d, severity: e.target.value }))}
           placeholder="Toutes les sévérités"
           options={SEVERITIES.map((s: SeverityLevel) => ({ value: s, label: SEVERITY_LABELS[s] }))}
-          className="[&>select]:h-9"
+          className="[&>select]:h-10"
         />
         <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted">
           <MapPin className="size-3.5" /> Zone
@@ -251,7 +251,7 @@ export function LeftPanel({
           onChange={(e) => onDistrictChange(e.target.value)}
           placeholder="Toutes les zones"
           options={(districtsQ.data?.data ?? []).map((d) => ({ value: d.id, label: d.name }))}
-          className="[&>select]:h-9"
+          className="[&>select]:h-10"
         />
         <p className="text-[11px] text-muted">
           La zone sélectionnée restreint la carte aux communes et observations de ce district.
@@ -265,14 +265,14 @@ export function LeftPanel({
             value={draft.startedAfter}
             onChange={(e) => setDraft((d) => ({ ...d, startedAfter: e.target.value }))}
             aria-label="Début de période"
-            className="h-9 rounded-lg border border-brand/20 bg-white px-3 text-sm text-ink outline-none"
+            className="h-10 rounded-lg border border-brand/20 bg-white px-3 text-sm text-ink outline-none"
           />
           <input
             type="date"
             value={draft.startedBefore}
             onChange={(e) => setDraft((d) => ({ ...d, startedBefore: e.target.value }))}
             aria-label="Fin de période"
-            className="h-9 rounded-lg border border-brand/20 bg-white px-3 text-sm text-ink outline-none"
+            className="h-10 rounded-lg border border-brand/20 bg-white px-3 text-sm text-ink outline-none"
           />
         </div>
         <Input
@@ -280,9 +280,9 @@ export function LeftPanel({
           onChange={(e) => setDraft((d) => ({ ...d, search: e.target.value }))}
           placeholder="Recherche texte…"
           aria-label="Rechercher un événement"
-          className="[&>input]:h-9"
+          className="[&>input]:h-10"
         />
-        <Button size="sm" className="w-full" onClick={apply}>
+        <Button size="md" className="w-full" onClick={apply}>
           Appliquer les filtres
         </Button>
       </div>
@@ -296,7 +296,7 @@ export function LeftPanel({
           <span className="text-[11px] text-muted">clic = contexte actif</span>
         </div>
         {lastUpdateLine || weatherLine ? (
-          <div className="mx-2 mb-2 rounded-lg border border-brand/10 bg-white px-2.5 py-2 text-[11px] text-muted">
+          <div className="mx-3 mb-3 rounded-lg border border-brand/10 bg-white px-3 py-2 text-[11px] text-muted">
             {lastUpdateLine ? (
               <p>
                 <span className="font-medium text-ink">Dernière mise à jour :</span> {lastUpdateLine}
@@ -309,13 +309,13 @@ export function LeftPanel({
             ) : null}
           </div>
         ) : null}
-        <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
+        <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-4">
           {listQ.isLoading ? (
             <Spinner label="Chargement des événements…" />
           ) : events.length === 0 ? (
             <EmptyState title="Aucun événement" description="Ajustez les filtres ou créez un événement." />
           ) : (
-            <ul className="space-y-2">
+            <ul className="space-y-2.5">
               {events.map((ev) => {
                 const active = ev.id === activeEventId;
                 return (
@@ -324,7 +324,7 @@ export function LeftPanel({
                       type="button"
                       onClick={() => onSelectEvent(ev.id)}
                       className={cn(
-                        'w-full rounded-xl border border-line bg-white p-3 text-left shadow-sm transition hover:border-brand/40 hover:shadow',
+                        'w-full rounded-xl border border-line bg-white p-3.5 text-left shadow-sm transition hover:border-brand/40 hover:shadow',
                         active && 'border-brand ring-2 ring-brand/20',
                       )}
                     >

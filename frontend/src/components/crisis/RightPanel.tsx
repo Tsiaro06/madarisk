@@ -87,7 +87,7 @@ function downloadBlob(blob: Blob, filename: string) {
 
 function StatItem({ label, value, unit }: { label: string; value: string | number | null; unit?: string }) {
   return (
-    <div className="rounded-lg border border-brand/10 bg-gray-50 px-2.5 py-2">
+    <div className="rounded-lg border border-brand/10 bg-gray-50 px-3 py-2.5">
       <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
       <p className="mt-0.5 text-sm font-semibold text-ink">
         {value == null || value === '' ? '—' : `${value}${unit ? ` ${unit}` : ''}`}
@@ -323,10 +323,10 @@ export function RightPanel({
         </div>
       </PanelHeader>
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
         {/* En-tête risque */}
         {hasEvent ? (
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-brand/15 bg-white p-3 shadow-sm">
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-brand/15 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-2">
               <span
                 className="size-3.5 rounded-full ring-2 ring-white/60"
@@ -592,7 +592,7 @@ export function RightPanel({
           ) : (
             <ul className="space-y-2">
               {detail.events.map((ev) => (
-                <li key={ev.id} className="rounded-lg border border-brand/10 bg-gray-50 p-2.5">
+                <li key={ev.id} className="rounded-lg border border-brand/10 bg-gray-50 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-[11px] text-brand">{ev.eventCode}</span>
                     <div className="flex gap-1">
@@ -622,7 +622,7 @@ export function RightPanel({
         </Card>
 
         {/* Actions */}
-        <div className="grid grid-cols-1 gap-2 border-t border-line pt-3">
+        <div className="grid grid-cols-1 gap-2 border-t border-line pt-4">
           <Link to={`/territoires/communes/${c.id}`}>
             <Button variant="secondary" className="w-full">
               <ExternalLink className="size-4" /> Fiche complète de la commune

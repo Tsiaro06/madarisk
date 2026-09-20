@@ -204,10 +204,11 @@ function CrisisRoomView() {
         }}
         refreshing={isFetchingAny > 0}
         onRefresh={() => void handleRefresh()}
+        onCreateEvent={() => setCreateOpen(true)}
       />
 
       {activeEvent && !activeEventLoading ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface px-3 py-1.5 text-xs text-muted">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2 text-xs text-muted">
           <span>
             Dernière mise à jour :{' '}
             <span className="font-medium text-ink">{formatDate(activeEvent.updatedAt)}</span>

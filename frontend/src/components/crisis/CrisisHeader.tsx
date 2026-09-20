@@ -10,9 +10,10 @@ import {
   PanelRight,
   RefreshCw,
   Settings,
+  ShieldAlert,
 } from "lucide-react";
 import { useAuthStore } from "@/stores/authStore";
-import { ROLE_LABELS } from "@/lib/roles";
+import { canManageOps, ROLE_LABELS } from "@/lib/roles";
 import { EventSelector } from "@/components/crisis/EventSelector";
 import { useActiveEvent } from "@/stores/activeEvent";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ interface CrisisHeaderProps {
   onToggleRight: () => void;
   refreshing: boolean;
   onRefresh: () => void;
+  onCreateEvent?: () => void;
 }
 
 export function CrisisHeader({
@@ -33,6 +35,7 @@ export function CrisisHeader({
   onToggleRight,
   refreshing,
   onRefresh,
+  onCreateEvent,
 }: CrisisHeaderProps) {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
@@ -40,6 +43,7 @@ export function CrisisHeader({
   const { activeEventId } = useActiveEvent();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const canCreate = canManageOps(user?.role);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -57,18 +61,18 @@ export function CrisisHeader({
   };
 
   return (
-    <header className="relative z-20 flex h-14 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 text-ink sm:gap-3 sm:px-4">
+    <header className="relative z-20 flex h-16 shrink-0 items-center gap-2 border-b border-line bg-surface px-3 text-ink sm:gap-3 sm:px-4">
       <button
         type="button"
-        className="rounded-lg border border-line p-2 text-muted hover:bg-gray-100 lg:hidden"
+        className="rounded-lg border border-line p-2.5 text-muted transition hover:bg-gray-100 lg:hidden"
         onClick={onToggleLeft}
         aria-label="Ouvrir le panneau de filtres"
       >
         <Menu className="size-4" />
       </button>
 
-      <Link to="/" className="flex min-w-0 items-center gap-2">
-        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-brand-soft font-display text-base font-bold text-brand">
+      <Link to="/" className="flex min-w-0 items-center gap-2.5">
+        <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-brand-soft font-display text-base font-bold text-brand">
           M
         </span>
         <span className="hidden flex-col leading-tight sm:flex">
@@ -86,7 +90,7 @@ export function CrisisHeader({
       {activeEventId ? (
         <Link
           to={`/evenements/${activeEventId}`}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink transition hover:bg-gray-50"
+          className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink transition hover:bg-gray-50"
           title="Gérer le paramétrage de l'événement actif (trajectoire, zones, risques)"
         >
           <Settings className="size-4 text-brand" />
@@ -95,6 +99,19 @@ export function CrisisHeader({
       ) : null}
 
       <div className="ml-auto flex items-center gap-1.5 sm:gap-2">
+        {canCreate && onCreateEvent ? (
+          <button
+            type="button"
+            onClick={onCreateEvent}
+            className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-amber-500 px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600"
+            title="Créer un événement exceptionnel (action administrative journalisée)"
+            aria-label="Intervention administrative : créer un événement exceptionnel"
+          >
+            <ShieldAlert className="size-4" />
+            <span className="hidden xl:inline">Intervention administrative</span>
+          </button>
+        ) : null}
+
         <button
           type="button"
           onClick={onToggleLeft}
@@ -105,7 +122,7 @@ export function CrisisHeader({
           }
           aria-pressed={leftOpen}
           className={cn(
-            "hidden rounded-lg border border-line p-2 text-muted transition hover:bg-gray-100 lg:block",
+            "hidden rounded-lg border border-line p-2.5 text-muted transition hover:bg-gray-100 lg:block",
             leftOpen && "bg-brand-soft text-brand-deep",
           )}
           title="Panneau filtres / événements"
@@ -122,7 +139,7 @@ export function CrisisHeader({
           }
           aria-pressed={rightOpen}
           className={cn(
-            "hidden rounded-lg border border-line p-2 text-muted transition hover:bg-gray-100 lg:block",
+            "hidden rounded-lg border border-line p-2.5 text-muted transition hover:bg-gray-100 lg:block",
             rightOpen && "bg-brand-soft text-brand-deep",
           )}
           title="Panneau commune"
@@ -133,7 +150,7 @@ export function CrisisHeader({
         <button
           type="button"
           onClick={onRefresh}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink transition hover:bg-gray-50"
+          className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink transition hover:bg-gray-50"
           title="Actualiser les données de la salle de crise (météo, événements, risques, alertes)"
         >
           <RefreshCw className={cn('size-4 text-brand', refreshing && 'animate-spin')} />
@@ -143,7 +160,7 @@ export function CrisisHeader({
         <button
           type="button"
           onClick={() => navigate("/meteo")}
-          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink transition hover:bg-gray-50"
+          className="inline-flex h-10 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink transition hover:bg-gray-50"
           title="Voir la météo"
         >
           <CloudSun className="size-4 text-brand" />

@@ -4,7 +4,7 @@ import type { DemoStep } from '@/types/demo';
 export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === 'true';
 
 export const DEMO_EVENT_CODE = 'DEMO-CYC-ANKARATRA';
-export const DEMO_EVENT_NAME = 'SCÉNARIO DE DÉMONSTRATION — Cyclone Ankaratra';
+export const DEMO_EVENT_NAME = 'SCÉNARIO DE DÉMONSTRATION — Cyclone simulé en Analanjirofo';
 export const SIMULATED_SOURCE_NAME = 'SCÉNARIO SOUTENANCE — SIMULÉ';
 export const SIMULATED_SOURCE_URL = 'simulation://soutenance';
 

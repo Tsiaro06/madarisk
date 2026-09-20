@@ -7,11 +7,15 @@ import { automaticAlertService } from './automatic-alerts.service';
 import type { EventStatus } from '../types/event.types';
 
 export const DEMO_EVENT_CODE = 'DEMO-CYC-ANKARATRA';
-export const DEMO_EVENT_NAME = 'SCÉNARIO DE DÉMONSTRATION — Cyclone Ankaratra';
+export const DEMO_EVENT_NAME = 'SCÉNARIO DE DÉMONSTRATION — Cyclone simulé en Analanjirofo';
 export const DEMO_SOURCE_NAME = 'SCÉNARIO SOUTENANCE — SIMULÉ';
 export const DEMO_SOURCE_URL = 'simulation://soutenance';
 export const DEMO_ALERT_SOURCE = DEMO_SOURCE_NAME;
 export const DEMO_HISTORY_SOURCE = 'SIMULATION_SOUTENANCE';
+
+const DEMO_SIM_START_AT = Date.UTC(2026, 8, 20, 0, 0, 0);
+const DEMO_SIM_ANCHOR_AT = Date.UTC(2026, 8, 21, 6, 0, 0);
+const DEMO_SIM_END_AT = Date.UTC(2026, 8, 25, 0, 0, 0);
 
 export type DemoStep = 'PREVISION' | 'ACTIF' | 'SUIVI' | 'CLOTURE';
 
@@ -122,12 +126,15 @@ export function assertDemoRuntime(): string {
 
 function demoRegionName(): string {
   const value = process.env.DEMO_REGION_NAME?.trim();
-  return value && value.length > 0 ? value : 'VAKINANKARATRA';
+  return value && value.length > 0 ? value : 'ANALANJIROFO';
 }
 
 function demoDistrictNames(): string[] {
   const raw = process.env.DEMO_DISTRICT_NAMES?.trim();
-  const value = raw && raw.length > 0 ? raw : 'ANTSIRABE I,ANTSIRABE II,AMBATOLAMPY';
+  const value =
+    raw && raw.length > 0
+      ? raw
+      : 'FENERIVE EST,SOANIERANA IVONGO,VAVATENINA,MAROANTSETRA,MANANARA-AVARATRA';
   return value
     .split(',')
     .map((s) => s.trim())
@@ -181,9 +188,9 @@ async function resolveGeography(): Promise<ScenarioGeography> {
             ST_X(centroid) AS lon,
             ST_Y(centroid) AS lat
      FROM districts
-     WHERE region_id = $1 AND normalized_name = ANY($2::text[])
+     WHERE normalized_name = ANY($1::text[])
      ORDER BY name`,
-    [region.id, districtNames.map(normalize)],
+    [districtNames.map(normalize)],
   );
 
   const foundNames = new Set(districtResult.rows.map((r) => normalize(r.name)));
@@ -209,13 +216,14 @@ async function resolveGeography(): Promise<ScenarioGeography> {
     `SELECT id FROM communes
      WHERE district_id = ANY($1::uuid[])
      ORDER BY name
-     LIMIT 60`,
+     LIMIT 20`,
     [districts.map((d) => d.id)],
   );
 
-  if (communeResult.rows.length === 0) {
+  if (communeResult.rows.length < 10) {
     throw AppError.badRequest(
-      'Aucune commune trouvée dans les districts de démonstration. Importez la géographie complète.',
+      `Seulement ${communeResult.rows.length} commune(s) trouvée(s) (10 à 20 requises). ` +
+        'Importez la géographie complète des districts de démonstration.',
     );
   }
 
@@ -281,7 +289,7 @@ async function setEventStatus(
 }
 
 function buildTrajectory(anchor: { lon: number; lat: number }): TrackSeed[] {
-  const now = Date.now();
+  const now = DEMO_SIM_ANCHOR_AT;
   const hours = (h: number) => new Date(now + h * 3600_000);
   const { lon, lat } = anchor;
 
@@ -329,7 +337,7 @@ function buildTrajectory(anchor: { lon: number; lat: number }): TrackSeed[] {
 }
 
 function buildObservedTrack(anchor: { lon: number; lat: number }, index: number): TrackSeed {
-  const now = Date.now();
+  const now = DEMO_SIM_ANCHOR_AT;
   const hours = (h: number) => new Date(now + h * 3600_000);
   const { lon, lat } = anchor;
 
@@ -362,8 +370,8 @@ async function insertTrack(eventId: string, track: TrackSeed): Promise<void> {
        (event_id, observed_at, forecast_for, track_type, latitude, longitude,
         wind_speed_kmh, gust_speed_kmh, pressure_hpa, precipitation_mm,
         movement_direction, movement_speed_kmh, geom)
-     SELECT $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-            ST_SetSRID(ST_MakePoint($6, $5), 4326)
+SELECT $1, $2, $3, $4, $5::numeric, $6::numeric, $7, $8, $9, $10, $11, $12,
+             ST_SetSRID(ST_MakePoint($6::numeric, $5::numeric), 4326)
      WHERE NOT EXISTS (
        SELECT 1 FROM event_tracks
        WHERE event_id = $1 AND track_type = $4 AND observed_at = $2
@@ -389,11 +397,11 @@ async function upsertDetectionCommunes(eventId: string, communeIds: string[]): P
   if (communeIds.length === 0) return;
   await db.query(
     `INSERT INTO event_detection_communes (event_id, commune_id, metric, value, threshold, recorded_at)
-     SELECT $1, c.id, 'VENT_MAX_SIMULE', 155, 120, now()
+     SELECT $1, c.id, 'VENT_MAX_SIMULE', 155, 120, $3
      FROM unnest($2::uuid[]) AS c(id)
      ON CONFLICT (event_id, commune_id)
-     DO UPDATE SET value = EXCLUDED.value, threshold = EXCLUDED.threshold, recorded_at = now()`,
-    [eventId, communeIds],
+     DO UPDATE SET value = EXCLUDED.value, threshold = EXCLUDED.threshold, recorded_at = EXCLUDED.recorded_at`,
+    [eventId, communeIds, new Date(DEMO_SIM_START_AT)],
   );
 }
 
@@ -405,7 +413,7 @@ async function getSimulationWeatherSourceId(): Promise<string> {
 
   const inserted = await db.query<{ id: string }>(
     `INSERT INTO weather_sources (name, provider_type, base_url, refresh_interval_minutes, is_active)
-     VALUES ('SIMULATION SOUTENANCE', 'SIMULATION', 'simulation://soutenance', 0, false)
+     VALUES ('SIMULATION SOUTENANCE', 'SIMULATION', 'simulation://soutenance', 60, false)
      RETURNING id`,
   );
   return inserted.rows[0].id;
@@ -419,15 +427,15 @@ async function insertForecasts(_eventId: string, communeIds: string[]): Promise<
        (weather_source_id, commune_id, forecast_day, generated_at, latitude, longitude,
         temperature_min_c, temperature_max_c, relative_humidity_avg, precipitation_sum_mm,
         wind_speed_max_kmh, wind_gusts_max_kmh, pressure_avg_hpa, weather_code, raw_data, data_kind)
-     SELECT $1, c.id, (now() + interval '1 day')::date, now(),
+     SELECT $1, c.id, ($4::timestamptz + interval '1 day')::date, $4::timestamptz,
             ST_X(c.centroid), ST_Y(c.centroid),
             21, 29, 85, 65, 130, 175, 955, 65,
-            jsonb_build_object('simulation', true, 'event_code', $3, 'marker', 'PREVU'), 'PREVU'
+            jsonb_build_object('simulation', true, 'event_code', $3::text, 'marker', 'PREVU'), 'PREVU'
      FROM communes c
      WHERE c.id = ANY($2::uuid[]) AND c.centroid IS NOT NULL
-     ON CONFLICT (commune_id, weather_source_id, forecast_day)
+     ON CONFLICT (commune_id, weather_source_id, forecast_day) WHERE commune_id IS NOT NULL
      DO UPDATE SET wind_speed_max_kmh = EXCLUDED.wind_speed_max_kmh, raw_data = EXCLUDED.raw_data`,
-    [sourceId, communeIds, DEMO_EVENT_CODE],
+    [sourceId, communeIds, DEMO_EVENT_CODE, new Date(DEMO_SIM_ANCHOR_AT)],
   );
 }
 
@@ -440,10 +448,10 @@ async function insertObservations(eventId: string, communeIds: string[]): Promis
         precipitation_mm, rainfall_24h_mm, temperature_c, humidity_percent,
         wind_speed_kmh, wind_direction_deg, pressure_hpa, wind_gusts_kmh, weather_code,
         raw_data, geom, data_kind)
-     SELECT $1, c.id, $2, now(),
+     SELECT $1, c.id, $2, $5,
             ST_X(c.centroid), ST_Y(c.centroid),
             42, 88, 24, 92, 120, 250, 958, 165, 65,
-            jsonb_build_object('simulation', true, 'event_code', $3, 'marker', 'OBSERVE'),
+            jsonb_build_object('simulation', true, 'event_code', $3::text, 'marker', 'OBSERVE'),
             c.centroid, 'OBSERVE'
      FROM communes c
      WHERE c.id = ANY($4::uuid[]) AND c.centroid IS NOT NULL
@@ -452,7 +460,20 @@ async function insertObservations(eventId: string, communeIds: string[]): Promis
          WHERE w.weather_source_id = $1 AND w.commune_id = c.id
            AND w.raw_data->>'marker' = 'OBSERVE'
        )`,
-    [sourceId, eventId, DEMO_EVENT_CODE, communeIds],
+    [sourceId, eventId, DEMO_EVENT_CODE, communeIds, new Date(DEMO_SIM_ANCHOR_AT)],
+  );
+}
+
+async function pruneExposureToCommunes(eventId: string, communeIds: string[]): Promise<void> {
+  await db.query(
+    `DELETE FROM risk_assessments
+     WHERE event_id = $1 AND commune_id <> ALL($2::uuid[])`,
+    [eventId, communeIds],
+  );
+  await db.query(
+    `DELETE FROM exposed_communes
+     WHERE event_id = $1 AND commune_id <> ALL($2::uuid[])`,
+    [eventId, communeIds],
   );
 }
 
@@ -473,8 +494,8 @@ async function markEventDataAsSimulated(eventId: string): Promise<void> {
 }
 
 async function createDemoEvent(geography: ScenarioGeography): Promise<string> {
-  const now = new Date();
-  const expectedEnd = new Date(now.getTime() + 72 * 3600_000);
+  const startedAt = new Date(DEMO_SIM_START_AT);
+  const expectedEnd = new Date(DEMO_SIM_END_AT);
   const result = await db.query<{ id: string }>(
     `INSERT INTO hazard_events
        (event_code, name, type, status, severity, description, source_name, source_url,
@@ -487,7 +508,7 @@ async function createDemoEvent(geography: ScenarioGeography): Promise<string> {
       `Scénario de démonstration — ${geography.regionName}. Trajectoire simulée pour démonstration.`,
       DEMO_SOURCE_NAME,
       DEMO_SOURCE_URL,
-      now,
+      startedAt,
       expectedEnd,
     ],
   );
@@ -510,6 +531,7 @@ async function applyPrevisionStep(eventId: string, geography: ScenarioGeography)
   await insertForecasts(eventId, geography.communeIds);
 
   await exposureService.computeForEvent(eventId, { trigger: 'MANUAL' });
+  await pruneExposureToCommunes(eventId, geography.communeIds);
   await markEventDataAsSimulated(eventId);
 
   await automaticAlertService.generateForEvent({
@@ -527,6 +549,7 @@ async function applyActifStep(eventId: string, geography: ScenarioGeography): Pr
   }
   await insertObservations(eventId, geography.communeIds);
   await exposureService.computeForEvent(eventId, { trigger: 'MANUAL' });
+  await pruneExposureToCommunes(eventId, geography.communeIds);
   await markEventDataAsSimulated(eventId);
   await automaticAlertService.generateForEvent({
     eventId,
@@ -542,6 +565,7 @@ async function applySuiviStep(eventId: string, geography: ScenarioGeography): Pr
     await insertTrack(eventId, buildObservedTrack(geography.anchor, i));
   }
   await exposureService.computeForEvent(eventId, { trigger: 'MANUAL' });
+  await pruneExposureToCommunes(eventId, geography.communeIds);
   await markEventDataAsSimulated(eventId);
   await automaticAlertService.generateForEvent({
     eventId,
@@ -552,7 +576,12 @@ async function applySuiviStep(eventId: string, geography: ScenarioGeography): Pr
 }
 
 async function applyClotureStep(eventId: string): Promise<void> {
-  await setEventStatus(eventId, 'CLOTURE', 'Clôture simulée — bilan disponible', new Date());
+  await setEventStatus(
+    eventId,
+    'CLOTURE',
+    'Clôture simulée — bilan disponible',
+    new Date(DEMO_SIM_END_AT),
+  );
   await db.query(
     `UPDATE alerts
      SET status = 'ARCHIVEE', updated_at = now()
