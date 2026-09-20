@@ -17,6 +17,21 @@ const DEMO_SIM_START_AT = Date.UTC(2026, 8, 20, 0, 0, 0);
 const DEMO_SIM_ANCHOR_AT = Date.UTC(2026, 8, 21, 6, 0, 0);
 const DEMO_SIM_END_AT = Date.UTC(2026, 8, 25, 0, 0, 0);
 
+/**
+ * Trajectoire fixe du scénario de démonstration, ordre GeoJSON
+ * [longitude, latitude] : arrive de l'océan Indien à l'est, traverse
+ * Madagascar d'est en ouest, puis sort dans le canal du Mozambique.
+ * Seuls les scripts/services du scénario démo sont concernés.
+ */
+const DEMO_TRAJECTOIRE = [
+  { longitude: 49.0, latitude: -17.0 }, // Océan Indien
+  { longitude: 48.4, latitude: -17.2 }, // Approche côte est
+  { longitude: 48.0, latitude: -17.3 }, // Atterrissage
+  { longitude: 47.4, latitude: -17.5 }, // Traversée intérieure
+  { longitude: 46.6, latitude: -17.7 }, // Sortie côte ouest
+  { longitude: 45.7, latitude: -18.0 }, // Canal du Mozambique
+] as const;
+
 export type DemoStep = 'PREVISION' | 'ACTIF' | 'SUIVI' | 'CLOTURE';
 
 export interface DemoStepInfo {
@@ -288,18 +303,17 @@ async function setEventStatus(
   await recordStatusTransition(eventId, from, to, reason);
 }
 
-function buildTrajectory(anchor: { lon: number; lat: number }): TrackSeed[] {
+function buildTrajectory(): TrackSeed[] {
   const now = DEMO_SIM_ANCHOR_AT;
   const hours = (h: number) => new Date(now + h * 3600_000);
-  const { lon, lat } = anchor;
 
   return [
     {
-      observedAt: hours(-30),
-      forecastFor: hours(6),
+      observedAt: hours(-36),
+      forecastFor: hours(0),
       trackType: 'PREVUE',
-      latitude: lat + 0.75,
-      longitude: lon + 1.35,
+      latitude: DEMO_TRAJECTOIRE[0].latitude,
+      longitude: DEMO_TRAJECTOIRE[0].longitude,
       windSpeedKmh: 120,
       gustSpeedKmh: 160,
       pressureHpa: 965,
@@ -308,11 +322,11 @@ function buildTrajectory(anchor: { lon: number; lat: number }): TrackSeed[] {
       movementSpeedKmh: 22,
     },
     {
-      observedAt: hours(-24),
-      forecastFor: hours(12),
+      observedAt: hours(-30),
+      forecastFor: hours(6),
       trackType: 'PREVUE',
-      latitude: lat + 0.35,
-      longitude: lon + 0.85,
+      latitude: DEMO_TRAJECTOIRE[1].latitude,
+      longitude: DEMO_TRAJECTOIRE[1].longitude,
       windSpeedKmh: 135,
       gustSpeedKmh: 175,
       pressureHpa: 955,
@@ -321,11 +335,11 @@ function buildTrajectory(anchor: { lon: number; lat: number }): TrackSeed[] {
       movementSpeedKmh: 20,
     },
     {
-      observedAt: hours(-18),
-      forecastFor: hours(18),
+      observedAt: hours(-24),
+      forecastFor: hours(12),
       trackType: 'PREVUE',
-      latitude: lat + 0.05,
-      longitude: lon + 0.35,
+      latitude: DEMO_TRAJECTOIRE[2].latitude,
+      longitude: DEMO_TRAJECTOIRE[2].longitude,
       windSpeedKmh: 150,
       gustSpeedKmh: 195,
       pressureHpa: 945,
@@ -336,28 +350,23 @@ function buildTrajectory(anchor: { lon: number; lat: number }): TrackSeed[] {
   ];
 }
 
-function buildObservedTrack(anchor: { lon: number; lat: number }, index: number): TrackSeed {
+function buildObservedTrack(index: number): TrackSeed {
   const now = DEMO_SIM_ANCHOR_AT;
   const hours = (h: number) => new Date(now + h * 3600_000);
-  const { lon, lat } = anchor;
 
-  const points = [
-    { latitude: lat - 0.02, longitude: lon - 0.05, wind: 165, gust: 210, pressure: 935 },
-    { latitude: lat - 0.25, longitude: lon - 0.35, wind: 140, gust: 180, pressure: 948 },
-    { latitude: lat - 0.55, longitude: lon - 0.75, wind: 110, gust: 145, pressure: 962 },
-    { latitude: lat - 0.85, longitude: lon - 1.1, wind: 85, gust: 110, pressure: 975 },
-  ];
-  const point = points[Math.min(index, points.length - 1)];
+  const pointIndex = Math.min(2 + index, DEMO_TRAJECTOIRE.length - 1);
+  const point = DEMO_TRAJECTOIRE[pointIndex];
+  const hoursOffset = [0, 12, 18, 24][index];
 
   return {
-    observedAt: hours(-12 + index * 4),
+    observedAt: hours(hoursOffset),
     forecastFor: null,
     trackType: 'OBSERVEE',
     latitude: point.latitude,
     longitude: point.longitude,
-    windSpeedKmh: point.wind,
-    gustSpeedKmh: point.gust,
-    pressureHpa: point.pressure,
+    windSpeedKmh: [165, 140, 110, 85][index],
+    gustSpeedKmh: [210, 180, 145, 110][index],
+    pressureHpa: [935, 948, 962, 975][index],
     precipitationMm: 30 + index * 10,
     movementDirection: 'OSO',
     movementSpeedKmh: 18 - index,
@@ -523,7 +532,7 @@ async function createDemoEvent(geography: ScenarioGeography): Promise<string> {
 }
 
 async function applyPrevisionStep(eventId: string, geography: ScenarioGeography): Promise<void> {
-  const tracks = buildTrajectory(geography.anchor);
+  const tracks = buildTrajectory();
   for (const track of tracks) {
     await insertTrack(eventId, track);
   }
@@ -545,7 +554,7 @@ async function applyPrevisionStep(eventId: string, geography: ScenarioGeography)
 async function applyActifStep(eventId: string, geography: ScenarioGeography): Promise<void> {
   await setEventStatus(eventId, 'ACTIF', 'Passage à actif — observation simulée');
   for (let i = 0; i < 2; i += 1) {
-    await insertTrack(eventId, buildObservedTrack(geography.anchor, i));
+    await insertTrack(eventId, buildObservedTrack(i));
   }
   await insertObservations(eventId, geography.communeIds);
   await exposureService.computeForEvent(eventId, { trigger: 'MANUAL' });
@@ -562,7 +571,7 @@ async function applyActifStep(eventId: string, geography: ScenarioGeography): Pr
 async function applySuiviStep(eventId: string, geography: ScenarioGeography): Promise<void> {
   await setEventStatus(eventId, 'SUIVI', 'Passage à suivi — évaluation post-événement simulée');
   for (let i = 2; i < 4; i += 1) {
-    await insertTrack(eventId, buildObservedTrack(geography.anchor, i));
+    await insertTrack(eventId, buildObservedTrack(i));
   }
   await exposureService.computeForEvent(eventId, { trigger: 'MANUAL' });
   await pruneExposureToCommunes(eventId, geography.communeIds);
