@@ -8,7 +8,7 @@ Documente l'intégration de l'assistant IA (Gemini) de MadaRisk Map : contexte, 
 
 > « Quelles communes sont les plus exposées au cyclone actuel ? »
 
-- Modèle : `GEMINI_MODEL` (défaut `gemini-2.0-flash`), clé `GEMINI_API_KEY`.
+- Modèle : `GEMINI_MODEL` (défaut `gemini-flash-latest`), clé `GEMINI_API_KEY`.
 - **Si la clé n'est pas configurée, l'endpoint répond `503`** (« Assistant IA non configuré ») — l'application ne crash pas.
 - Les conversations sont persistées (`ai_conversations`, `ai_messages`) pour permettre le fil de discussion (`conversationId`).
 

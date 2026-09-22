@@ -57,7 +57,7 @@ const envSchema = z.object({
   DGM_MAPROOM_MAX_DISTANCE_DEG: z.coerce.number().default(0.1),
 
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-2.0-flash'),
+  GEMINI_MODEL: z.string().default('gemini-flash-latest'),
   GEMINI_TIMEOUT_MS: z.coerce.number().default(30000),
   GEMINI_MAX_RETRIES: z.coerce.number().int().min(0).default(2),
   AI_SUPER_ADMIN_VIEW_CONVERSATIONS: z

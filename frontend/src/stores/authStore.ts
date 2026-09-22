@@ -10,6 +10,7 @@ interface AuthState {
   refreshToken: string | null;
   bootstrapped: boolean;
   setSession: (tokens: AuthTokens) => void;
+  setUser: (user: SanitizedUser) => void;
   clearSession: () => void;
   bootstrap: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -36,6 +37,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       refreshToken: tokens.refreshToken,
     });
   },
+
+  setUser: (user) => set({ user }),
 
   clearSession: () => {
     localStorage.removeItem(REFRESH_KEY);

@@ -51,9 +51,10 @@ export function riskStyle(
   const selected = selectedId != null && communeId === String(selectedId);
   return {
     color: selected ? SELECTED_BORDER : isExposed ? EXPOSED_BORDER : '#cbd5e1',
-    weight: selected ? 2.5 : isExposed ? 2 : 1,
+    weight: selected ? 3.5 : isExposed ? 2 : 1,
     fillColor: color,
-    fillOpacity: selected ? 0.55 : isExposed ? 0.48 : 0.32,
+    fillOpacity: selected ? 0.72 : isExposed ? 0.48 : 0.32,
+    opacity: selected ? 1 : 0.9,
   };
 }
 
@@ -68,9 +69,10 @@ export function communeStyle(
   const selected = selectedId != null && featureId(p) === String(selectedId);
   return {
     color: selected ? SELECTED_BORDER : '#94a3b8',
-    weight: selected ? 2.5 : 1,
-    fillColor: color,
-    fillOpacity: hasEvent && isRiskLevel(level) ? 0.22 : 0.04,
+    weight: selected ? 3.5 : 1,
+    fillColor: selected ? BRAND_DEEP : color,
+    fillOpacity: selected ? 0.35 : hasEvent && isRiskLevel(level) ? 0.22 : 0.04,
+    opacity: selected ? 1 : 0.85,
   };
 }
 

@@ -20,6 +20,7 @@ import { MatchingPage } from "@/pages/MatchingPage";
 import { RapportsPage } from "@/pages/RapportsPage";
 import { AdminUsersPage } from "@/pages/AdminUsersPage";
 import { PasswordPage } from "@/pages/PasswordPage";
+import { ProfilePage } from "@/pages/ProfilePage";
 import { ForbiddenPage } from "@/pages/ForbiddenPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
@@ -56,6 +57,7 @@ export function AppRouter() {
             <Route path="alertes" element={<AlertesPage />} />
             <Route path="rapports" element={<RapportsPage />} />
             <Route path="assistant-ia" element={<Navigate to="/" replace />} />
+            <Route path="profil" element={<ProfilePage />} />
             <Route path="mot-de-passe" element={<PasswordPage />} />
             <Route path="interdit" element={<ForbiddenPage />} />
 

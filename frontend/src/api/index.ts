@@ -42,8 +42,8 @@ export const authApi = {
   }) => apiPost("/auth/register", body),
   me: () => apiGet<SanitizedUser>("/auth/me"),
   logout: (refreshToken: string) => apiPost("/auth/logout", { refreshToken }),
-  changePassword: (currentPassword: string, newPassword: string) =>
-    apiPatch("/users/me/password", { currentPassword, newPassword }),
+  changePassword: (oldPassword: string, newPassword: string) =>
+    apiPatch("/users/me/password", { oldPassword, newPassword }),
 };
 
 export const dashboardApi = {

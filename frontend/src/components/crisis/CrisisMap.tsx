@@ -26,6 +26,7 @@ import {
   trackStyle,
 } from '@/lib/crisisStyles';
 import { cn } from '@/lib/utils';
+import { CommuneMapSearch } from '@/components/crisis/CommuneMapSearch';
 
 type CommuneClickHandler = (communeId: string, name: string) => void;
 
@@ -40,7 +41,11 @@ interface CrisisMapProps {
   exposedCommuneIds: Set<string>;
   activeEvent: EventListItem | null;
   selectedCommuneId: string | null;
+  /** Géométrie de la commune sélectionnée (surbrillance dédiée). */
+  selectedCommuneGeometry?: unknown | null;
   onCommuneClick: CommuneClickHandler;
+  /** Sélection via la barre de recherche (zoom + panneau détail). */
+  onCommuneSearchSelect?: CommuneClickHandler;
   focusTarget: { geometry: unknown; nonce: number } | null;
   mapPhase: string;
   onMapPhaseChange: (phase: string) => void;
@@ -198,7 +203,9 @@ export function CrisisMap({
   exposedCommuneIds,
   activeEvent,
   selectedCommuneId,
+  selectedCommuneGeometry = null,
   onCommuneClick,
+  onCommuneSearchSelect,
   focusTarget,
   mapPhase,
   onMapPhaseChange,
@@ -215,6 +222,12 @@ export function CrisisMap({
     setShowCommunes(Boolean(activeEvent));
     if (!activeEvent) setShowRisks(false);
   }, [activeEvent]);
+
+  const handleSearchSelect = (communeId: string, name: string) => {
+    setShowCommunes(true);
+    if (activeEvent) setShowRisks(true);
+    (onCommuneSearchSelect ?? onCommuneClick)(communeId, name);
+  };
 
   const handleToggle = (
     key: 'risks' | 'communes' | 'districts' | 'weather' | 'event',
@@ -252,8 +265,30 @@ export function CrisisMap({
       <MapFocus target={focusTarget} />
       <MapReset />
 
+      {selectedCommuneGeometry ? (
+        <GeoJSON
+          key={`highlight-${selectedCommuneId ?? 'geo'}`}
+          data={
+            {
+              type: 'Feature',
+              properties: {},
+              geometry: selectedCommuneGeometry,
+            } as Feature<Geometry>
+          }
+          style={() => ({
+            color: '#2f5f78',
+            weight: 3.5,
+            fillColor: '#3d7a9a',
+            fillOpacity: 0.28,
+            opacity: 1,
+          })}
+          interactive={false}
+        />
+      ) : null}
+
       {showRisks && riskLayer ? (
           <GeoJSON
+          key={`risk-${selectedCommuneId ?? 'none'}-${riskLayer.features.length}`}
           data={riskLayer}
           style={(feature) => riskStyle(feature, selectedCommuneId, exposedCommuneIds)}
           onEachFeature={(feature: Feature<Geometry>, layer: Layer) => {
@@ -286,6 +321,7 @@ export function CrisisMap({
 
       {showCommunes && communeLayer ? (
         <GeoJSON
+          key={`commune-${selectedCommuneId ?? 'none'}-${communeLayer.features.length}`}
           data={communeLayer}
           style={(feature) =>
             communeStyle(feature, selectedCommuneId, Boolean(activeEvent))
@@ -408,9 +444,12 @@ export function CrisisMap({
         ) : null}
       </CrisisMapOverlay>
 
-      {eventWithoutData ? (
-        <CrisisMapOverlay position="top-left">
-          <div className="pointer-events-auto w-64 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 text-xs shadow-sm backdrop-blur">
+      <CrisisMapOverlay position="top-left">
+        <div className={cn('mt-0', 'lg:mt-0')}>
+          <CommuneMapSearch onSelect={handleSearchSelect} />
+        </div>
+        {eventWithoutData ? (
+          <div className="pointer-events-auto mt-2 w-64 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 text-xs shadow-sm backdrop-blur">
             <p className="font-semibold text-ink">Aucun risque calculé</p>
             <p className="mt-1 text-muted">
               Cet événement n&apos;a pas encore de zone d&apos;influence ni d&apos;exposition
@@ -423,8 +462,8 @@ export function CrisisMap({
               Ouvrir l&apos;événement →
             </Link>
           </div>
-        </CrisisMapOverlay>
-      ) : null}
+        ) : null}
+      </CrisisMapOverlay>
 
       <div className="pointer-events-none absolute bottom-3 right-3 z-[500] flex flex-col items-end gap-2">
         {onRefresh ? (

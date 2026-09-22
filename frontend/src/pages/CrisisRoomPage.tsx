@@ -36,8 +36,8 @@ function CrisisRoomView() {
   const queryClient = useQueryClient();
   const isFetchingAny = useIsFetching();
 
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const [leftOpen, setLeftOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(false);
   const [mobileLeft, setMobileLeft] = useState(false);
   const [mobileRight, setMobileRight] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -255,7 +255,9 @@ function CrisisRoomView() {
             exposedCommuneIds={exposureIndex.exposedIds}
             activeEvent={activeEvent}
             selectedCommuneId={selectedCommuneId}
+            selectedCommuneGeometry={focusGeometry}
             onCommuneClick={(id) => selectCommune(id, false)}
+            onCommuneSearchSelect={(id) => selectCommune(id, true)}
             focusTarget={focusTarget}
             mapPhase={mapPhase}
             onMapPhaseChange={setMapPhase}
@@ -263,8 +265,8 @@ function CrisisRoomView() {
             onRefresh={() => void handleRefresh()}
           />
 
-          {!activeEventId ? (
-            <div className="pointer-events-none absolute left-3 top-3 z-[600] w-80 max-w-[calc(100%-1.5rem)]">
+          {/* {!activeEventId ? (
+            <div className="pointer-events-none absolute left-3 top-[3.75rem] z-[600] w-80 max-w-[calc(100%-1.5rem)] lg:top-14">
               <div className="pointer-events-auto rounded-2xl border border-line bg-white/95 p-4 shadow-sm backdrop-blur">
                 <p className="font-display text-base font-semibold text-ink">
                   Bienvenue sur la carte
@@ -304,7 +306,7 @@ function CrisisRoomView() {
                 </Link>
               </div>
             </div>
-          ) : null}
+          ) : null} */}
 
           {mobileLeft ? (
             <div

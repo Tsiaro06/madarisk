@@ -7,7 +7,6 @@ import {
   FileText,
   FileUp,
   GitCompare,
-  KeyRound,
   LayoutDashboard,
   LogOut,
   Map,
@@ -18,13 +17,13 @@ import {
   Settings2,
   Shield,
   Siren,
+  UserRound,
   Users,
   X,
   Zap,
 } from 'lucide-react';
 import { alertsApi } from '@/api';
 import { useAuthStore } from '@/stores/authStore';
-import { ROLE_LABELS } from '@/lib/roles';
 import type { UserRole } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 import { AlertBanner } from '@/components/ui/AlertBanner';
@@ -205,9 +204,9 @@ const PAGE_META: { match: (path: string) => boolean; title: string; subtitle: st
     subtitle: 'Paramètres de calcul',
   },
   {
-    match: (p) => p.startsWith('/mot-de-passe'),
-    title: 'Mot de passe',
-    subtitle: 'Sécuriser votre compte',
+    match: (p) => p.startsWith('/profil'),
+    title: 'Mon profil',
+    subtitle: 'Compte et sécurité',
   },
 ];
 
@@ -286,45 +285,41 @@ export function AppShell() {
           open ? 'translate-x-0' : '-translate-x-full',
         )}
       >
-        <div className="flex h-16 items-center justify-between gap-2 border-b border-line px-3">
-          <Link
-            to="/"
-            className={cn(
-              'flex min-w-0 items-center gap-2.5',
-              collapsed && 'justify-center',
-            )}
-            onClick={() => setOpen(false)}
-            title="MadaRisk Map"
-          >
-            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-brand-deep/90 font-display text-base font-bold text-white">
-              M
-            </span>
-            {!collapsed ? (
-              <span className="min-w-0 leading-tight">
-                <span className="block truncate font-display text-base font-semibold text-ink">
-                  MadaRisk <span className="text-brand">Map</span>
-                </span>
-                <span className="block text-[11px] text-muted">Madagascar · risques</span>
+        <div className="flex h-14 items-center justify-between gap-1 border-b border-line px-2.5">
+          {!collapsed ? (
+            <Link
+              to="/"
+              className="min-w-0 flex-1 truncate px-1.5 leading-tight"
+              onClick={() => setOpen(false)}
+              title="MadaRisk Map"
+            >
+              <span className="block truncate font-display text-base font-semibold text-ink">
+                MadaRisk <span className="text-brand">Map</span>
               </span>
-            ) : null}
-          </Link>
-          <div className="flex items-center gap-0.5">
+              <span className="block text-[11px] text-muted">Madagascar · risques</span>
+            </Link>
+          ) : null}
+          <div className={cn('flex shrink-0 items-center', collapsed && 'w-full justify-center')}>
             <button
               type="button"
-              className="hidden rounded-lg p-1.5 text-muted transition hover:bg-brand-soft hover:text-brand-deep lg:inline-flex"
+              className="hidden size-9 place-items-center rounded-lg text-muted transition hover:bg-canvas hover:text-ink lg:grid"
               onClick={() => setCollapsed((v) => !v)}
               aria-label={collapsed ? 'Agrandir le menu' : 'Réduire le menu'}
               title={collapsed ? 'Agrandir le menu' : 'Réduire le menu'}
             >
-              {collapsed ? <PanelLeftOpen className="size-5" /> : <PanelLeftClose className="size-5" />}
+              {collapsed ? (
+                <PanelLeftOpen className="size-[18px]" />
+              ) : (
+                <PanelLeftClose className="size-[18px]" />
+              )}
             </button>
             <button
               type="button"
-              className="rounded-lg p-1.5 text-muted hover:bg-brand-soft lg:hidden"
+              className="grid size-9 place-items-center rounded-lg text-muted hover:bg-canvas hover:text-ink lg:hidden"
               onClick={() => setOpen(false)}
               aria-label="Fermer le menu"
             >
-              <X className="size-5" />
+              <X className="size-[18px]" />
             </button>
           </div>
         </div>
@@ -392,16 +387,6 @@ export function AppShell() {
             </div>
           ))}
         </nav>
-
-        {!collapsed ? (
-          <div className="border-t border-line bg-canvas px-4 py-3 text-xs text-muted">
-            <p className="font-medium text-ink">Besoin d’aide ?</p>
-            <p className="mt-0.5 leading-snug">
-              Commencez par la <strong className="font-semibold text-ink">carte de crise</strong>,
-              puis ouvrez la météo ou les alertes.
-            </p>
-          </div>
-        ) : null}
       </aside>
 
       {open ? (
@@ -432,44 +417,40 @@ export function AppShell() {
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
-            {/* <p className="hidden text-sm text-muted md:block">
-              Bonjour, <span className="font-medium text-ink">{firstName}</span>
-            </p> */}
+          <div className="flex shrink-0 items-center gap-2">
             <div ref={menuRef} className="relative">
               <button
                 type="button"
                 onClick={() => setMenuOpen((v) => !v)}
-                className="flex items-center gap-2 rounded-xl border border-line bg-surface px-2.5 py-1.5 text-left text-sm shadow-sm transition hover:border-brand/40 hover:bg-brand-soft/50"
+                className={cn(
+                  'grid size-10 place-items-center rounded-full border border-line bg-surface text-ink/70 transition',
+                  'hover:border-brand/35 hover:bg-brand-soft hover:text-brand-deep',
+                  menuOpen && 'border-brand/40 bg-brand-soft text-brand-deep',
+                )}
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
+                aria-label="Menu compte"
+                title="Mon compte"
               >
-                <span className="flex size-8 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
-                  {user.firstName?.[0]}
-                  {user.lastName?.[0]}
-                </span>
-                <span className="hidden sm:block">
-                  <span className="block max-w-[140px] truncate font-medium text-ink">
-                    {user.firstName} {user.lastName}
-                  </span>
-                  <span className="block text-xs text-muted">{ROLE_LABELS[user.role]}</span>
-                </span>
+                <UserRound className="size-5" />
               </button>
               {menuOpen ? (
                 <div
-                  className="absolute right-0 mt-2 w-56 overflow-hidden rounded-xl border border-line bg-surface shadow-xl"
+                  className="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border border-line bg-surface shadow-xl"
                   role="menu"
                 >
                   <Link
-                    to="/mot-de-passe"
-                    className="flex items-center gap-2 px-3 py-2.5 text-sm hover:bg-brand-soft"
+                    to="/profil"
+                    className="flex items-center gap-2 px-3 py-2.5 text-sm text-ink hover:bg-brand-soft"
                     onClick={() => setMenuOpen(false)}
+                    role="menuitem"
                   >
-                    <KeyRound className="size-4 text-brand" /> Mot de passe
+                    <UserRound className="size-4 text-brand" /> Mon profil
                   </Link>
                   <button
                     type="button"
                     className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-risk-extreme hover:bg-red-50"
+                    role="menuitem"
                     onClick={() => {
                       setMenuOpen(false);
                       void onLogout();
