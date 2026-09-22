@@ -70,13 +70,13 @@ export function PolygonDrawMap({
           {variant === 'track' && points.length >= 2 ? (
             <Polyline
               positions={points as LatLngExpression[]}
-              pathOptions={{ color: '#047857', dashArray: '6 6', weight: 2 }}
+              pathOptions={{ color: '#3d7a9a', dashArray: '6 6', weight: 2 }}
             />
           ) : null}
           {variant === 'polygon' && points.length >= 3 ? (
             <Polygon
               positions={points as LatLngExpression[]}
-              pathOptions={{ color: '#047857', weight: 2, fillColor: '#047857', fillOpacity: 0.25 }}
+              pathOptions={{ color: '#3d7a9a', weight: 2, fillColor: '#3d7a9a', fillOpacity: 0.25 }}
             />
           ) : null}
           {points.map(([lat, lng], i) => (
@@ -85,9 +85,9 @@ export function PolygonDrawMap({
               center={[lat, lng]}
               radius={5}
               pathOptions={{
-                color: '#047857',
+                color: '#3d7a9a',
                 weight: 2,
-                fillColor: '#047857',
+                fillColor: '#3d7a9a',
                 fillOpacity: 1,
               }}
             />

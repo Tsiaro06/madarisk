@@ -43,31 +43,31 @@ export function EventSelector({ className }: { className?: string }) {
     : 'Aucun événement sélectionné';
 
   return (
-    <div ref={wrapRef} className={cn('relative', className)}>
+    <div ref={wrapRef} className={cn('relative w-full', className)}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'flex max-w-[260px] items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink transition hover:bg-gray-50 sm:max-w-xs',
-          activeEventId && 'border-brand/40 bg-brand-soft/50',
+          'flex h-12 w-full min-w-0 items-center gap-2.5 rounded-xl border border-line bg-surface px-3.5 text-[15px] text-ink transition hover:bg-canvas',
+          activeEventId && 'border-slate-300 bg-canvas',
         )}
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <Radio className={cn('size-4 shrink-0', activeEventId ? 'text-brand' : 'text-muted')} />
-        <span className="min-w-0 flex-1 truncate text-left">
+        <Radio className={cn('size-5 shrink-0', activeEventId ? 'text-brand' : 'text-muted')} />
+        <span className="min-w-0 flex-1 truncate text-left font-medium">
           {activeEventLoading ? 'Chargement…' : label}
         </span>
-        <ChevronsUpDown className="size-4 shrink-0 opacity-70" />
+        <ChevronsUpDown className="size-5 shrink-0 opacity-70" />
       </button>
 
       {open ? (
         <div
-          className="absolute left-0 top-full z-30 mt-2 w-[340px] overflow-hidden rounded-xl border border-brand/15 bg-white text-ink shadow-2xl"
+          className="absolute inset-x-0 top-full z-30 mt-2 flex max-h-80 w-full flex-col overflow-hidden rounded-xl border border-line bg-white text-ink shadow-xl"
           role="listbox"
         >
-          <div className="flex items-center justify-between border-b border-brand/10 bg-brand-soft/40 px-3 py-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-brand-deep">
+          <div className="flex shrink-0 items-center justify-between border-b border-line bg-canvas px-3 py-2.5">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">
               Événement actif
             </p>
             <span className="text-[11px] text-muted">{events.length} événements</span>
@@ -75,18 +75,18 @@ export function EventSelector({ className }: { className?: string }) {
           <button
             type="button"
             className={cn(
-              'flex w-full items-center gap-2 px-3 py-2.5 text-sm transition hover:bg-brand-soft/50',
-              !activeEventId && 'bg-brand-soft/60 font-medium text-brand-deep',
+              'flex w-full shrink-0 items-center gap-2 px-3 py-3 text-sm transition hover:bg-canvas',
+              !activeEventId && 'bg-canvas font-medium text-ink',
             )}
             onClick={() => {
               setActiveEventId(null);
               setOpen(false);
             }}
           >
-            <span className="size-2.5 rounded-full border border-brand/40" />
+            <span className="size-2.5 rounded-full border border-line" />
             Aucun événement
           </button>
-          <div className="max-h-72 overflow-y-auto">
+          <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
             {listQ.isLoading ? (
               <p className="px-3 py-4 text-center text-sm text-muted">Chargement…</p>
             ) : events.length === 0 ? (
@@ -99,8 +99,8 @@ export function EventSelector({ className }: { className?: string }) {
                     key={ev.id}
                     type="button"
                     className={cn(
-                      'flex w-full items-start gap-2 px-3 py-2.5 text-left text-sm transition hover:bg-brand-soft/50',
-                      selected && 'bg-brand-soft/70',
+                      'flex w-full min-w-0 items-start gap-2 px-3 py-3 text-left text-sm transition hover:bg-canvas',
+                      selected && 'bg-canvas',
                     )}
                     onClick={() => {
                       setActiveEventId(ev.id);
@@ -110,17 +110,15 @@ export function EventSelector({ className }: { className?: string }) {
                     {selected ? (
                       <Zap className="mt-0.5 size-4 shrink-0 text-brand" />
                     ) : (
-                      <span className="mt-1.5 size-2 shrink-0 rounded-full bg-brand/30" />
+                      <span className="mt-1.5 size-2 shrink-0 rounded-full bg-slate-300" />
                     )}
-                    <span className="min-w-0 flex-1">
+                    <span className="min-w-0 flex-1 overflow-hidden">
                       <span className="block truncate font-medium text-ink">{ev.name}</span>
-                      <span className="mt-0.5 flex items-center gap-1.5 text-xs text-muted">
+                      <span className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                         <span className="font-mono">{ev.eventCode}</span>
                         <span>·</span>
                         <span>{EVENT_TYPE_LABELS[ev.type] ?? ev.type}</span>
-                        <Badge tone={EVENT_STATUS_TONE[ev.status]} className="ml-auto">
-                          {ev.status}
-                        </Badge>
+                        <Badge tone={EVENT_STATUS_TONE[ev.status]}>{ev.status}</Badge>
                       </span>
                     </span>
                   </button>
@@ -130,7 +128,7 @@ export function EventSelector({ className }: { className?: string }) {
           </div>
           <button
             type="button"
-            className="flex w-full items-center justify-center gap-1.5 border-t border-brand/10 px-3 py-2.5 text-xs font-medium text-brand hover:bg-brand-soft/50"
+            className="flex w-full shrink-0 items-center justify-center gap-1.5 border-t border-line bg-white px-3 py-2.5 text-xs font-medium text-muted hover:bg-canvas"
             onClick={() => setOpen(false)}
           >
             <X className="size-3.5" /> Fermer

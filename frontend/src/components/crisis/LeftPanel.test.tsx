@@ -1,28 +1,34 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter } from 'react-router-dom';
 import { ToastProvider } from '@/components/ui/Toast';
+import { ActiveEventProvider } from '@/stores/activeEvent';
 import { LeftPanel } from './LeftPanel';
 
 const api = vi.hoisted(() => ({
   eventsList: vi.fn(),
+  eventsGet: vi.fn(),
   districts: vi.fn(),
-  monitoring: vi.fn(),
   search: vi.fn(),
 }));
 
 vi.mock('@/api', () => ({
-  eventsApi: { list: api.eventsList },
+  eventsApi: { list: api.eventsList, get: api.eventsGet },
   territoriesApi: { districts: api.districts, search: api.search },
-  weatherApi: { monitoring: api.monitoring },
 }));
 
 function wrapper({ children }: { children: React.ReactNode }) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (
-    <QueryClientProvider client={qc}>
-      <ToastProvider>{children}</ToastProvider>
-    </QueryClientProvider>
+    <MemoryRouter>
+      <QueryClientProvider client={qc}>
+        <ToastProvider>
+          <ActiveEventProvider>{children}</ActiveEventProvider>
+        </ToastProvider>
+      </QueryClientProvider>
+    </MemoryRouter>
   );
 }
 
@@ -57,42 +63,12 @@ beforeEach(() => {
     data: [activeEvent, clotureEvent],
     meta: { total: 2, page: 1, totalPages: 1, limit: 12 },
   });
+  api.eventsGet.mockResolvedValue(activeEvent);
   api.districts.mockResolvedValue({
     data: [{ id: 'd1', name: 'Analamanga', adminCode: 'A01', population: 3_000_000 }],
     meta: {},
   });
-  api.monitoring.mockResolvedValue({
-    generatedAt: '2026-04-03T12:00:00.000Z',
-    sync: {
-      observations: { status: 'FRESH', lastDataAt: '2026-04-03T11:45:00.000Z', communesData: 100 },
-      forecasts: { status: 'FRESH', lastDataAt: '2026-04-03T11:45:00.000Z', communesData: 100 },
-    },
-    sources: [],
-  });
   api.search.mockResolvedValue([]);
-});
-
-describe('LeftPanel', () => {
-  it('affiche le filtre zone (district)', async () => {
-    render(<LeftPanel districtId="" onDistrictChange={vi.fn()} {...defaultProps} />, { wrapper });
-    expect(await screen.findByText('Analamanga')).toBeInTheDocument();
-    expect(screen.getByText('Zone')).toBeInTheDocument();
-  });
-
-  it('filtre par défaut sur les statuts En cours', async () => {
-    render(<LeftPanel districtId="" onDistrictChange={vi.fn()} {...defaultProps} />, { wrapper });
-    await screen.findByText('Événements (1)');
-    expect(screen.getByText('Cyclone', { selector: 'p' })).toBeInTheDocument();
-    expect(screen.queryByText('Cyclone ancien')).not.toBeInTheDocument();
-  });
-
-  it('affiche la dernière mise à jour des événements', async () => {
-    render(<LeftPanel districtId="" onDistrictChange={vi.fn()} {...defaultProps} />, { wrapper });
-    await waitFor(() => {
-      expect(screen.getByText(/Dernière mise à jour/)).toBeInTheDocument();
-    });
-    expect(screen.getByText(/Fraîches/)).toBeInTheDocument();
-  });
 });
 
 const defaultProps = {
@@ -101,3 +77,37 @@ const defaultProps = {
   onSelectCommune: vi.fn(),
   onClose: vi.fn(),
 };
+
+describe('LeftPanel', () => {
+  it('montre d’abord la liste, filtres repliés', async () => {
+    render(<LeftPanel districtId="" onDistrictChange={vi.fn()} {...defaultProps} />, { wrapper });
+    expect(await screen.findByText('1 en cours')).toBeInTheDocument();
+    expect(screen.getByText('Cyclone', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.queryByText('Cyclone ancien')).not.toBeInTheDocument();
+    expect(screen.queryByText('Analamanga')).not.toBeInTheDocument();
+  });
+
+  it('ouvre les filtres pour afficher la zone (district)', async () => {
+    const user = userEvent.setup();
+    render(<LeftPanel districtId="" onDistrictChange={vi.fn()} {...defaultProps} />, { wrapper });
+    await screen.findByText('1 en cours');
+    await user.click(screen.getByRole('button', { name: /Filtres/i }));
+    expect(await screen.findByText('Analamanga')).toBeInTheDocument();
+  });
+
+  it('filtre par défaut sur les statuts En cours', async () => {
+    render(<LeftPanel districtId="" onDistrictChange={vi.fn()} {...defaultProps} />, { wrapper });
+    await screen.findByText('1 en cours');
+    expect(screen.getByText('Cyclone', { selector: 'p' })).toBeInTheDocument();
+    expect(screen.queryByText('Cyclone ancien')).not.toBeInTheDocument();
+  });
+
+  it('affiche le sélecteur pleine largeur et le bouton détails en dessous', async () => {
+    render(<LeftPanel districtId="" onDistrictChange={vi.fn()} {...defaultProps} />, { wrapper });
+    expect(await screen.findByText('Événement à suivre')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Détails de l’événement/i })).toHaveAttribute(
+      'href',
+      '/evenements/evt-1',
+    );
+  });
+});

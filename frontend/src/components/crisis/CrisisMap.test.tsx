@@ -103,7 +103,7 @@ describe('trackStyle', () => {
       geometry: { type: 'LineString', coordinates: [[0, 0], [1, 1]] },
       properties: { trackType: 'OBSERVEE', pointCount: 2, startedAt: '', endedAt: '' },
     });
-    expect(style.color).toBe('#047857');
+    expect(style.color).toBe('#5a7d90');
     expect(style.dashArray).toBeUndefined();
   });
 
@@ -113,7 +113,7 @@ describe('trackStyle', () => {
       geometry: { type: 'LineString', coordinates: [[0, 0], [1, 1]] },
       properties: { trackType: 'PREVUE', pointCount: 2, startedAt: '', endedAt: '' },
     });
-    expect(style.color).toBe('#ea580c');
+    expect(style.color).toBe('#c47d4a');
     expect(style.dashArray).toBe('8 6');
   });
 });
@@ -126,10 +126,10 @@ describe('riskStyle', () => {
       properties: { communeId: 'cm-1', riskLevel: 'ELEVE', riskScore: 72 },
     };
     const style = riskStyle(feature, null, new Set(['cm-1']));
-    expect(style.color).toBe('#111827');
-    expect(style.weight).toBe(3);
+    expect(style.color).toBe('#475569');
+    expect(style.weight).toBe(2);
     expect(style.fillColor).toBe(RISK_COLORS['ELEVE']);
-    expect(style.fillOpacity).toBe(0.85);
+    expect(style.fillOpacity).toBe(0.48);
   });
 
   it('utilise gris pour les communes sans niveau de risque', () => {
@@ -149,8 +149,8 @@ describe('riskStyle', () => {
       properties: { communeId: 'cm-3', riskLevel: 'FAIBLE' },
     };
     const style = riskStyle(feature, 'cm-3', new Set(['cm-3']));
-    expect(style.fillOpacity).toBe(0.8);
-    expect(style.weight).toBe(3);
+    expect(style.fillOpacity).toBe(0.55);
+    expect(style.weight).toBe(2.5);
   });
 });
 
@@ -162,7 +162,7 @@ describe('communeStyle', () => {
       properties: { communeId: 'cm-4' },
     };
     const style = communeStyle(feature, null, false);
-    expect(style.fillOpacity).toBe(0.08);
-    expect(style.color).toBe('#047857');
+    expect(style.fillOpacity).toBe(0.04);
+    expect(style.color).toBe('#94a3b8');
   });
 });

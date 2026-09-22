@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { Layer } from 'leaflet';
 import L from 'leaflet';
-import { Layers, LocateFixed, Snowflake } from 'lucide-react';
+import { Layers, LocateFixed, RefreshCw, Snowflake } from 'lucide-react';
 import type { EventListItem, EventTrack } from '@/types';
 import { RISK_COLORS, RISK_LABELS } from '@/types';
 import { RISK_LEVELS } from '@/lib/eventMeta';
@@ -44,6 +44,8 @@ interface CrisisMapProps {
   focusTarget: { geometry: unknown; nonce: number } | null;
   mapPhase: string;
   onMapPhaseChange: (phase: string) => void;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }
 
 function MapFocus({ target }: { target: { geometry: unknown; nonce: number } | null }) {
@@ -93,7 +95,7 @@ function CrisisMapOverlay({ children, position }: { children: ReactNode; positio
 
 function Legend() {
   return (
-    <div className="pointer-events-auto rounded-xl border border-white/60 bg-white/95 px-3 py-2 text-xs shadow-md backdrop-blur">
+    <div className="pointer-events-auto rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
       <p className="mb-1.5 font-semibold text-ink">Légende</p>
       <p className="mb-1 text-[10px] uppercase tracking-wide text-muted">Niveau de risque</p>
       <ul className="space-y-1">
@@ -107,22 +109,22 @@ function Legend() {
       <p className="mb-1 mt-2 text-[10px] uppercase tracking-wide text-muted">Autres couches</p>
       <ul className="space-y-1 text-muted">
         <li className="flex items-center gap-2">
-          <span className="inline-block h-0.5 w-4 rounded bg-[#047857]" />
+          <span className="inline-block h-0.5 w-4 rounded bg-[#5a7d90]" />
           Trajectoire observée
         </li>
         <li className="flex items-center gap-2">
-          <span className="inline-block h-0.5 w-4 rounded border-t-2 border-dashed border-[#ea580c]" />
+          <span className="inline-block h-0.5 w-4 rounded border-t-2 border-dashed border-[#c47d4a]" />
           Trajectoire prévue
         </li>
         <li className="flex items-center gap-2">
-          <span className="inline-block size-3 rounded-sm border-2 border-[#e03131] bg-[#e03131]/15" />
+          <span className="inline-block size-3 rounded-sm border-2 border-[#b07070] bg-[#b07070]/20" />
           Zone d&apos;influence
         </li>
         <li className="flex items-center gap-2">
-          <Snowflake className="size-3.5 text-accent" /> Observation météo
+          <Snowflake className="size-3.5 text-slate-500" /> Observation météo
         </li>
         <li className="flex items-center gap-2">
-          <span className="inline-block size-3 rounded-sm border-2 border-[#111827] bg-white/40" />
+          <span className="inline-block size-3 rounded-sm border-2 border-[#475569] bg-white/40" />
           Commune exposée à l&apos;événement sélectionné
         </li>
       </ul>
@@ -163,9 +165,9 @@ function LayerControls({
     { key: 'event', label: 'Événement actif', checked: showEvent, disabled: !hasEvent },
   ];
   return (
-    <div className="pointer-events-auto rounded-xl border border-white/60 bg-white/95 px-3 py-2 text-xs shadow-md backdrop-blur">
+    <div className="pointer-events-auto rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
       <p className="mb-1.5 flex items-center gap-1.5 font-semibold text-ink">
-        <Layers className="size-3.5 text-brand" /> Couches
+        <Layers className="size-3.5 text-muted" /> Couches
       </p>
       <div className="space-y-1.5">
         {items.map((item) => (
@@ -200,6 +202,8 @@ export function CrisisMap({
   focusTarget,
   mapPhase,
   onMapPhaseChange,
+  refreshing = false,
+  onRefresh,
 }: CrisisMapProps) {
   const [showRisks, setShowRisks] = useState(true);
   const [showCommunes, setShowCommunes] = useState(false);
@@ -316,11 +320,11 @@ export function CrisisMap({
           data={weatherLayer}
           pointToLayer={(_, latlng) =>
             L.circleMarker(latlng, {
-              radius: 7,
-              color: '#b4531f',
-              weight: 1.5,
-              fillColor: '#f4c430',
-              fillOpacity: 0.85,
+              radius: 6,
+              color: '#8a7355',
+              weight: 1,
+              fillColor: '#c4b07a',
+              fillOpacity: 0.55,
             })
           }
           onEachFeature={(feature, layer) => {
@@ -345,10 +349,10 @@ export function CrisisMap({
             <GeoJSON
               data={areasLayer}
               style={() => ({
-                color: '#e03131',
-                weight: 2,
-                fillColor: '#e03131',
-                fillOpacity: 0.15,
+                color: '#b07070',
+                weight: 1.5,
+                fillColor: '#b07070',
+                fillOpacity: 0.1,
               })}
             />
           ) : null}
@@ -386,13 +390,13 @@ export function CrisisMap({
           onChange={handleToggle}
         />
         {activeEvent ? (
-          <div className="pointer-events-auto mt-2 rounded-xl border border-white/60 bg-white/95 px-3 py-2 text-xs shadow-md backdrop-blur">
+          <div className="pointer-events-auto mt-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
             <p className="mb-1.5 font-semibold text-ink">Phase affichée</p>
             <select
               value={mapPhase}
               onChange={(e) => onMapPhaseChange(e.target.value)}
               aria-label="Phase affichée"
-              className="w-full rounded-lg border border-brand/20 bg-white px-2 py-1.5 text-xs text-ink outline-none focus:border-brand focus:ring-1 focus:ring-brand/20"
+              className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
             >
               <option value="">Dernière évaluation</option>
               <option value="AVANT">AVANT</option>
@@ -406,7 +410,7 @@ export function CrisisMap({
 
       {eventWithoutData ? (
         <CrisisMapOverlay position="top-left">
-          <div className="pointer-events-auto w-64 rounded-xl border border-white/60 bg-white/95 px-3 py-2.5 text-xs shadow-md backdrop-blur">
+          <div className="pointer-events-auto w-64 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2.5 text-xs shadow-sm backdrop-blur">
             <p className="font-semibold text-ink">Aucun risque calculé</p>
             <p className="mt-1 text-muted">
               Cet événement n&apos;a pas encore de zone d&apos;influence ni d&apos;exposition
@@ -414,7 +418,7 @@ export function CrisisMap({
             </p>
             <Link
               to={`/evenements/${activeEvent?.id}`}
-              className="mt-2 inline-block font-medium text-brand hover:underline"
+              className="mt-2 inline-block font-medium text-ink underline-offset-2 hover:underline"
             >
               Ouvrir l&apos;événement →
             </Link>
@@ -422,14 +426,25 @@ export function CrisisMap({
         </CrisisMapOverlay>
       ) : null}
 
-      <div className="pointer-events-none absolute bottom-3 right-3 z-[500]">
+      <div className="pointer-events-none absolute bottom-3 right-3 z-[500] flex flex-col items-end gap-2">
+        {onRefresh ? (
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
+            title="Actualiser les données de la carte"
+          >
+            <RefreshCw className={cn('size-3.5 text-muted', refreshing && 'animate-spin')} />
+            Actualiser
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={resetView}
-          className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-white/60 bg-white/95 px-2.5 py-1.5 text-xs font-medium text-ink shadow-md backdrop-blur transition hover:bg-white"
+          className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
           title="Recentrer sur Madagascar"
         >
-          <LocateFixed className="size-3.5 text-brand" /> Recentrer
+          <LocateFixed className="size-3.5 text-muted" /> Recentrer
         </button>
       </div>
     </MapContainer>

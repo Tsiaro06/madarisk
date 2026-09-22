@@ -30,8 +30,8 @@ export function AppRouter() {
         <Route path="/login" element={<LoginPage />} />
 
         <Route element={<RequireAuth />}>
-          <Route index element={<CrisisRoomPage />} />
           <Route element={<AppShell />}>
+            <Route index element={<CrisisRoomPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="territoires" element={<TerritoiresPage />} />
             <Route

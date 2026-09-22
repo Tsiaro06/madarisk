@@ -82,9 +82,9 @@ export function DashboardPage() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="font-display text-3xl text-ink">Tableau de bord</h1>
-        <p className="text-sm text-muted">
-          Vue d&apos;ensemble · mise à jour {formatDate(s?.lastUpdatedAt)}
+        <h1 className="font-display text-3xl font-semibold text-ink">Tableau de bord</h1>
+        <p className="mt-1 text-sm text-muted">
+          Les chiffres importants en un coup d&apos;œil · mise à jour {formatDate(s?.lastUpdatedAt)}
         </p>
       </div>
 
@@ -125,7 +125,7 @@ export function DashboardPage() {
                 <XAxis dataKey="niveau" tick={{ fontSize: 11 }} />
                 <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
                 <Tooltip />
-                <Bar dataKey="count" name="Communes" fill="#047857" radius={[6, 6, 0, 0]} />
+                <Bar dataKey="count" name="Communes" fill="#3d7a9a" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </div>

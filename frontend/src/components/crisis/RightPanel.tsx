@@ -21,10 +21,10 @@ import {
   Gauge,
   MapPin,
   MousePointerClick,
+  PanelRightClose,
   RefreshCw,
   Thermometer,
   Wind,
-  X,
 } from 'lucide-react';
 import { risksApi, weatherApi, reportsApi } from '@/api';
 import { ApiClientError } from '@/api/client';
@@ -87,7 +87,7 @@ function downloadBlob(blob: Blob, filename: string) {
 
 function StatItem({ label, value, unit }: { label: string; value: string | number | null; unit?: string }) {
   return (
-    <div className="rounded-lg border border-brand/10 bg-gray-50 px-3 py-2.5">
+    <div className="rounded-lg border border-line bg-gray-50 px-3 py-2.5">
       <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
       <p className="mt-0.5 text-sm font-semibold text-ink">
         {value == null || value === '' ? '—' : `${value}${unit ? ` ${unit}` : ''}`}
@@ -303,10 +303,10 @@ export function RightPanel({
   const weatherMetrics = latest
     ? [
         { label: 'Température', value: latest.temperatureC, unit: '°C', icon: <Thermometer className="size-4 text-accent" /> },
-        { label: 'Pluie', value: latest.precipitationMm, unit: 'mm', icon: <Droplets className="size-4 text-brand" /> },
+        { label: 'Pluie', value: latest.precipitationMm, unit: 'mm', icon: <Droplets className="size-4 text-muted" /> },
         { label: 'Pluie 24h', value: latest.rainfall24hMm, unit: 'mm', icon: <Droplets className="size-4 text-accent" /> },
-        { label: 'Vent', value: latest.windSpeedKmh, unit: 'km/h', icon: <Wind className="size-4 text-brand" /> },
-        { label: 'Humidité', value: latest.humidityPercent, unit: '%', icon: <Gauge className="size-4 text-brand" /> },
+        { label: 'Vent', value: latest.windSpeedKmh, unit: 'km/h', icon: <Wind className="size-4 text-muted" /> },
+        { label: 'Humidité', value: latest.humidityPercent, unit: '%', icon: <Gauge className="size-4 text-muted" /> },
         { label: 'Pression', value: latest.pressureHpa, unit: 'hPa', icon: <Gauge className="size-4 text-accent" /> },
       ]
     : [];
@@ -326,7 +326,7 @@ export function RightPanel({
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
         {/* En-tête risque */}
         {hasEvent ? (
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-brand/15 bg-white p-4 shadow-sm">
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-line bg-white p-4 shadow-sm">
             <div className="flex items-center gap-2">
               <span
                 className="size-3.5 rounded-full ring-2 ring-white/60"
@@ -377,7 +377,7 @@ export function RightPanel({
                   />
                 </div>
                 {exposure.isInsideInfluenceArea ? (
-                  <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-brand">
+                  <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-muted">
                     <MapPin className="size-3.5" /> Dans la zone d&apos;influence
                   </p>
                 ) : null}
@@ -444,7 +444,7 @@ export function RightPanel({
                       type="monotone"
                       dataKey="tempMax"
                       name="Max °C"
-                      stroke="#047857"
+                      stroke="#5a7d90"
                       strokeWidth={2}
                       dot={false}
                     />
@@ -490,7 +490,7 @@ export function RightPanel({
                       type="monotone"
                       dataKey="tempMax"
                       name="Max °C"
-                      stroke="#047857"
+                      stroke="#5a7d90"
                       strokeWidth={2}
                       dot={false}
                     />
@@ -550,7 +550,7 @@ export function RightPanel({
                   <ul className="mt-3 space-y-1">
                     {risk.explanation.map((line, i) => (
                       <li key={i} className="flex items-start gap-1.5 text-xs text-muted">
-                        <ArrowRight className="mt-0.5 size-3 shrink-0 text-brand" />
+                        <ArrowRight className="mt-0.5 size-3 shrink-0 text-muted" />
                         {line}
                       </li>
                     ))}
@@ -592,9 +592,9 @@ export function RightPanel({
           ) : (
             <ul className="space-y-2">
               {detail.events.map((ev) => (
-                <li key={ev.id} className="rounded-lg border border-brand/10 bg-gray-50 p-3">
+                <li key={ev.id} className="rounded-lg border border-line bg-gray-50 p-3">
                   <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono text-[11px] text-brand">{ev.eventCode}</span>
+                    <span className="font-mono text-[11px] text-muted">{ev.eventCode}</span>
                     <div className="flex gap-1">
                       <Button size="sm" variant="ghost" onClick={() => onSelectEvent(ev.id)}>
                         <MapPin className="size-3.5" /> Activer
@@ -654,14 +654,15 @@ export function RightPanel({
 function PanelHeader({ children, onClose }: { children: ReactNode; onClose: () => void }) {
   return (
     <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2.5">
-      {children}
+      <div className="min-w-0 flex-1">{children}</div>
       <button
         type="button"
         onClick={onClose}
-        className="rounded-lg p-1.5 text-muted hover:bg-brand-soft"
-        aria-label="Fermer le panneau détails"
+        className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-muted transition hover:bg-canvas hover:text-ink"
+        aria-label="Réduire le panneau détails"
+        title="Réduire"
       >
-        <X className="size-4" />
+        <PanelRightClose className="size-4" />
       </button>
     </div>
   );

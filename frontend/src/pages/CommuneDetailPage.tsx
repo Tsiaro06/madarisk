@@ -125,7 +125,7 @@ export function CommuneDetailPage() {
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} />
                 <Tooltip />
                 <Legend />
-                <Line yAxisId="left" type="monotone" dataKey="temp" name="Temp (°C)" stroke="#047857" />
+                <Line yAxisId="left" type="monotone" dataKey="temp" name="Temp (°C)" stroke="#3d7a9a" />
                 <Line yAxisId="right" type="monotone" dataKey="rain" name="Pluie (mm)" stroke="#d97706" />
               </LineChart>
             </ResponsiveContainer>

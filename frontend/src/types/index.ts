@@ -298,10 +298,10 @@ export interface AlertListRow {
 }
 
 export const RISK_COLORS: Record<RiskLevel, string> = {
-  FAIBLE: '#22C55E',
-  MODERE: '#EAB308',
-  ELEVE: '#F97316',
-  EXTREME: '#EF4444',
+  FAIBLE: '#7a9e7e',
+  MODERE: '#c4a85a',
+  ELEVE: '#c4845a',
+  EXTREME: '#c46b6b',
 };
 
 export const RISK_LABELS: Record<RiskLevel, string> = {

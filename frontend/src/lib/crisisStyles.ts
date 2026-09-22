@@ -2,17 +2,21 @@ import type { Feature } from 'geojson';
 import type { CircleMarkerOptions, PathOptions } from 'leaflet';
 import type { RiskLevel } from '@/types';
 import { RISK_COLORS } from '@/types';
+import { BRAND_DEEP } from '@/lib/brandColors';
 
 export type TrackTypeValue = 'OBSERVEE' | 'PREVUE';
 
-export const TRACK_OBSERVED_FILL = '#047857';
-export const TRACK_OBSERVED_EDGE = '#065f46';
-export const TRACK_FORECAST_FILL = '#ea580c';
-export const TRACK_FORECAST_EDGE = '#7c2d12';
-export const EXPOSED_BORDER = '#111827';
-export const SELECTED_BORDER = '#065f46';
+/** Trajectoire observée — bleu acier calme */
+export const TRACK_OBSERVED_FILL = '#5a7d90';
+export const TRACK_OBSERVED_EDGE = '#3d5a6a';
+/** Trajectoire prévue — ambre désaturé */
+export const TRACK_FORECAST_FILL = '#c47d4a';
+export const TRACK_FORECAST_EDGE = '#8a5530';
+export const EXPOSED_BORDER = '#475569';
+export const SELECTED_BORDER = BRAND_DEEP;
 export const NO_RISK_FILL = '#94a3b8';
-export const NO_EVENT_COMMUNE_FILL = '#047857';
+/** Contours communes hors risque — gris neutre, pas de bleu saturé */
+export const NO_EVENT_COMMUNE_FILL = '#94a3b8';
 
 export function isRiskLevel(value: unknown): value is RiskLevel {
   return value === 'FAIBLE' || value === 'MODERE' || value === 'ELEVE' || value === 'EXTREME';
@@ -46,10 +50,10 @@ export function riskStyle(
   const isExposed = exposedCommuneIds ? exposedCommuneIds.has(communeId) : false;
   const selected = selectedId != null && communeId === String(selectedId);
   return {
-    color: selected ? SELECTED_BORDER : isExposed ? EXPOSED_BORDER : '#9ca3af',
-    weight: selected ? 3 : isExposed ? 3 : 1.5,
+    color: selected ? SELECTED_BORDER : isExposed ? EXPOSED_BORDER : '#cbd5e1',
+    weight: selected ? 2.5 : isExposed ? 2 : 1,
     fillColor: color,
-    fillOpacity: selected ? 0.8 : isExposed ? 0.85 : 0.55,
+    fillOpacity: selected ? 0.55 : isExposed ? 0.48 : 0.32,
   };
 }
 
@@ -63,10 +67,10 @@ export function communeStyle(
   const color = hasEvent && isRiskLevel(level) ? RISK_COLORS[level] : NO_EVENT_COMMUNE_FILL;
   const selected = selectedId != null && featureId(p) === String(selectedId);
   return {
-    color: selected ? SELECTED_BORDER : NO_EVENT_COMMUNE_FILL,
-    weight: selected ? 3 : 1,
+    color: selected ? SELECTED_BORDER : '#94a3b8',
+    weight: selected ? 2.5 : 1,
     fillColor: color,
-    fillOpacity: hasEvent && isRiskLevel(level) ? 0.3 : 0.08,
+    fillOpacity: hasEvent && isRiskLevel(level) ? 0.22 : 0.04,
   };
 }
 
@@ -80,8 +84,8 @@ export function trackStyle(feature?: Feature | null): PathOptions {
   const isForecast = trackTypeOf(feature) === 'PREVUE';
   return {
     color: isForecast ? TRACK_FORECAST_FILL : TRACK_OBSERVED_FILL,
-    weight: 3,
-    opacity: 0.9,
+    weight: 2.5,
+    opacity: 0.75,
     ...(isForecast ? { dashArray: '8 6' } : {}),
   };
 }
@@ -93,23 +97,23 @@ export function trackPointStyle(trackType: TrackTypeValue | null | undefined): C
         color: TRACK_FORECAST_EDGE,
         weight: 2,
         fillColor: TRACK_FORECAST_FILL,
-        fillOpacity: 1,
+        fillOpacity: 0.9,
       }
     : {
         radius: 5,
         color: TRACK_OBSERVED_EDGE,
         weight: 2,
         fillColor: TRACK_OBSERVED_FILL,
-        fillOpacity: 1,
+        fillOpacity: 0.9,
       };
 }
 
 export function districtStyle(): PathOptions {
   return {
-    color: '#64748b',
-    weight: 1.5,
+    color: '#94a3b8',
+    weight: 1,
     fillColor: '#f8fafc',
-    fillOpacity: 0.05,
+    fillOpacity: 0.03,
     dashArray: '4 4',
   };
 }

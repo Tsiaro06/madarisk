@@ -35,7 +35,7 @@ export function AdministrativeInterventionPanel({
   return (
     <section
       className={cn(
-        'rounded-xl border border-amber-300 bg-amber-50/50 shadow-[0_1px_2px_rgba(0,0,0,0.04)]',
+        'rounded-xl border border-line bg-canvas shadow-none',
         compact && 'rounded-lg',
         className,
       )}
@@ -44,29 +44,26 @@ export function AdministrativeInterventionPanel({
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition hover:bg-amber-50"
+        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left transition hover:bg-white"
       >
-        <span className="flex min-w-0 items-center gap-2.5">
-          <ShieldAlert className="size-4 shrink-0 text-amber-700" />
+        <span className="flex min-w-0 items-center gap-2">
+          <ShieldAlert className="size-3.5 shrink-0 text-muted" />
           <span className="min-w-0">
-            <span className="block font-display text-sm font-semibold text-amber-950">
-              Intervention administrative
+            <span className="block text-xs font-semibold text-ink">
+              {title ?? 'Intervention administrative'}
             </span>
             {!compact ? (
-              <span className="mt-0.5 block text-xs text-amber-800/80">{SUBTITLE}</span>
+              <span className="mt-0.5 block text-[11px] text-muted">{SUBTITLE}</span>
             ) : null}
           </span>
         </span>
         <ChevronDown
-          className={cn('size-4 shrink-0 text-amber-700 transition-transform', open && 'rotate-180')}
+          className={cn('size-3.5 shrink-0 text-muted transition-transform', open && 'rotate-180')}
         />
       </button>
 
       {open ? (
-        <div className={cn('space-y-3 border-t border-amber-200 px-4 py-3', compact && 'px-3')}>
-          {title ? (
-            <p className="text-xs font-medium uppercase tracking-wide text-muted">{title}</p>
-          ) : null}
+        <div className={cn('space-y-2 border-t border-line px-3 py-2', compact && 'px-2')}>
           {!compact ? (
             <AlertBanner tone="warning">
               <p>{WARNING}</p>

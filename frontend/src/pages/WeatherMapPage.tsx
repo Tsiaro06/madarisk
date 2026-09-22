@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Database, Info, Settings2, X } from "lucide-react";
+import { Database, Info, Settings2, X } from "lucide-react";
 import { territoriesApi, weatherApi } from "@/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -28,7 +27,6 @@ import type { WeatherMetric } from "@/types/weather";
 import type { FeatureCollection } from "geojson";
 
 export function WeatherMapPage() {
-  const navigate = useNavigate();
   const qc = useQueryClient();
   const { toast } = useToast();
   const role = useAuthStore((s) => s.user?.role);
@@ -275,22 +273,11 @@ export function WeatherMapPage() {
   );
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-canvas">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-brand/10 bg-white/80 px-3 backdrop-blur sm:px-4">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => navigate("/")}
-          className="shrink-0"
-        >
-          <ArrowLeft className="size-4" />
-          <span className="hidden sm:inline">Retour à la salle de crise</span>
-        </Button>
         <div className="min-w-0">
-          <h1 className="truncate font-display text-lg text-ink">Météo</h1>
-          <p className="hidden truncate text-xs text-muted sm:block">
-            Observations et prévisions par commune — alimentées automatiquement par la
-            surveillance
+          <p className="truncate text-sm text-muted">
+            Observations et prévisions par commune
           </p>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">

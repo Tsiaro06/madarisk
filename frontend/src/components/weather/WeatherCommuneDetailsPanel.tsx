@@ -353,7 +353,7 @@ export function WeatherCommuneDetailsPanel({
                       type="monotone"
                       dataKey="value"
                       name={config.label}
-                      stroke="#047857"
+                      stroke="#3d7a9a"
                       strokeWidth={2}
                       dot={false}
                       isAnimationActive={false}

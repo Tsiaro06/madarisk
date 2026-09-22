@@ -1,17 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CloudSun, Plus } from 'lucide-react';
+import { AlertTriangle, CloudSun } from 'lucide-react';
 import { alertsApi, eventsApi, risksApi, territoriesApi, weatherApi } from '@/api';
 import type { CommuneDetail, EventTrack, ExposedCommuneInfo } from '@/types';
 import { canManageOps } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
 import { ActiveEventProvider, useActiveEvent } from '@/stores/activeEvent';
-import { AiChatBubble } from '@/components/ai/AiChatBubble';
 import { AlertBanner } from '@/components/ui/AlertBanner';
-import { Button } from '@/components/ui/Button';
-import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { CrisisHeader } from '@/components/crisis/CrisisHeader';
+import { CrisisSideRail } from '@/components/crisis/CrisisSideRail';
 import { LeftPanel } from '@/components/crisis/LeftPanel';
 import { RightPanel } from '@/components/crisis/RightPanel';
 import { CrisisMap } from '@/components/crisis/CrisisMap';
@@ -34,7 +32,7 @@ interface FocusTarget {
 }
 
 function CrisisRoomView() {
-  const { activeEvent, activeEventId, setActiveEventId, activeEventLoading } = useActiveEvent();
+  const { activeEvent, activeEventId, setActiveEventId } = useActiveEvent();
   const queryClient = useQueryClient();
   const isFetchingAny = useIsFetching();
 
@@ -165,9 +163,15 @@ function CrisisRoomView() {
     .slice(0, 4);
 
   const observationSync = monitoringQ.data?.sync?.observations;
-  const weatherStale = observationSync
-    ? observationSync.status === 'STALE' || observationSync.status === 'NEVER'
-    : false;
+
+  const statusLine = activeEvent
+    ? `Màj. ${formatDate(activeEvent.updatedAt)}${activeEvent.sourceName ? ` · ${activeEvent.sourceName}` : ''}`
+    : null;
+  const weatherLine = observationSync
+    ? `Météo ${syncStatusLabel(observationSync.status)}${
+        observationSync.lastDataAt ? ` · ${formatDate(observationSync.lastDataAt)}` : ''
+      }`
+    : null;
 
   const selectCommune = (id: string, focus: boolean) => {
     setSelectedCommuneId(id);
@@ -190,44 +194,7 @@ function CrisisRoomView() {
   };
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-canvas">
-      <CrisisHeader
-        leftOpen={leftOpen}
-        onToggleLeft={() => {
-          setLeftOpen((v) => !v);
-          setMobileLeft(false);
-        }}
-        rightOpen={rightOpen}
-        onToggleRight={() => {
-          setRightOpen((v) => !v);
-          setMobileRight(false);
-        }}
-        refreshing={isFetchingAny > 0}
-        onRefresh={() => void handleRefresh()}
-        onCreateEvent={() => setCreateOpen(true)}
-      />
-
-      {activeEvent && !activeEventLoading ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-surface px-4 py-2 text-xs text-muted">
-          <span>
-            Dernière mise à jour :{' '}
-            <span className="font-medium text-ink">{formatDate(activeEvent.updatedAt)}</span>
-            {' · '}Source : {activeEvent.sourceName ?? 'Système'}
-          </span>
-          <span className={cn('flex items-center gap-1.5', weatherStale && 'text-amber-600')}>
-            {weatherStale ? (
-              <AlertTriangle className="size-3.5" />
-            ) : (
-              <CloudSun className="size-3.5 text-brand" />
-            )}
-            Données météo {syncStatusLabel(observationSync?.status)}
-            {observationSync?.lastDataAt
-              ? ` · ${formatDate(observationSync.lastDataAt)}`
-              : ''}
-          </span>
-        </div>
-      ) : null}
-
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas">
       {urgentAlerts.length > 0 && !urgentDismissed ? (
         <div className="px-3 pt-3">
           <AlertBanner tone="danger" title="Alertes actives" onClose={() => setUrgentDismissed(true)}>
@@ -249,11 +216,11 @@ function CrisisRoomView() {
       <div className="flex min-h-0 flex-1">
         <aside
           className={cn(
-            'hidden w-80 shrink-0 flex-col border-r border-brand/10 bg-canvas lg:flex',
-            !leftOpen && 'lg:hidden',
+            'hidden shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-200 lg:flex',
+            leftOpen ? 'w-80' : 'w-12',
           )}
         >
-          <div className="min-h-0 flex-1">
+          {leftOpen ? (
             <LeftPanel
               activeEventId={activeEventId}
               onSelectEvent={handleSelectEvent}
@@ -261,24 +228,22 @@ function CrisisRoomView() {
               onClose={() => setLeftOpen(false)}
               districtId={districtId}
               onDistrictChange={handleDistrictChange}
+              canCreate={canCreate}
+              onCreateEvent={() => setCreateOpen(true)}
+              statusLine={statusLine}
+              weatherLine={weatherLine}
             />
-          </div>
-          {canCreate ? (
-            <div className="border-t border-brand/10 p-2">
-              <AdministrativeInterventionPanel title="Salle de crise">
-                <Button
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => setCreateOpen(true)}
-                >
-                  <Plus className="size-4" /> Créer un événement exceptionnel
-                </Button>
-              </AdministrativeInterventionPanel>
-            </div>
-          ) : null}
+          ) : (
+            <CrisisSideRail
+              side="left"
+              label="Événements"
+              onExpand={() => setLeftOpen(true)}
+            />
+          )}
         </aside>
 
         <main className="relative min-w-0 flex-1">
+          <CrisisHeader onOpenMobileLeft={() => setMobileLeft(true)} />
           <CrisisMap
             riskLayer={riskLayer}
             communeLayer={communeLayer}
@@ -294,24 +259,28 @@ function CrisisRoomView() {
             focusTarget={focusTarget}
             mapPhase={mapPhase}
             onMapPhaseChange={setMapPhase}
+            refreshing={isFetchingAny > 0}
+            onRefresh={() => void handleRefresh()}
           />
 
           {!activeEventId ? (
-            <div className="pointer-events-none absolute left-3 top-3 z-[600] w-72 max-w-[calc(100%-1.5rem)]">
-              <div className="pointer-events-auto rounded-xl border border-white/60 bg-white/95 p-4 shadow-md backdrop-blur">
-                <p className="font-display text-sm font-semibold text-ink">
-                  Aucun événement actif actuellement
+            <div className="pointer-events-none absolute left-3 top-3 z-[600] w-80 max-w-[calc(100%-1.5rem)]">
+              <div className="pointer-events-auto rounded-2xl border border-line bg-white/95 p-4 shadow-sm backdrop-blur">
+                <p className="font-display text-base font-semibold text-ink">
+                  Bienvenue sur la carte
                 </p>
-                <p className="mt-1 text-xs text-muted">
-                  La salle de crise affiche la météo nationale et les vigilances en continu.
-                  Activez un événement (PREVISION, ACTIF, SUIVI) pour superposer
-                  trajectoires, zones d&apos;influence et niveaux de risque. La création manuelle
-                  d&apos;un événement est une action exceptionnelle réservée à l&apos;intervention
-                  administrative.
+                <p className="mt-1.5 text-sm leading-relaxed text-muted">
+                  Pour commencer : choisissez un événement dans la liste à gauche.
+                  Sans événement, la carte montre déjà la météo nationale.
                 </p>
+                <ol className="mt-3 list-decimal space-y-1 pl-4 text-xs text-ink">
+                  <li>Ouvrez un événement (prévision, actif ou suivi)</li>
+                  <li>Cliquez une commune pour voir le détail à droite</li>
+                  <li>Consultez la météo ou les alertes via le menu</li>
+                </ol>
                 <div className="mt-3 space-y-1.5 text-xs text-ink">
                   <p className="flex items-start gap-1.5">
-                    <CloudSun className="mt-0.5 size-3.5 shrink-0 text-brand" />
+                    <CloudSun className="mt-0.5 size-3.5 shrink-0 text-muted" />
                     <span>
                       Météo : {syncStatusLabel(observationSync?.status)}
                       {observationSync?.communesData != null
@@ -323,15 +292,15 @@ function CrisisRoomView() {
                     </span>
                   </p>
                   <p className="flex items-start gap-1.5">
-                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-risk-extreme" />
+                    <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-muted" />
                     Alertes actives : {urgentAlerts.length}
                   </p>
                 </div>
                 <Link
                   to="/meteo"
-                  className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand px-3 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-deep"
+                  className="mt-3 inline-flex h-9 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-canvas"
                 >
-                  <CloudSun className="size-4" /> Voir la météo
+                  <CloudSun className="size-4 text-muted" /> Voir la météo
                 </Link>
               </div>
             </div>
@@ -354,21 +323,12 @@ function CrisisRoomView() {
                     onClose={() => setMobileLeft(false)}
                     districtId={districtId}
                     onDistrictChange={handleDistrictChange}
+                    canCreate={canCreate}
+                    onCreateEvent={() => setCreateOpen(true)}
+                    statusLine={statusLine}
+                    weatherLine={weatherLine}
                   />
                 </div>
-                {canCreate ? (
-                  <div className="border-t border-brand/10 p-2">
-                    <AdministrativeInterventionPanel title="Salle de crise">
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => setCreateOpen(true)}
-                      >
-                        <Plus className="size-4" /> Créer un événement exceptionnel
-                      </Button>
-                    </AdministrativeInterventionPanel>
-                  </div>
-                ) : null}
               </div>
             </div>
           ) : null}
@@ -398,24 +358,31 @@ function CrisisRoomView() {
 
         <aside
           className={cn(
-            'hidden w-[26rem] shrink-0 border-l border-brand/10 bg-canvas lg:block',
-            !rightOpen && 'lg:hidden',
+            'hidden shrink-0 border-l border-line bg-surface transition-[width] duration-200 lg:block',
+            rightOpen ? 'w-[26rem]' : 'w-12',
           )}
         >
-          <RightPanel
-            communeId={selectedCommuneId}
-            detail={detailQ.data ?? null}
-            detailLoading={detailQ.isLoading}
-            hasEvent={Boolean(activeEventId)}
-            exposure={selectedExposure}
-            onClose={() => setRightOpen(false)}
-            onSelectEvent={handleSelectEvent}
-          />
+          {rightOpen ? (
+            <RightPanel
+              communeId={selectedCommuneId}
+              detail={detailQ.data ?? null}
+              detailLoading={detailQ.isLoading}
+              hasEvent={Boolean(activeEventId)}
+              exposure={selectedExposure}
+              onClose={() => setRightOpen(false)}
+              onSelectEvent={handleSelectEvent}
+            />
+          ) : (
+            <CrisisSideRail
+              side="right"
+              label="Commune"
+              onExpand={() => setRightOpen(true)}
+            />
+          )}
         </aside>
       </div>
 
       <CreateEventModal open={createOpen} onClose={() => setCreateOpen(false)} />
-      <AiChatBubble />
     </div>
   );
 }
