@@ -64,7 +64,10 @@ export function parseIridlCsv(text: string): { points: GridSample[]; timeLabel: 
     let added = 0;
     for (const raw of lines) {
       const line = raw.replace(/^\uFEFF/, '');
-      const cols = line.split(delimiter).map(decodeCell);
+      const cols = line
+        .split(delimiter)
+        .map(decodeCell)
+        .filter((cell) => cell !== '');
       if (
         cols.length >= 3 &&
         isNumericToken(cols[0]) &&
@@ -176,7 +179,7 @@ export class DgmMaproomProvider {
   });
 
   async fetchLatestDekadText(): Promise<string> {
-    const url = `${DATASET_PATH}/T/last/VALUES/.csv`;
+    const url = `${DATASET_PATH}/T/last/VALUES/gridtable.tsv`;
     logger.debug({ url }, 'Récupération de la dernière décade DGM (maproom)');
     const response = await this.client.get<string>(url, { responseType: 'text' });
     return response.data;

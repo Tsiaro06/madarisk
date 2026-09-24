@@ -34,6 +34,19 @@ describe('parseIridlCsv', () => {
     expect(points[0]?.longitude).toBe(42);
   });
 
+  it('parse la table TSV de l’IRI DL (espaces de tête et en-têtes)', () => {
+    const tsv = [
+      'X\tY\tMadagascar_v4 MON dekadal rainfall rfe',
+      'degree_east\tdegree_north\tmm',
+      '\t42.00000   \t   -25.98750    \t 4.840801',
+      '\t42.03750   \t   -25.98750    \t 4.228667',
+      '',
+    ].join('\n');
+    const { points } = parseIridlCsv(tsv);
+    expect(points).toHaveLength(2);
+    expect(points[0]).toEqual({ longitude: 42, latitude: -25.9875, valueMm: 4.840801 });
+  });
+
   it('tolère un fichier vide ou illisible', () => {
     expect(parseIridlCsv('').points).toHaveLength(0);
     expect(parseIridlCsv('a,b,c\nx,y,z').points).toHaveLength(0);

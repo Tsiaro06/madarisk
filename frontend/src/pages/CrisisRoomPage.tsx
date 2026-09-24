@@ -1,29 +1,35 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { useIsFetching, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, CloudSun } from 'lucide-react';
-import { alertsApi, eventsApi, risksApi, territoriesApi, weatherApi } from '@/api';
-import type { CommuneDetail, EventTrack, ExposedCommuneInfo } from '@/types';
-import { canManageOps } from '@/lib/roles';
-import { useAuthStore } from '@/stores/authStore';
-import { ActiveEventProvider, useActiveEvent } from '@/stores/activeEvent';
-import { AlertBanner } from '@/components/ui/AlertBanner';
-import { CrisisHeader } from '@/components/crisis/CrisisHeader';
-import { CrisisSideRail } from '@/components/crisis/CrisisSideRail';
-import { LeftPanel } from '@/components/crisis/LeftPanel';
-import { RightPanel } from '@/components/crisis/RightPanel';
-import { CrisisMap } from '@/components/crisis/CrisisMap';
-import { CreateEventModal } from '@/components/crisis/CreateEventModal';
-import { buildExposureIndex } from '@/lib/crisisData';
-import { cn, formatDate } from '@/lib/utils';
+import { useState } from "react";
+import { Link } from "react-router-dom";
+import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle } from "lucide-react";
+import {
+  alertsApi,
+  eventsApi,
+  risksApi,
+  territoriesApi,
+  weatherApi,
+} from "@/api";
+import type { CommuneDetail, EventTrack, ExposedCommuneInfo } from "@/types";
+import { canManageOps } from "@/lib/roles";
+import { useAuthStore } from "@/stores/authStore";
+import { ActiveEventProvider, useActiveEvent } from "@/stores/activeEvent";
+import { AlertBanner } from "@/components/ui/AlertBanner";
+import { CrisisHeader } from "@/components/crisis/CrisisHeader";
+import { CrisisSideRail } from "@/components/crisis/CrisisSideRail";
+import { LeftPanel } from "@/components/crisis/LeftPanel";
+import { RightPanel } from "@/components/crisis/RightPanel";
+import { CrisisMap } from "@/components/crisis/CrisisMap";
+import { CreateEventModal } from "@/components/crisis/CreateEventModal";
+import { buildExposureIndex } from "@/lib/crisisData";
+import { cn, formatDate } from "@/lib/utils";
 
 const REFRESH_INTERVAL_MS = 5 * 60_000;
 
 function syncStatusLabel(status?: string): string {
-  if (status === 'FRESH') return 'Fraîches';
-  if (status === 'STALE') return 'Périmées';
-  if (status === 'NEVER') return 'Jamais synchronisées';
-  return 'Indisponibles';
+  if (status === "FRESH") return "Fraîches";
+  if (status === "STALE") return "Périmées";
+  if (status === "NEVER") return "Jamais synchronisées";
+  return "Indisponibles";
 }
 
 interface FocusTarget {
@@ -41,29 +47,35 @@ function CrisisRoomView() {
   const [mobileLeft, setMobileLeft] = useState(false);
   const [mobileRight, setMobileRight] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [selectedCommuneId, setSelectedCommuneId] = useState<string | null>(null);
+  const [selectedCommuneId, setSelectedCommuneId] = useState<string | null>(
+    null,
+  );
   const [focusReq, setFocusReq] = useState(0);
   const [urgentDismissed, setUrgentDismissed] = useState(false);
-  const [mapPhase, setMapPhase] = useState('');
-  const [districtId, setDistrictId] = useState('');
+  const [mapPhase, setMapPhase] = useState("");
+  const [districtId, setDistrictId] = useState("");
 
   const role = useAuthStore((s) => s.user?.role);
   const canCreate = canManageOps(role);
 
   const detailQ = useQuery<CommuneDetail | null>({
-    queryKey: ['commune-detail', selectedCommuneId],
-    queryFn: () => (selectedCommuneId ? territoriesApi.commune(selectedCommuneId) : null),
+    queryKey: ["commune-detail", selectedCommuneId],
+    queryFn: () =>
+      selectedCommuneId ? territoriesApi.commune(selectedCommuneId) : null,
     enabled: Boolean(selectedCommuneId),
     staleTime: 60_000,
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
-  const focusGeometry = detailQ.data?.geometry ?? detailQ.data?.commune.centroid ?? null;
+  const focusGeometry =
+    detailQ.data?.geometry ?? detailQ.data?.commune.centroid ?? null;
   const focusTarget: FocusTarget | null =
-    focusReq && focusGeometry ? { geometry: focusGeometry, nonce: focusReq } : null;
+    focusReq && focusGeometry
+      ? { geometry: focusGeometry, nonce: focusReq }
+      : null;
 
   const risksQ = useQuery({
-    queryKey: ['risks', 'map-layer', activeEventId, mapPhase],
+    queryKey: ["risks", "map-layer", activeEventId, mapPhase],
     queryFn: () =>
       risksApi.mapLayer(
         activeEventId
@@ -75,7 +87,7 @@ function CrisisRoomView() {
   });
 
   const communesQ = useQuery({
-    queryKey: ['communes', 'map-layer', activeEventId, districtId],
+    queryKey: ["communes", "map-layer", activeEventId, districtId],
     queryFn: () =>
       territoriesApi.mapCommunes(
         activeEventId || districtId
@@ -89,17 +101,19 @@ function CrisisRoomView() {
   });
 
   const districtsQ = useQuery({
-    queryKey: ['territories', 'map-districts'],
+    queryKey: ["territories", "map-districts"],
     queryFn: () => territoriesApi.mapDistricts({}),
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const hasEventCommunes = Boolean(communesQ.data?.features?.length);
-  const riskLayer = risksQ.data?.features?.length ? (risksQ.data ?? null) : null;
+  const riskLayer = risksQ.data?.features?.length
+    ? (risksQ.data ?? null)
+    : null;
   const communeLayer = hasEventCommunes ? (communesQ.data ?? null) : null;
 
   const weatherQ = useQuery({
-    queryKey: ['weather', 'map-layer', activeEventId, districtId],
+    queryKey: ["weather", "map-layer", activeEventId, districtId],
     queryFn: () =>
       weatherApi.mapLayer(
         activeEventId || districtId
@@ -113,29 +127,31 @@ function CrisisRoomView() {
   });
 
   const trackQ = useQuery({
-    queryKey: ['event', 'track', activeEventId],
-    queryFn: () => (activeEventId ? eventsApi.trackGeoJson(activeEventId) : null),
+    queryKey: ["event", "track", activeEventId],
+    queryFn: () =>
+      activeEventId ? eventsApi.trackGeoJson(activeEventId) : null,
     enabled: Boolean(activeEventId),
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const trackPointsQ = useQuery<EventTrack[]>({
-    queryKey: ['event', 'track-points', activeEventId],
+    queryKey: ["event", "track-points", activeEventId],
     queryFn: () => (activeEventId ? eventsApi.tracks(activeEventId) : []),
     enabled: Boolean(activeEventId),
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const areasQ = useQuery({
-    queryKey: ['event', 'areas', activeEventId],
+    queryKey: ["event", "areas", activeEventId],
     queryFn: () => (activeEventId ? eventsApi.areas(activeEventId) : null),
     enabled: Boolean(activeEventId),
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const exposureQ = useQuery({
-    queryKey: ['event', 'exposure', activeEventId],
-    queryFn: () => (activeEventId ? eventsApi.exposureGeoJson(activeEventId) : null),
+    queryKey: ["event", "exposure", activeEventId],
+    queryFn: () =>
+      activeEventId ? eventsApi.exposureGeoJson(activeEventId) : null,
     enabled: Boolean(activeEventId),
     staleTime: 30_000,
     refetchInterval: REFRESH_INTERVAL_MS,
@@ -147,29 +163,31 @@ function CrisisRoomView() {
     : null;
 
   const monitoringQ = useQuery({
-    queryKey: ['weather', 'monitoring'],
+    queryKey: ["weather", "monitoring"],
     queryFn: () => weatherApi.monitoring(),
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const urgentQ = useQuery({
-    queryKey: ['alerts', 'urgent-banner'],
+    queryKey: ["alerts", "urgent-banner"],
     queryFn: () => alertsApi.list({ activeOnly: true, limit: 5, page: 1 }),
     staleTime: 30_000,
     refetchInterval: REFRESH_INTERVAL_MS,
   });
   const urgentAlerts = (urgentQ.data?.data ?? [])
-    .filter((a) => a.status === 'PUBLIEE')
+    .filter((a) => a.status === "PUBLIEE")
     .slice(0, 4);
 
   const observationSync = monitoringQ.data?.sync?.observations;
 
   const statusLine = activeEvent
-    ? `Màj. ${formatDate(activeEvent.updatedAt)}${activeEvent.sourceName ? ` · ${activeEvent.sourceName}` : ''}`
+    ? `Màj. ${formatDate(activeEvent.updatedAt)}${activeEvent.sourceName ? ` · ${activeEvent.sourceName}` : ""}`
     : null;
   const weatherLine = observationSync
     ? `Météo ${syncStatusLabel(observationSync.status)}${
-        observationSync.lastDataAt ? ` · ${formatDate(observationSync.lastDataAt)}` : ''
+        observationSync.lastDataAt
+          ? ` · ${formatDate(observationSync.lastDataAt)}`
+          : ""
       }`
     : null;
 
@@ -185,7 +203,7 @@ function CrisisRoomView() {
   };
 
   const handleRefresh = async () => {
-    await queryClient.refetchQueries({ type: 'active' });
+    await queryClient.refetchQueries({ type: "active" });
   };
 
   const handleDistrictChange = (id: string) => {
@@ -197,12 +215,19 @@ function CrisisRoomView() {
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas">
       {urgentAlerts.length > 0 && !urgentDismissed ? (
         <div className="px-3 pt-3">
-          <AlertBanner tone="danger" title="Alertes actives" onClose={() => setUrgentDismissed(true)}>
+          <AlertBanner
+            tone="danger"
+            title="Alertes actives"
+            onClose={() => setUrgentDismissed(true)}
+          >
             <ul className="space-y-1">
               {urgentAlerts.map((a) => (
                 <li key={a.id} className="flex items-center gap-2">
                   <AlertTriangle className="size-3.5 shrink-0" />
-                  <Link to="/alertes" className="underline-offset-2 hover:underline">
+                  <Link
+                    to="/alertes"
+                    className="underline-offset-2 hover:underline"
+                  >
                     {a.title}
                   </Link>
                   <span className="text-xs opacity-80">· {a.severity}</span>
@@ -216,8 +241,8 @@ function CrisisRoomView() {
       <div className="flex min-h-0 flex-1">
         <aside
           className={cn(
-            'hidden shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-200 lg:flex',
-            leftOpen ? 'w-80' : 'w-12',
+            "hidden shrink-0 flex-col border-r border-line bg-surface transition-[width] duration-200 lg:flex",
+            leftOpen ? "w-80" : "w-12",
           )}
         >
           {leftOpen ? (
@@ -360,8 +385,8 @@ function CrisisRoomView() {
 
         <aside
           className={cn(
-            'hidden shrink-0 border-l border-line bg-surface transition-[width] duration-200 lg:block',
-            rightOpen ? 'w-[26rem]' : 'w-12',
+            "hidden shrink-0 border-l border-line bg-surface transition-[width] duration-200 lg:block",
+            rightOpen ? "w-[26rem]" : "w-12",
           )}
         >
           {rightOpen ? (
@@ -384,7 +409,10 @@ function CrisisRoomView() {
         </aside>
       </div>
 
-      <CreateEventModal open={createOpen} onClose={() => setCreateOpen(false)} />
+      <CreateEventModal
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+      />
     </div>
   );
 }

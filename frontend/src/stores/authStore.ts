@@ -1,8 +1,8 @@
-import { create } from 'zustand';
-import { bindAuthHandlers, apiGet, apiPost } from '@/api/client';
-import type { AuthTokens, SanitizedUser } from '@/types';
+import { create } from "zustand";
+import { bindAuthHandlers, apiPost } from "@/api/client";
+import type { AuthTokens, SanitizedUser } from "@/types";
 
-const REFRESH_KEY = 'madarisk_refresh_token';
+const REFRESH_KEY = "madarisk_refresh_token";
 
 interface AuthState {
   user: SanitizedUser | null;
@@ -26,7 +26,10 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   accessToken: null,
-  refreshToken: typeof localStorage !== 'undefined' ? localStorage.getItem(REFRESH_KEY) : null,
+  refreshToken:
+    typeof localStorage !== "undefined"
+      ? localStorage.getItem(REFRESH_KEY)
+      : null,
   bootstrapped: false,
 
   setSession: (tokens) => {
@@ -52,10 +55,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       return;
     }
     try {
-      const data = await apiPost<AuthTokens>('/auth/refresh', { refreshToken: refresh });
+      const data = await apiPost<AuthTokens>("/auth/refresh", {
+        refreshToken: refresh,
+      });
       get().setSession(data);
-      const me = await apiGet<SanitizedUser>('/auth/me');
-      set({ user: me, bootstrapped: true });
+      set({ user: data.user, bootstrapped: true });
     } catch {
       get().clearSession();
       set({ bootstrapped: true });
@@ -63,19 +67,19 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   login: async (email, password) => {
-    const data = await apiPost<AuthTokens>('/auth/login', { email, password });
+    const data = await apiPost<AuthTokens>("/auth/login", { email, password });
     get().setSession(data);
   },
 
   register: async (payload) => {
-    await apiPost('/auth/register', payload);
+    await apiPost("/auth/register", payload);
   },
 
   logout: async () => {
     const refreshToken = get().refreshToken;
     try {
       if (refreshToken) {
-        await apiPost('/auth/logout', { refreshToken });
+        await apiPost("/auth/logout", { refreshToken });
       }
     } catch {
       // ignore
