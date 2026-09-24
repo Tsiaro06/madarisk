@@ -1,6 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import {
+  Bar,
+  BarChart,
   CartesianGrid,
+  Cell,
   Line,
   LineChart,
   ResponsiveContainer,
@@ -9,7 +12,7 @@ import {
   YAxis,
 } from 'recharts';
 import { Link } from 'react-router-dom';
-import { CloudSun, GitCompare, Radio, Siren } from 'lucide-react';
+import { BarChart3, CloudSun, GitCompare, Radio, Siren } from 'lucide-react';
 import { dashboardApi, weatherApi } from '@/api';
 import { Card } from '@/components/ui/Card';
 import { Spinner } from '@/components/ui/Spinner';
@@ -20,7 +23,17 @@ import { SEVERITY_LABELS, SEVERITY_TONE } from '@/lib/eventMeta';
 import { canManageImports } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
 import { formatDate, formatNumber } from '@/lib/utils';
-import type { SeverityLevel } from '@/types';
+import { RISK_COLORS, RISK_LABELS, type SeverityLevel } from '@/types';
+
+const HISTOGRAM_ORDER: string[] = ['EXTREME', 'ELEVE', 'MODERE', 'FAIBLE', 'SANS_RISQUE'];
+const HISTOGRAM_COLORS: Record<string, string> = {
+  ...RISK_COLORS,
+  SANS_RISQUE: '#94a3b8',
+};
+const HISTOGRAM_LABELS: Record<string, string> = {
+  ...RISK_LABELS,
+  SANS_RISQUE: 'Sans risque',
+};
 
 function syncStatusLabel(status?: string): string {
   if (status === 'FRESH') return 'Fraîches';
@@ -48,6 +61,10 @@ export function DashboardPage() {
     queryKey: ['dashboard', 'timeline'],
     queryFn: () => dashboardApi.eventsTimeline(),
   });
+  const distQ = useQuery({
+    queryKey: ['dashboard', 'risk-distribution'],
+    queryFn: () => dashboardApi.riskDistribution(),
+  });
   const monitoringQ = useQuery({
     queryKey: ['weather', 'monitoring', 'dashboard'],
     queryFn: () => weatherApi.monitoring(),
@@ -57,7 +74,7 @@ export function DashboardPage() {
   if (summaryQ.isLoading) return <Spinner />;
 
   const s = summaryQ.data;
-  const queriesWithError = [summaryQ, timelineQ, monitoringQ].filter((q) => q.isError);
+  const queriesWithError = [summaryQ, timelineQ, distQ, monitoringQ].filter((q) => q.isError);
   const lastUpdatedAt = s?.lastUpdatedAt;
   const staleMinutes =
     typeof lastUpdatedAt === 'string'
@@ -89,6 +106,15 @@ export function DashboardPage() {
   const timeline = (timelineQ.data ?? []).map((e) => ({
     date: e.date.slice(0, 10),
     total: e.total,
+  }));
+
+  const dist = (distQ.data ?? {}) as unknown as Record<string, number>;
+
+  const histogram = HISTOGRAM_ORDER.filter((lvl) => lvl in dist).map((lvl) => ({
+    level: lvl,
+    label: HISTOGRAM_LABELS[lvl] ?? lvl,
+    count: dist[lvl] ?? 0,
+    color: HISTOGRAM_COLORS[lvl] ?? '#94a3b8',
   }));
 
   return (
@@ -232,38 +258,80 @@ export function DashboardPage() {
         </div>
       </div>
 
-      <Card
-        title="Chronologie des événements"
-        description="Volume quotidien sur les 30 derniers jours"
-      >
-        {timeline.length === 0 ? (
-          <EmptyState
-            title="Aucun événement enregistré"
-            description="La chronologie des événements apparaîtra ici."
-            icon={<Radio className="size-6" />}
-            className="py-8"
-          />
-        ) : (
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={timeline}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <Tooltip />
-                <Line
-                  type="monotone"
-                  dataKey="total"
-                  name="Événements"
-                  stroke="#3d7a9a"
-                  strokeWidth={2}
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </Card>
+      <div className="grid gap-5 xl:grid-cols-2">
+        <Card
+          title="Répartition des risques (nationale)"
+          description="Nombre de communes par niveau de risque"
+          actions={
+            <Link to="/?tab=carte" className="text-sm font-medium text-brand hover:underline">
+              Carte →
+            </Link>
+          }
+        >
+          {histogram.every((d) => d.count === 0) ? (
+            <EmptyState
+              title="Aucune évaluation de risque"
+              description="Les communes par niveau de risque apparaîtront ici."
+              icon={<BarChart3 className="size-6" />}
+              className="py-8"
+            />
+          ) : (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={histogram} margin={{ top: 20, right: 8, left: -12, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar
+                    dataKey="count"
+                    name="Communes"
+                    radius={[6, 6, 0, 0]}
+                    label={{ position: 'top', fontSize: 11, fill: '#475569' }}
+                  >
+                    {histogram.map((d) => (
+                      <Cell key={d.level} fill={d.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+
+        <Card
+          title="Chronologie des événements"
+          description="Volume quotidien sur les 30 derniers jours"
+        >
+          {timeline.length === 0 ? (
+            <EmptyState
+              title="Aucun événement enregistré"
+              description="La chronologie des événements apparaîtra ici."
+              icon={<Radio className="size-6" />}
+              className="py-8"
+            />
+          ) : (
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={timeline}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
+                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Line
+                    type="monotone"
+                    dataKey="total"
+                    name="Événements"
+                    stroke="#3d7a9a"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </Card>
+      </div>
     </div>
   );
 }
