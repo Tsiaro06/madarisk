@@ -34,6 +34,7 @@ export function getWeatherStyle(
       weight: 3,
       fillColor: getWeatherColor(metric, value),
       fillOpacity: 0.85,
+      className: "madarisk-commune-pulse",
     };
   }
   if (value == null) {

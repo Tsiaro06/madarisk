@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Database, Info, Settings2, X } from "lucide-react";
+import { Database, Info, MapPinned, Settings2, X } from "lucide-react";
 import { territoriesApi, weatherApi } from "@/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -8,6 +8,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/ui/Toast";
 import { WeatherMap } from "@/components/weather/WeatherMap";
 import { WeatherControls } from "@/components/weather/WeatherControls";
+import { CommuneMapSearch } from "@/components/crisis/CommuneMapSearch";
 import {
   WeatherCommuneDetailsPanel,
   type SelectedCommune,
@@ -36,6 +37,11 @@ export function WeatherMapPage() {
   const [hour, setHour] = useState<number | null>(null);
   const [districtId, setDistrictId] = useState<string>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchFocus, setSearchFocus] = useState<{
+    id: string;
+    nonce: number;
+  } | null>(null);
   const [mobileFilters, setMobileFilters] = useState(false);
   const [mobileDetails, setMobileDetails] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,12 +50,18 @@ export function WeatherMapPage() {
     open: boolean;
     title: string;
     description?: string;
-    variant: 'warning' | 'destructive' | 'primary';
+    variant: "warning" | "destructive" | "primary";
     actionLabel: string;
     onConfirm: () => void;
     contextLabel?: string;
     contextValue?: string;
-  }>({ open: false, title: '', variant: 'warning', actionLabel: '', onConfirm: () => {} });
+  }>({
+    open: false,
+    title: "",
+    variant: "warning",
+    actionLabel: "",
+    onConfirm: () => {},
+  });
   const closeConfirm = () => setConfirmState((s) => ({ ...s, open: false }));
 
   const districtsQ = useQuery({
@@ -143,7 +155,10 @@ export function WeatherMapPage() {
 
   const staleHours =
     typeof lastSyncAt === "string"
-      ? Math.max(0, Math.floor((Date.now() - new Date(lastSyncAt).getTime()) / 3_600_000))
+      ? Math.max(
+          0,
+          Math.floor((Date.now() - new Date(lastSyncAt).getTime()) / 3_600_000),
+        )
       : null;
 
   const layerHadNoData = useRef(true);
@@ -160,6 +175,13 @@ export function WeatherMapPage() {
   const selectCommune = (id: string) => {
     setSelectedId(id);
     setMobileDetails(true);
+  };
+
+  const handleSearchSelect = (id: string) => {
+    setDistrictId("");
+    setSearchOpen(false);
+    selectCommune(id);
+    setSearchFocus((prev) => ({ id, nonce: (prev?.nonce ?? 0) + 1 }));
   };
 
   const handleRefresh = async () => {
@@ -203,7 +225,9 @@ export function WeatherMapPage() {
       );
     } catch (err) {
       toast(
-        err instanceof Error ? err.message : "Échec de la synchronisation météo.",
+        err instanceof Error
+          ? err.message
+          : "Échec de la synchronisation météo.",
         "error",
       );
     } finally {
@@ -216,18 +240,18 @@ export function WeatherMapPage() {
   const requestRefresh = () => {
     if (refreshing || !canRefresh) return;
     const districtName = districtId
-      ? (districtOptions.find((d) => d.value === districtId)?.label ?? '')
-      : '';
+      ? (districtOptions.find((d) => d.value === districtId)?.label ?? "")
+      : "";
     setConfirmState({
       open: true,
       title: districtId
-        ? 'Relancer la synchronisation des observations météo de ce district\u00a0?'
-        : 'Relancer la synchronisation nationale des observations météo\u00a0?',
-      variant: 'warning',
-      actionLabel: 'Confirmer la synchronisation',
+        ? "Relancer la synchronisation des observations météo de ce district\u00a0?"
+        : "Relancer la synchronisation nationale des observations météo\u00a0?",
+      variant: "warning",
+      actionLabel: "Confirmer la synchronisation",
       onConfirm: () => void handleRefresh(),
-      contextLabel: districtId ? 'District' : 'Territoire',
-      contextValue: districtId ? districtName : 'National',
+      contextLabel: districtId ? "District" : "Territoire",
+      contextValue: districtId ? districtName : "National",
     });
   };
 
@@ -293,6 +317,13 @@ export function WeatherMapPage() {
             </span>
           </div>
           <WeatherModeBadge mode={mode} />
+          <Button
+            variant={searchOpen ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setSearchOpen((v) => !v)}
+          >
+            <MapPinned className="size-4" /> Commune
+          </Button>
           <RefreshDataButton
             queryKey={["weather", "map-layer", "page"]}
             onRefresh={() => void qc.refetchQueries({ queryKey: ["weather"] })}
@@ -332,24 +363,33 @@ export function WeatherMapPage() {
               pointByCommune={weather.pointByCommune}
               metric={metric}
               selectedCommuneId={selectedId}
+              focusTarget={searchFocus}
               onSelectCommune={selectCommune}
             />
           )}
 
+          {searchOpen ? (
+            <div className="absolute left-3 top-3 z-[600]">
+              <CommuneMapSearch onSelect={handleSearchSelect} />
+            </div>
+          ) : null}
+
           {weather.query.isError ? (
             <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-red-300 bg-red-50/95 px-3 py-2 text-sm text-red-800 shadow-sm">
-              Impossible de charger la couche météo pour ces paramètres. Vérifiez la
-              connexion ou réessayez dans quelques minutes.
+              Impossible de charger la couche météo pour ces paramètres.
+              Vérifiez la connexion ou réessayez dans quelques minutes.
             </div>
           ) : staleHours !== null && staleHours >= 24 ? (
             <div className="absolute left-1/2 top-3 z-30 w-[min(30rem,90vw)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 px-3 py-2 text-sm text-amber-800 shadow-sm">
-              Données météo potentiellement périmées : dernière synchronisation des
-              observations il y a {staleHours} h. Lancez un rafraîchissement pour actualiser.
+              Données météo potentiellement périmées : dernière synchronisation
+              des observations il y a {staleHours} h. Lancez un rafraîchissement
+              pour actualiser.
             </div>
           ) : forecastUnavailable ? (
             <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 px-3 py-2 text-sm text-amber-800 shadow-sm">
               Prévisions momentanément indisponibles : la limite de requêtes
-              Open-Meteo est atteinte. Réessai automatique dans quelques minutes.
+              Open-Meteo est atteinte. Réessai automatique dans quelques
+              minutes.
             </div>
           ) : noDataForHistory || noDataForObservation ? (
             <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-sky-300 bg-sky-50/95 px-3 py-2 text-sm text-sky-800 shadow-sm">

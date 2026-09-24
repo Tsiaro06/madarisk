@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { GeoJSON, MapContainer, TileLayer, useMap } from "react-leaflet";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { Layer, LeafletMouseEvent } from "leaflet";
@@ -17,6 +17,7 @@ interface WeatherMapProps {
   pointByCommune: Map<string, WeatherMapFeatureProperties>;
   metric: WeatherMetric;
   selectedCommuneId: string | null;
+  focusTarget?: { id: string; nonce: number } | null;
   onSelectCommune: (communeId: string, communeName: string) => void;
 }
 
@@ -46,6 +47,43 @@ function FitBounds({ data }: { data: FeatureCollection }) {
   return null;
 }
 
+function FlyToCommune({
+  data,
+  target,
+}: {
+  data: FeatureCollection;
+  target: { id: string; nonce: number } | null;
+}) {
+  const map = useMap();
+  const last = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!target || last.current === target.nonce) return;
+    if (!data.features?.length) return;
+    const feature = data.features.find((f: Feature) => {
+      const props = (f.properties ?? {}) as Record<string, unknown>;
+      return featureId(props) === target.id;
+    });
+    if (!feature) return;
+    last.current = target.nonce;
+    try {
+      const layer = L.geoJSON(feature as GeoJSON.GeoJsonObject);
+      const bounds = layer.getBounds();
+      if (bounds.isValid()) {
+        map.flyToBounds(bounds, {
+          padding: [60, 60],
+          maxZoom: 11,
+          duration: 0.9,
+        });
+      }
+    } catch {
+      // géométrie invalide : on ignore
+    }
+  }, [target, data, map]);
+
+  return null;
+}
+
 function baseWeight(isSelected: boolean): number {
   return isSelected ? 3 : 1;
 }
@@ -55,6 +93,7 @@ export function WeatherMap({
   pointByCommune,
   metric,
   selectedCommuneId,
+  focusTarget = null,
   onSelectCommune,
 }: WeatherMapProps) {
   const collection = useMemo<FeatureCollection>(
@@ -134,6 +173,10 @@ export function WeatherMap({
 
         {collection.features.length > 0 ? (
           <FitBounds data={collection} />
+        ) : null}
+
+        {focusTarget ? (
+          <FlyToCommune data={collection} target={focusTarget} />
         ) : null}
       </MapContainer>
 
