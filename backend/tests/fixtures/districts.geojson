@@ -1,0 +1,16 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "nom": "Maroantsetra",
+        "code": ""
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [49.7167, -15.4333]
+      }
+    }
+  ]
+}

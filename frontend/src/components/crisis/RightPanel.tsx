@@ -1,0 +1,669 @@
+import { useState, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  Bar,
+  CartesianGrid,
+  ComposedChart,
+  Line,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import {
+  AlertTriangle,
+  ArrowRight,
+  CloudSun,
+  Droplets,
+  ExternalLink,
+  FileDown,
+  Gauge,
+  MapPin,
+  MousePointerClick,
+  PanelRightClose,
+  RefreshCw,
+  Thermometer,
+  Wind,
+} from 'lucide-react';
+import { risksApi, weatherApi, reportsApi } from '@/api';
+import { ApiClientError } from '@/api/client';
+import type {
+  CommuneDetail,
+  EventStatus,
+  EventType,
+  ExposedCommuneInfo,
+  RiskAssessment,
+  RiskPhase,
+  WeatherForecastData,
+  WeatherObservation,
+} from '@/types';
+import { RISK_COLORS, RISK_LABELS } from '@/types';
+import {
+  EVENT_STATUS_LABELS,
+  EVENT_STATUS_TONE,
+  EVENT_TYPE_LABELS,
+  EVENT_TYPE_TONE,
+  PHASES,
+  PHASE_LABELS,
+} from '@/lib/eventMeta';
+import {
+  buildForecastDays,
+  buildHistoryDays,
+  exposureDataLabel,
+  exposureSourceLabel,
+} from '@/lib/crisisData';
+import { canManageOps } from '@/lib/roles';
+import { useAuthStore } from '@/stores/authStore';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Select } from '@/components/ui/Select';
+import { Spinner } from '@/components/ui/Spinner';
+import { useToast } from '@/components/ui/Toast';
+import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
+import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
+import { formatDate, formatNumber } from '@/lib/utils';
+
+interface RightPanelProps {
+  communeId: string | null;
+  detail: CommuneDetail | null;
+  detailLoading: boolean;
+  hasEvent: boolean;
+  exposure: ExposedCommuneInfo | null;
+  onClose: () => void;
+  onSelectEvent: (id: string) => void;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function StatItem({ label, value, unit }: { label: string; value: string | number | null; unit?: string }) {
+  return (
+    <div className="rounded-lg border border-line bg-gray-50 px-3 py-2.5">
+      <p className="text-[10px] uppercase tracking-wide text-muted">{label}</p>
+      <p className="mt-0.5 text-sm font-semibold text-ink">
+        {value == null || value === '' ? '—' : `${value}${unit ? ` ${unit}` : ''}`}
+      </p>
+    </div>
+  );
+}
+
+interface FactorBarProps {
+  label: string;
+  value: number;
+  color: string;
+}
+
+function FactorBar({ label, value, color }: FactorBarProps) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-muted">{label}</span>
+        <span className="font-semibold text-ink">{formatNumber(Math.round(value))}</span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-gray-100">
+        <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.max(0, value))}%`, background: color }} />
+      </div>
+    </div>
+  );
+}
+
+export function RightPanel({
+  communeId,
+  detail,
+  detailLoading,
+  hasEvent,
+  exposure,
+  onClose,
+  onSelectEvent,
+}: RightPanelProps) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const role = useAuthStore((s) => s.user?.role);
+  const canOps = canManageOps(role);
+  const [recalcPhase, setRecalcPhase] = useState<RiskPhase>('PENDANT');
+  const [confirmState, setConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    description?: string;
+    variant: 'warning' | 'destructive' | 'primary';
+    actionLabel: string;
+    onConfirm: () => void;
+    contextLabel?: string;
+    contextValue?: string;
+  }>({ open: false, title: '', variant: 'warning', actionLabel: '', onConfirm: () => {} });
+  const closeConfirm = () => setConfirmState((s) => ({ ...s, open: false }));
+
+  const latestQ = useQuery<WeatherObservation | null>({
+    queryKey: ['weather', 'latest', communeId],
+    queryFn: async () => {
+      if (!communeId) return null;
+      try {
+        return await weatherApi.latest(communeId);
+      } catch (err) {
+        if (err instanceof ApiClientError && err.status === 404) return null;
+        throw err;
+      }
+    },
+    enabled: Boolean(communeId),
+  });
+
+  const forecastQ = useQuery<WeatherForecastData | null>({
+    queryKey: ['weather', 'forecast', communeId],
+    queryFn: async () => {
+      if (!communeId) return null;
+      try {
+        return await weatherApi.forecast(communeId);
+      } catch (err) {
+        if (err instanceof ApiClientError && (err.status === 502 || err.status === 503)) return null;
+        throw err;
+      }
+    },
+    enabled: Boolean(communeId),
+  });
+
+  const historyQ = useQuery<WeatherObservation[]>({
+    queryKey: ['weather', 'history', communeId],
+    queryFn: async () => {
+      if (!communeId) return [];
+      try {
+        const res = await weatherApi.history(communeId, {
+          page: 1,
+          limit: 100,
+          dateFrom: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+        return res.data;
+      } catch (err) {
+        if (err instanceof ApiClientError) return [];
+        throw err;
+      }
+    },
+    enabled: Boolean(communeId),
+  });
+
+  const riskQ = useQuery<RiskAssessment | null>({
+    queryKey: ['risks-commune', communeId],
+    queryFn: () => (communeId ? risksApi.commune(communeId, { latest: true }) : null),
+    enabled: Boolean(communeId) && hasEvent,
+  });
+
+  const refreshM = useMutation({
+    mutationFn: () => weatherApi.refresh({ communeIds: [communeId] }),
+    onSuccess: () => {
+      toast('Données météo actualisées', 'success');
+      void qc.invalidateQueries({ queryKey: ['weather', 'latest', communeId] });
+      void qc.invalidateQueries({ queryKey: ['weather', 'forecast', communeId] });
+      void qc.invalidateQueries({ queryKey: ['commune-detail', communeId] });
+      void qc.invalidateQueries({ queryKey: ['weather', 'map-layer'] });
+      closeConfirm();
+    },
+    onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur météo', 'error'),
+  });
+
+  const recalcM = useMutation({
+    mutationFn: () => risksApi.recalculate({ phase: recalcPhase, communeIds: [communeId] }),
+    onSuccess: () => {
+      toast('Risque recalculé', 'success');
+      void qc.invalidateQueries({ queryKey: ['risks-commune', communeId] });
+      void qc.invalidateQueries({ queryKey: ['commune-detail', communeId] });
+      void qc.invalidateQueries({ queryKey: ['risks', 'map-layer'] });
+      closeConfirm();
+    },
+    onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur recalcul', 'error'),
+  });
+
+  const refreshWeather = () => {
+    setConfirmState({
+      open: true,
+      title: 'Relancer la synchronisation des observations de cette commune\u00a0?',
+      variant: 'warning',
+      actionLabel: 'Confirmer la synchronisation',
+      onConfirm: () => refreshM.mutate(),
+      contextLabel: 'Commune',
+      contextValue: detail?.commune?.name ?? '',
+    });
+  };
+
+  const recalcRisk = () => {
+    setConfirmState({
+      open: true,
+      title: `Relancer le calcul des risques pour cette commune et cette phase (${recalcPhase})\u00a0?`,
+      variant: 'warning',
+      actionLabel: 'Confirmer le recalcul',
+      contextLabel: 'Commune',
+      contextValue: detail?.commune?.name ?? '',
+      onConfirm: () => recalcM.mutate(),
+    });
+  };
+
+  const exportM = useMutation({
+    mutationFn: () =>
+      reportsApi.exportCsv({ resourceType: 'communes', communeId: communeId ?? '' }),
+    onSuccess: () => {
+      toast('Export CSV généré', 'success');
+      downloadBlob(exportM.data ?? new Blob(), `commune-${communeId ?? ''}.csv`);
+    },
+    onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur export', 'error'),
+  });
+
+  if (!communeId) {
+    return (
+      <div className="flex h-full flex-col">
+        <PanelHeader onClose={onClose}>
+          <p className="font-display text-base text-ink">Détails commune</p>
+        </PanelHeader>
+        <EmptyState
+          className="m-3 flex-1"
+          icon={<MousePointerClick className="size-6" />}
+          title="Sélectionnez une commune"
+          description="Cliquez sur une commune sur la carte ou cherchez-la dans le panneau de gauche pour voir ses détails."
+        />
+      </div>
+    );
+  }
+
+  if (detailLoading) {
+    return (
+      <div className="flex h-full flex-col">
+        <PanelHeader onClose={onClose}>
+          <p className="font-display text-base text-ink">Détails commune</p>
+        </PanelHeader>
+        <Spinner label="Chargement de la commune…" />
+      </div>
+    );
+  }
+
+  if (!detail) {
+    return (
+      <div className="flex h-full flex-col">
+        <PanelHeader onClose={onClose}>
+          <p className="font-display text-base text-ink">Détails commune</p>
+        </PanelHeader>
+        <EmptyState className="m-3 flex-1" title="Commune introuvable" />
+      </div>
+    );
+  }
+
+  const c = detail.commune;
+  const latest = latestQ.data;
+  const forecast = forecastQ.data;
+  const forecastDays = buildForecastDays(forecast);
+  const historyDays = buildHistoryDays(historyQ.data ?? []);
+  const risk = hasEvent ? riskQ.data : null;
+  const riskLevel = hasEvent ? (risk?.riskLevel ?? detail.risk?.riskLevel) : null;
+
+  const weatherMetrics = latest
+    ? [
+        { label: 'Température', value: latest.temperatureC, unit: '°C', icon: <Thermometer className="size-4 text-accent" /> },
+        { label: 'Pluie', value: latest.precipitationMm, unit: 'mm', icon: <Droplets className="size-4 text-muted" /> },
+        { label: 'Pluie 24h', value: latest.rainfall24hMm, unit: 'mm', icon: <Droplets className="size-4 text-accent" /> },
+        { label: 'Vent', value: latest.windSpeedKmh, unit: 'km/h', icon: <Wind className="size-4 text-muted" /> },
+        { label: 'Humidité', value: latest.humidityPercent, unit: '%', icon: <Gauge className="size-4 text-muted" /> },
+        { label: 'Pression', value: latest.pressureHpa, unit: 'hPa', icon: <Gauge className="size-4 text-accent" /> },
+      ]
+    : [];
+
+  return (
+    <div className="flex h-full flex-col">
+      <PanelHeader onClose={onClose}>
+        <div className="min-w-0">
+          <p className="truncate font-display text-base text-ink leading-tight">{c.name}</p>
+          <p className="text-xs text-muted">
+            {c.adminCode}
+            {detail.district ? ` · ${detail.district.name}` : ''}
+          </p>
+        </div>
+      </PanelHeader>
+
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+        {/* En-tête risque */}
+        {hasEvent ? (
+          <div className="flex items-center justify-between gap-2 rounded-xl border border-line bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2">
+              <span
+                className="size-3.5 rounded-full ring-2 ring-white/60"
+                style={{ background: riskLevel ? RISK_COLORS[riskLevel] : '#94a3b8' }}
+              />
+              <div>
+                <p className="text-xs text-muted">Risque actuel</p>
+                <p className="text-lg font-semibold text-ink" style={{ color: riskLevel ? RISK_COLORS[riskLevel] : undefined }}>
+                  {riskLevel ? RISK_LABELS[riskLevel] : 'Non évalué'}
+                </p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted">Score</p>
+              <p className="font-display text-xl text-ink">{formatNumber(risk?.riskScore ?? detail.risk?.riskScore)}</p>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Résumé */}
+        <Card className="!p-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <StatItem label="Population" value={formatNumber(c.population)} />
+            <StatItem label="Événements liés" value={detail.events.length} />
+            <StatItem label="Vulnérabilité" value={formatNumber(c.vulnerabilityScore)} />
+          </div>
+        </Card>
+
+        {/* Exposition */}
+        {hasEvent ? (
+          <Card title="Exposition à l'événement" className="!p-4">
+            {exposure ? (
+              <>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                  <StatItem
+                    label="Population exposée"
+                    value={exposure.exposedPopulation != null ? formatNumber(exposure.exposedPopulation) : null}
+                  />
+                  <StatItem
+                    label="Distance trajectoire"
+                    value={exposure.distanceToTrackKm != null ? formatNumber(exposure.distanceToTrackKm) : null}
+                    unit="km"
+                  />
+                  <StatItem
+                    label="Recouvrement"
+                    value={exposure.overlapPercent != null ? formatNumber(exposure.overlapPercent) : null}
+                    unit="%"
+                  />
+                </div>
+                {exposure.isInsideInfluenceArea ? (
+                  <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-muted">
+                    <MapPin className="size-3.5" /> Dans la zone d&apos;influence
+                  </p>
+                ) : null}
+                <p className="mt-2 text-[11px] text-muted">
+                  {exposureSourceLabel(exposure.sourceType) ?? 'Source d\'exposition inconnue'}
+                  {exposureDataLabel(exposure.dataType) ? ` · ${exposureDataLabel(exposure.dataType)}` : ''}
+                  {exposure.updatedAt ? ` · Maj. ${formatDate(exposure.updatedAt)}` : ''}
+                </p>
+              </>
+            ) : (
+              <p className="flex items-center gap-1.5 text-sm text-muted">
+                <MapPin className="size-4" />
+                Cette commune n&apos;est pas exposée à l&apos;événement sélectionné.
+              </p>
+            )}
+          </Card>
+        ) : null}
+
+        {/* Météo */}
+        <Card title="Météo" className="!p-4">
+          {latestQ.isLoading || forecastQ.isLoading ? (
+            <Spinner label="Chargement météo…" />
+          ) : latest ? (
+            <>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                {weatherMetrics.map((m) => (
+                  <StatItem key={m.label} label={m.label} value={m.value} unit={m.unit} />
+                ))}
+              </div>
+              <p className="mt-2 text-right text-[11px] text-muted">
+                Observé le {formatDate(latest.observedAt)}
+              </p>
+            </>
+          ) : (
+            <p className="text-sm text-muted">
+              <CloudSun className="mr-1 inline size-4" />
+              Aucune observation météo enregistrée pour cette commune.
+            </p>
+          )}
+
+          {forecastDays.length > 0 ? (
+            <div className="mt-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                Prévisions (température / précipitations)
+              </p>
+              <div className="h-40">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={forecastDays} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                    <YAxis yAxisId="temp" tick={{ fontSize: 10 }} domain={['auto', 'auto']} width={26} />
+                    <YAxis yAxisId="precip" orientation="right" tick={{ fontSize: 10 }} width={26} />
+                    <Tooltip />
+                    <Bar
+                      yAxisId="precip"
+                      dataKey="precip"
+                      name="Précip. (mm)"
+                      fill="#38bdf8"
+                      radius={[3, 3, 0, 0]}
+                      barSize={14}
+                    />
+                    <Line
+                      yAxisId="temp"
+                      type="monotone"
+                      dataKey="tempMax"
+                      name="Max °C"
+                      stroke="#5a7d90"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      yAxisId="temp"
+                      type="monotone"
+                      dataKey="tempMin"
+                      name="Min °C"
+                      stroke="#d97706"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              {forecast && <p className="mt-1 text-right text-[11px] text-muted">Fuseau {forecast.timezone}</p>}
+            </div>
+          ) : forecast ? null : null}
+
+          {historyDays.length > 0 ? (
+            <div className="mt-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                Évolution observée (7 derniers jours)
+              </p>
+              <div className="h-36">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={historyDays} margin={{ top: 5, right: 5, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                    <YAxis yAxisId="temp" tick={{ fontSize: 10 }} domain={['auto', 'auto']} width={26} />
+                    <YAxis yAxisId="precip" orientation="right" tick={{ fontSize: 10 }} width={26} />
+                    <Tooltip />
+                    <Bar
+                      yAxisId="precip"
+                      dataKey="precip"
+                      name="Précip. (mm)"
+                      fill="#60a5fa"
+                      radius={[3, 3, 0, 0]}
+                      barSize={12}
+                    />
+                    <Line
+                      yAxisId="temp"
+                      type="monotone"
+                      dataKey="tempMax"
+                      name="Max °C"
+                      stroke="#5a7d90"
+                      strokeWidth={2}
+                      dot={false}
+                    />
+                    <Line
+                      yAxisId="temp"
+                      type="monotone"
+                      dataKey="tempMin"
+                      name="Min °C"
+                      stroke="#d97706"
+                      strokeWidth={1.5}
+                      dot={false}
+                    />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+              <p className="mt-1 text-right text-[11px] text-muted">Source : observations locales</p>
+            </div>
+          ) : null}
+
+          <AdministrativeInterventionPanel compact className="mt-3">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={refreshWeather}
+              loading={refreshM.isPending}
+            >
+              <RefreshCw className="size-3.5" /> Relancer la synchronisation de cette commune
+            </Button>
+            <p className="text-xs text-muted">
+              Relance la collecte des observations météo pour cette commune (collecte normalement
+              automatique).
+            </p>
+          </AdministrativeInterventionPanel>
+        </Card>
+
+        {/* Risque détaillé */}
+        {hasEvent ? (
+          <Card title="Évaluation du risque" className="!p-4">
+            {riskQ.isLoading ? (
+              <Spinner label="Chargement du risque…" />
+            ) : risk ? (
+              <>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge tone="brand">Phase : {PHASE_LABELS[risk.phase] ?? risk.phase}</Badge>
+                  <span className="text-[11px] text-muted">
+                    Évalué le {formatDate(risk.assessedAt)} · modèle {risk.modelVersion}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  <FactorBar label="Pluie" value={risk.factors.rainScore} color="#22c55e" />
+                  <FactorBar label="Vent" value={risk.factors.windScore} color="#38bdf8" />
+                  <FactorBar label="Proximité" value={risk.factors.proximityScore} color="#f97316" />
+                  <FactorBar label="Vulnérabilité" value={risk.factors.vulnerabilityScore} color="#8b5cf6" />
+                  <FactorBar label="Exposition" value={risk.factors.exposureScore} color="#ef4444" />
+                </div>
+                {risk.explanation.length > 0 ? (
+                  <ul className="mt-3 space-y-1">
+                    {risk.explanation.map((line, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-xs text-muted">
+                        <ArrowRight className="mt-0.5 size-3 shrink-0 text-muted" />
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </>
+            ) : (
+              <p className="flex items-center gap-1.5 text-sm text-muted">
+                <AlertTriangle className="size-4" />
+                Aucune évaluation de risque enregistrée.
+              </p>
+            )}
+            <AdministrativeInterventionPanel compact className="mt-3">
+              <div className="flex items-end gap-2">
+                <Select
+                  label="Phase"
+                  value={recalcPhase}
+                  onChange={(e) => setRecalcPhase(e.target.value as RiskPhase)}
+                  options={PHASES.map((p) => ({ value: p, label: PHASE_LABELS[p] }))}
+                  className="flex-1 [&>select]:h-9"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={recalcRisk}
+                  loading={recalcM.isPending}
+                >
+                  Relancer le calcul des risques
+                </Button>
+              </div>
+            </AdministrativeInterventionPanel>
+          </Card>
+        ) : null}
+
+        {/* Événements liés */}
+        <Card title="Événements liés" className="!p-4">
+          {detail.events.length === 0 ? (
+            <p className="text-sm text-muted">Aucun événement ne touche cette commune pour l’instant.</p>
+          ) : (
+            <ul className="space-y-2">
+              {detail.events.map((ev) => (
+                <li key={ev.id} className="rounded-lg border border-line bg-gray-50 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[11px] text-muted">{ev.eventCode}</span>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" onClick={() => onSelectEvent(ev.id)}>
+                        <MapPin className="size-3.5" /> Activer
+                      </Button>
+                      <Link to={`/evenements/${ev.id}`}>
+                        <Button size="sm" variant="ghost" aria-label={`Ouvrir ${ev.name}`}>
+                          <ExternalLink className="size-3.5" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                  <p className="mt-0.5 text-sm font-medium text-ink">{ev.name}</p>
+                  <div className="mt-1 flex flex-wrap gap-1.5">
+                    <Badge tone={EVENT_STATUS_TONE[ev.status as EventStatus]}>
+                      {EVENT_STATUS_LABELS[ev.status as EventStatus] ?? ev.status}
+                    </Badge>
+                    <Badge tone={EVENT_TYPE_TONE[ev.type as EventType]}>
+                      {EVENT_TYPE_LABELS[ev.type as EventType] ?? ev.type}
+                    </Badge>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        {/* Actions */}
+        <div className="grid grid-cols-1 gap-2 border-t border-line pt-4">
+          <Link to={`/territoires/communes/${c.id}`}>
+            <Button variant="secondary" className="w-full">
+              <ExternalLink className="size-4" /> Fiche complète de la commune
+            </Button>
+          </Link>
+          {canOps ? (
+            <Button variant="outline" onClick={() => exportM.mutate()} loading={exportM.isPending}>
+              <FileDown className="size-4" /> Exporter en CSV
+            </Button>
+          ) : null}
+        </div>
+      </div>
+      <AdministrativeActionConfirmDialog
+        open={confirmState.open}
+        onOpenChange={(open) => setConfirmState((s) => ({ ...s, open }))}
+        title={confirmState.title}
+        description={confirmState.description}
+        variant={confirmState.variant}
+        actionLabel={confirmState.actionLabel}
+        isPending={refreshM.isPending || recalcM.isPending}
+        onConfirm={confirmState.onConfirm}
+        contextLabel={confirmState.contextLabel}
+        contextValue={confirmState.contextValue}
+      />
+    </div>
+  );
+}
+
+function PanelHeader({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+  return (
+    <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2.5">
+      <div className="min-w-0 flex-1">{children}</div>
+      <button
+        type="button"
+        onClick={onClose}
+        className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-muted transition hover:bg-canvas hover:text-ink"
+        aria-label="Réduire le panneau détails"
+        title="Réduire"
+      >
+        <PanelRightClose className="size-4" />
+      </button>
+    </div>
+  );
+}
