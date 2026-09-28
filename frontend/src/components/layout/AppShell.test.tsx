@@ -62,7 +62,7 @@ describe('AppShell — icône du navbar', () => {
     const aside = container.querySelector('aside');
     const toggle = screen.getByRole('button', { name: 'Masquer le menu latéral' });
 
-    expect(aside).toHaveClass('lg:grid-cols-[272px_1fr]', { exact: false });
+    expect(container.firstElementChild).toHaveClass('lg:grid-cols-[272px_1fr]', { exact: false });
     expect(screen.getByRole('navigation', { name: 'Navigation principale' })).toBeInTheDocument();
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(aside).not.toHaveAttribute('inert');
