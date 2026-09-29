@@ -35,6 +35,54 @@ import type {
 import type { DemoScenarioState, DemoStep } from "@/types/demo";
 import type { FeatureCollection } from "geojson";
 
+export interface ImportListItem {
+  id: string;
+  fileName?: string;
+  fileType?: string;
+  territoryType?: string;
+  status?: string;
+  sourceName?: string;
+  createdAt?: string;
+}
+
+export interface ImportErrorListItem {
+  id: string;
+  line?: number;
+  message?: string;
+}
+
+export interface MatchingListItem {
+  id: string;
+  status?: string;
+  sourceName?: string;
+  targetName?: string;
+  confidence?: number;
+  createdAt?: string;
+}
+
+export interface RiskConfiguration {
+  id: string;
+  name?: string;
+  isActive?: boolean;
+  createdAt?: string;
+  rainWeight?: number;
+  windWeight?: number;
+  proximityWeight?: number;
+  vulnerabilityWeight?: number;
+  exposureWeight?: number;
+  lowThreshold?: number;
+  moderateThreshold?: number;
+  highThreshold?: number;
+  extremeThreshold?: number;
+}
+
+export interface ReportListItem {
+  id: string;
+  name?: string;
+  type?: string;
+  createdAt?: string;
+}
+
 export const authApi = {
   login: (email: string, password: string) =>
     apiPost<AuthTokens>("/auth/login", { email, password }),
@@ -81,6 +129,31 @@ export const territoriesApi = {
     apiGet<FeatureCollection>("/territories/map/districts", { params }),
   mapCommunes: (params?: Record<string, string | undefined>) =>
     apiGet<FeatureCollection>("/territories/map/communes", { params }),
+};
+
+export const importsApi = {
+  list: (params?: Record<string, string | number | undefined>) =>
+    apiGetPage<ImportListItem[]>("/imports", { params }),
+  get: (id: string) => apiGet<ImportListItem>(`/imports/${id}`),
+  upload: (form: FormData) => apiPost<ImportListItem>("/imports", form),
+  errors: (
+    id: string,
+    params?: Record<string, string | number | undefined>,
+  ) =>
+    apiGetPage<ImportErrorListItem[]>(`/imports/${id}/errors`, {
+      params,
+    }),
+};
+
+export const matchingApi = {
+  list: (params?: Record<string, string | number | undefined>) =>
+    apiGetPage<MatchingListItem[]>("/matching", { params }),
+  statistics: () => apiGet<Record<string, number>>("/matching/statistics"),
+  run: (importId: string) => apiPost<{ id: string }>(`/matching/run/${importId}`),
+  approve: (id: string) => apiPost<MatchingListItem>(`/matching/${id}/approve`),
+  reject: (id: string, notes: string) =>
+    apiPost<MatchingListItem>(`/matching/${id}/reject`, { notes }),
+  manualLink: (body: unknown) => apiPost<{ id: string }>("/matching/manual-link", body),
 };
 
 export const eventsApi = {
@@ -187,13 +260,24 @@ export const risksApi = {
   mapLayer: (params?: Record<string, string | undefined>) =>
     apiGet<FeatureCollection>("/risks/map-layer", { params }),
   recalculate: (body: unknown) => apiPost("/risks/recalculate", body),
+  configurations: () => apiGet<RiskConfiguration[]>("/risk-configurations"),
+  configuration: (id: string) => apiGet<RiskConfiguration>(`/risk-configurations/${id}`),
+  createConfiguration: (body: unknown) =>
+    apiPost<RiskConfiguration>("/risk-configurations", body),
+  updateConfiguration: (id: string, body: unknown) =>
+    apiPatch<RiskConfiguration>(`/risk-configurations/${id}`, body),
 };
 
 export const reportsApi = {
   event: (eventId: string) => apiGet<EventBilan>(`/reports/events/${eventId}`),
+  dashboard: (params?: Record<string, string | undefined>) =>
+    apiGet(`/reports/dashboard`, { params }),
   exportCsv: (body: unknown) => apiBlob("/reports/export/csv", body),
   exportGeoJson: (body: unknown) => apiBlob("/reports/export/geojson", body),
   exportPdf: (body: unknown) => apiBlob("/reports/export/pdf", body),
+  list: (params?: Record<string, string | number | undefined>) =>
+    apiGetPage<ReportListItem[]>("/reports", { params }),
+  download: (id: string) => apiBlob(`/reports/${id}/download`, undefined, "GET"),
 };
 
 export const aiApi = {

@@ -28,7 +28,7 @@ export function MatchingPage() {
 
   const listQ = useQuery({
     queryKey: ['matching', page],
-    queryFn: () => matchingApi.list({ page, limit: 15, status: 'PENDING' }),
+    queryFn: () => matchingApi.list({ page, limit: 15, status: 'EN_ATTENTE' }),
   });
 
   const statsQ = useQuery({

@@ -17,6 +17,12 @@
   --color-brand: #3d7a9a;
   --color-brand-deep: #2f5f78;
   --color-brand-soft: #eef3f6;
+  /* Accent cyan de l'interface de connexion (balayage radar, données SIG). */
+  --color-turquoise: #3ec9d6;
+  /* Bleu nuit du panneau de connexion : volontairement hors du basculement
+     clair/sombre, le panneau reste toujours sombre pour garantir le contraste. */
+  --color-nuit: #0a1a28;
+  --color-nuit-deep: #06121c;
   --color-accent: #c4922a;
   --color-ink: #1e293b;
   --color-muted: #64748b;
@@ -86,27 +92,7 @@ h3 {
   z-index: 0;
 }
 
-/* Login — animations météo (tons adoucis) */
-@keyframes login-drift {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1);
-  }
-  50% {
-    transform: translate3d(4%, -3%, 0) scale(1.06);
-  }
-}
-
-@keyframes login-drift-alt {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0) scale(1.05);
-  }
-  50% {
-    transform: translate3d(-5%, 4%, 0) scale(1);
-  }
-}
-
+/* Login — entrées en matière et balayage « radar » du panneau cartographique. */
 @keyframes login-rise {
   from {
     opacity: 0;
@@ -127,65 +113,66 @@ h3 {
   }
 }
 
-@keyframes login-shimmer {
+@keyframes login-sweep {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes login-beacon {
   0% {
-    background-position: 0% 50%;
+    opacity: 0.5;
+    transform: scale(0.55);
   }
+  70%,
   100% {
-    background-position: 100% 50%;
+    opacity: 0;
+    transform: scale(2.4);
   }
-}
-
-@keyframes login-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
-}
-
-.login-orb {
-  position: absolute;
-  border-radius: 9999px;
-  filter: blur(56px);
-  will-change: transform;
-  animation: login-drift 18s ease-in-out infinite;
-}
-
-.login-orb-alt {
-  animation: login-drift-alt 22s ease-in-out infinite;
 }
 
 .login-rise {
   animation: login-rise 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-.login-float {
-  animation: login-float 5s ease-in-out infinite;
-}
-
-.login-panel-glow {
-  background: linear-gradient(145deg, #3d7a9a 0%, #4a8aab 45%, #2f5f78 100%);
-  background-size: 180% 180%;
-  animation: login-shimmer 14s ease infinite alternate;
-}
-
-.login-sky {
-  background:
-    radial-gradient(
-      ellipse 80% 60% at 18% 8%,
-      rgba(148, 180, 198, 0.28),
-      transparent 55%
-    ),
-    radial-gradient(
-      ellipse 70% 50% at 88% 82%,
-      rgba(61, 122, 154, 0.12),
-      transparent 50%
-    ),
-    linear-gradient(165deg, #f3f6f8 0%, #eef2f5 50%, #e8eef2 100%);
+.login-fade {
   animation: login-fade 0.8s ease both;
+}
+
+/* Panneau gauche de la page de connexion : fond bleu nuit + halos cyan.
+   Toujours sombre (indépendant du thème clair/sombre) pour tenir le contraste
+   du texte blanc par-dessus l'illustration. */
+.login-panel {
+  background:
+    radial-gradient(ellipse 80% 60% at 76% 10%, rgba(62, 201, 214, 0.18), transparent 60%),
+    radial-gradient(ellipse 70% 55% at 8% 92%, rgba(47, 95, 120, 0.6), transparent 62%),
+    linear-gradient(165deg, #0d2437 0%, var(--color-nuit) 48%, var(--color-nuit-deep) 100%);
+}
+
+/* Voile sombre posé sur l'illustration pour garantir un ratio de contraste
+   suffisant avec le texte blanc. */
+.login-panel-veil {
+  background: linear-gradient(
+    180deg,
+    rgba(6, 18, 28, 0.42) 0%,
+    rgba(6, 18, 28, 0.58) 52%,
+    rgba(6, 18, 28, 0.82) 100%
+  );
+}
+
+.login-sweep {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: login-sweep 9s linear infinite;
+}
+
+.login-beacon {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: login-beacon 2.8s ease-out infinite;
 }
 
 /* Carte météo — commune sélectionnée (recherche) : clignotement */
@@ -319,12 +306,10 @@ h3 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .login-orb,
-  .login-orb-alt,
   .login-rise,
-  .login-float,
-  .login-panel-glow,
-  .login-sky,
+  .login-fade,
+  .login-sweep,
+  .login-beacon,
   .madarisk-commune-pulse,
   .navbar-menu {
     animation: none !important;
