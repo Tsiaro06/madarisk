@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import {
   CircleMarker,
   GeoJSON,
@@ -11,7 +11,7 @@ import { Link } from 'react-router-dom';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { Layer } from 'leaflet';
 import L from 'leaflet';
-import { Layers, LocateFixed, RefreshCw, Snowflake } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronUp, Layers, LocateFixed, RefreshCw, Snowflake } from 'lucide-react';
 import type { EventListItem, EventTrack } from '@/types';
 import { RISK_COLORS, RISK_LABELS } from '@/types';
 import { RISK_LEVELS } from '@/lib/eventMeta';
@@ -98,41 +98,107 @@ function CrisisMapOverlay({ children, position }: { children: ReactNode; positio
   );
 }
 
+/** Légende repliable : fermée par défaut pour ne pas voler de place à la carte. */
 function Legend() {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target;
+      if (containerRef.current && target instanceof Node && !containerRef.current.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
   return (
-    <div className="pointer-events-auto rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
-      <p className="mb-1.5 font-semibold text-ink">Légende</p>
-      <p className="mb-1 text-[10px] uppercase tracking-wide text-muted">Niveau de risque</p>
-      <ul className="space-y-1">
-        {RISK_LEVELS.map((level) => (
-          <li key={level} className="flex items-center gap-2">
-            <span className="inline-block size-3 rounded-sm" style={{ background: RISK_COLORS[level] }} />
-            {RISK_LABELS[level]}
-          </li>
-        ))}
-      </ul>
-      <p className="mb-1 mt-2 text-[10px] uppercase tracking-wide text-muted">Autres couches</p>
-      <ul className="space-y-1 text-muted">
-        <li className="flex items-center gap-2">
-          <span className="inline-block h-0.5 w-4 rounded bg-[#5a7d90]" />
-          Trajectoire observée
-        </li>
-        <li className="flex items-center gap-2">
-          <span className="inline-block h-0.5 w-4 rounded border-t-2 border-dashed border-[#c47d4a]" />
-          Trajectoire prévue
-        </li>
-        <li className="flex items-center gap-2">
-          <span className="inline-block size-3 rounded-sm border-2 border-[#b07070] bg-[#b07070]/20" />
-          Zone d&apos;influence
-        </li>
-        <li className="flex items-center gap-2">
-          <Snowflake className="size-3.5 text-slate-500" /> Observation météo
-        </li>
-        <li className="flex items-center gap-2">
-          <span className="inline-block size-3 rounded-sm border-2 border-[#475569] bg-white/40" />
-          Commune exposée à l&apos;événement sélectionné
-        </li>
-      </ul>
+    <div ref={containerRef} className="pointer-events-auto flex w-max flex-col items-start">
+      <div
+        id={panelId}
+        className={cn(
+          'grid transition-[grid-template-rows] duration-200 ease-out',
+          open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+        )}
+      >
+        <div className="overflow-hidden">
+          {/* Le contenu reste monté pour l'animation : `inert` le sort du
+              parcours clavier tant qu'il est replié. */}
+          <div
+            inert={!open}
+            className="mb-1.5 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur"
+          >
+            <p className="mb-1 text-[10px] tracking-wide text-muted uppercase">Niveau de risque</p>
+            <ul className="space-y-1">
+              {RISK_LEVELS.map((level) => (
+                <li key={level} className="flex items-center gap-2">
+                  <span
+                    className="inline-block size-3 rounded-sm"
+                    style={{ background: RISK_COLORS[level] }}
+                  />
+                  {RISK_LABELS[level]}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 mb-1 text-[10px] tracking-wide text-muted uppercase">
+              Autres couches
+            </p>
+            <ul className="space-y-1 text-muted">
+              <li className="flex items-center gap-2">
+                <span className="inline-block h-0.5 w-4 rounded bg-[#5a7d90]" />
+                Trajectoire observée
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="inline-block h-0.5 w-4 rounded border-t-2 border-dashed border-[#c47d4a]" />
+                Trajectoire prévue
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="inline-block size-3 rounded-sm border-2 border-[#b07070] bg-[#b07070]/20" />
+                Zone d&apos;influence
+              </li>
+              <li className="flex items-center gap-2">
+                <Snowflake className="size-3.5 text-slate-500" /> Observation météo
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="inline-block size-3 rounded-sm border-2 border-[#475569] bg-white/40" />
+                Commune exposée à l&apos;événement sélectionné
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-label={open ? 'Masquer la légende' : 'Afficher la légende'}
+        title={open ? 'Masquer la légende' : 'Afficher la légende'}
+        className={cn(
+          'flex items-center gap-1.5 rounded-xl border bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white',
+          open ? 'border-slate-300' : 'border-slate-200/80',
+        )}
+      >
+        <BookOpen className="size-3.5 text-muted" aria-hidden />
+        Légende
+        {open ? (
+          <ChevronUp className="size-3.5 text-muted" aria-hidden />
+        ) : (
+          <ChevronDown className="size-3.5 text-muted" aria-hidden />
+        )}
+      </button>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { FeatureCollection } from 'geojson';
 import { CrisisMap } from './CrisisMap';
 import type { EventListItem, EventTrack } from '@/types';
@@ -64,20 +66,40 @@ const defaultProps = {
 };
 
 function renderMap(props: typeof defaultProps) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <MemoryRouter>
-      <CrisisMap {...props} />
+      <QueryClientProvider client={qc}>
+        <CrisisMap {...props} />
+      </QueryClientProvider>
     </MemoryRouter>,
   );
 }
 
 describe('CrisisMap', () => {
-  it('affiche la légende avec les couches attendues', () => {
+  it('replie la légende derrière un bouton et la déplie au clic', async () => {
+    const user = userEvent.setup();
     renderMap(defaultProps);
-    expect(screen.getByText('Légende')).toBeInTheDocument();
-    expect(screen.getByText('Commune exposée à l\'événement sélectionné')).toBeInTheDocument();
+
+    const toggle = screen.getByRole('button', { name: 'Afficher la légende' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(toggle);
+
+    expect(screen.getByRole('button', { name: 'Masquer la légende' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+    expect(screen.getByText("Commune exposée à l'événement sélectionné")).toBeInTheDocument();
     expect(screen.getByText('Trajectoire observée')).toBeInTheDocument();
     expect(screen.getByText('Trajectoire prévue')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Masquer la légende' }));
+
+    expect(screen.getByRole('button', { name: 'Afficher la légende' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 
   it('affiche les contrôles de couches incluant Districts', () => {
@@ -149,8 +171,8 @@ describe('riskStyle', () => {
       properties: { communeId: 'cm-3', riskLevel: 'FAIBLE' },
     };
     const style = riskStyle(feature, 'cm-3', new Set(['cm-3']));
-    expect(style.fillOpacity).toBe(0.55);
-    expect(style.weight).toBe(2.5);
+    expect(style.fillOpacity).toBe(0.72);
+    expect(style.weight).toBe(3.5);
   });
 });
 
