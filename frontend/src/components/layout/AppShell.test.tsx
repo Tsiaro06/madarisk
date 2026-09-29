@@ -56,18 +56,21 @@ beforeEach(() => {
 });
 
 describe('AppShell — icône du navbar', () => {
-  it('affiche le sidebar puis le masque au second clic sur desktop', async () => {
+  it('démarre sur le rail d’icônes, puis se masque et réapparaît au clic sur desktop', async () => {
     const user = userEvent.setup();
     const { container } = renderShell();
     const aside = container.querySelector('aside');
-    const toggle = screen.getByRole('button', { name: 'Masquer le menu latéral' });
 
+    // Par défaut : rail d'icônes visible (72px), colonne hors écran non appliquée.
     expect(aside).toHaveClass('translate-x-0');
-    expect(screen.getByRole('navigation', { name: 'Navigation principale' })).toBeInTheDocument();
-    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(aside).toHaveClass('w-[72px]');
     expect(aside).not.toHaveAttribute('inert');
+    expect(screen.getByRole('button', { name: 'Masquer le menu latéral' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
 
-    await user.click(toggle);
+    await user.click(screen.getByRole('button', { name: 'Masquer le menu latéral' }));
 
     // Masqué : colonne hors écran, liens neutralisés.
     expect(aside).toHaveClass('-translate-x-full');
@@ -109,21 +112,21 @@ describe('AppShell — icône du navbar', () => {
     expect(aside).toHaveClass('-translate-x-full');
   });
 
-  it('bascule entre la carte étendue et le rail réduit', async () => {
+  it('démarre sur le rail réduit puis bascule vers la carte étendue', async () => {
     const user = userEvent.setup();
     const { container } = renderShell();
     const aside = container.querySelector('aside');
 
-    expect(aside).toHaveClass('w-[336px]');
-
-    await user.click(screen.getByRole('button', { name: 'Réduire le menu' }));
-
     expect(aside).toHaveClass('w-[72px]');
-    expect(aside).not.toHaveAttribute('inert');
 
     await user.click(screen.getByRole('button', { name: 'Agrandir le menu' }));
 
     expect(aside).toHaveClass('w-[336px]');
+    expect(aside).not.toHaveAttribute('inert');
+
+    await user.click(screen.getByRole('button', { name: 'Réduire le menu' }));
+
+    expect(aside).toHaveClass('w-[72px]');
   });
 });
 
@@ -132,17 +135,19 @@ describe('AppShell — menu du sidebar', () => {
     const user = userEvent.setup();
     renderShell();
 
+    // Depuis le rail, cliquer un sous-menu agrandit le sidebar et le déplie.
+    await user.click(screen.getByRole('button', { name: 'Données' }));
+
     const trigger = screen.getByRole('button', { name: 'Données' });
-    expect(trigger).toHaveAttribute('aria-expanded', 'false');
-
-    await user.click(trigger);
-
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByRole('link', { name: 'Territoires' })).toBeInTheDocument();
   });
 
-  it('filtre les entrées par rôle', () => {
+  it('filtre les entrées par rôle', async () => {
+    const user = userEvent.setup();
     renderShell();
+
+    await user.click(screen.getByRole('button', { name: 'Agrandir le menu' }));
 
     expect(screen.getByRole('link', { name: 'Carte de crise' })).toBeInTheDocument();
     // Rôle ADMIN : l'entrée SUPER_ADMIN reste masquée.
@@ -153,6 +158,8 @@ describe('AppShell — menu du sidebar', () => {
     const user = userEvent.setup();
     const { container } = renderShell();
     const aside = container.querySelector('aside');
+
+    await user.click(screen.getByRole('button', { name: 'Agrandir le menu' }));
 
     expect(aside).toHaveAttribute('data-theme', 'light');
 

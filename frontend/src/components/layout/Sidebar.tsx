@@ -335,6 +335,10 @@ export function Sidebar({
   // Le tiroir mobile n'existe pas sur desktop : `visible` y fait foi.
   const shown = isDesktop ? visible : open;
 
+  // Sur mobile, le tiroir s'ouvre toujours en pleine largeur : le rail réduit
+  // (icônes seules) n'a de sens que sur desktop.
+  const effectiveCollapsed = isDesktop ? collapsed : false;
+
   const close = () => {
     if (!isDesktop) onOpenChange(false);
   };
@@ -387,7 +391,7 @@ export function Sidebar({
         aria-label="Menu latéral"
         className={cn(
           'soft-ui sidebar fixed inset-y-0 left-0 z-40 flex font-menu transition-[width,transform] duration-300 ease-out',
-          collapsed ? 'w-[72px] p-2.5' : 'w-[336px] p-3',
+          effectiveCollapsed ? 'w-[72px] p-2.5' : 'w-[336px] p-3',
           shown ? 'translate-x-0' : '-translate-x-full',
           className,
         )}
@@ -396,7 +400,7 @@ export function Sidebar({
           className="relative flex min-h-0 w-full flex-col overflow-hidden rounded-[32px] transition-[background-color,box-shadow] duration-300"
           style={{
             background: 'var(--sb-surface)',
-            boxShadow: collapsed ? 'var(--sb-shadow-collapsed)' : 'var(--sb-shadow)',
+            boxShadow: effectiveCollapsed ? 'var(--sb-shadow-collapsed)' : 'var(--sb-shadow)',
           }}
         >
           {!isDesktop ? (
@@ -411,7 +415,7 @@ export function Sidebar({
           ) : null}
 
           {/* ---------------------------------------- état réduit (rail) */}
-          {collapsed ? (
+          {effectiveCollapsed ? (
             <>
               <div className="flex flex-col items-center pt-2.5 pb-1">
                 <ToggleButton collapsed onClick={() => onCollapsedChange(false)} />

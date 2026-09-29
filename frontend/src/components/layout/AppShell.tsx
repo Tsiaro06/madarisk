@@ -75,7 +75,7 @@ export function AppShell() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [sidebarVisible, setSidebarVisible] = useState(true);
   // Même valeur que le breakpoint `lg` de Tailwind, qui n'est pas exposé au
   // JS : c'est la seule façon de brancher le clic de l'icône du navbar sur le
