@@ -1,11 +1,15 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
+/* Le thème sombre est piloté par la classe `dark` sur <html> (store `themeStore`),
+   pas par `prefers-color-scheme`. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Fraunces", ui-serif, Georgia, serif;
-  /* Réservés au Sidebar : sans-serif géométrique pour les items de menu,
-     condensée majuscule pour le titre de la carte. */
+  /* Réservés au chrome de l'application (sidebar, navbar) : sans-serif
+     géométrique pour les menus, condensée majuscule pour les titres. */
   --font-menu: "Outfit", "Figtree", ui-sans-serif, system-ui, sans-serif;
   --font-condensed: "Oswald", "Figtree", ui-sans-serif, system-ui, sans-serif;
 
@@ -24,6 +28,27 @@
   --color-risk-modere: #c4a85a;
   --color-risk-eleve: #c4845a;
   --color-risk-extreme: #c46b6b;
+}
+
+/* Bascule clair → sombre : on surcharge les mêmes jetons sémantiques, ce qui
+   fait suivre la quasi-totalité des composants (ils utilisent `bg-surface`,
+   `text-ink`, `border-line`…). Les couleurs codées en dur dans les pages
+   restent claires. */
+.dark {
+  color-scheme: dark;
+  --color-brand: #7fb0cd;
+  --color-brand-deep: #a8cadd;
+  --color-brand-soft: rgba(61, 122, 154, 0.2);
+  --color-accent: #d9b75f;
+  --color-ink: #f4f4f6;
+  --color-muted: #8f93a3;
+  --color-surface: #111113;
+  --color-canvas: #0a0a0b;
+  --color-line: rgba(255, 255, 255, 0.1);
+  --color-risk-faible: #8fb393;
+  --color-risk-modere: #d3bd78;
+  --color-risk-eleve: #d79a74;
+  --color-risk-extreme: #dc8484;
 }
 
 html,
@@ -179,11 +204,12 @@ h3 {
 }
 
 /* ------------------------------------------------------------------
-   Sidebar — thème isolé (clair / sombre)
-   Le thème est piloté par l'attribut `data-theme` posé sur le <aside> :
-   l'application reste en thème clair, seule la carte change d'apparence.
+   Chrome « soft UI » — sidebar et navbar partagent les mêmes variables.
+   Le thème est piloté par l'attribut `data-theme` posé sur le conteneur,
+   lui-même alimenté par le store global `themeStore` (donc identique à
+   la classe `dark` de <html>).
    ------------------------------------------------------------------ */
-.sidebar {
+.soft-ui {
   --sb-accent: #3d4ef5;
   --sb-accent-soft: rgba(61, 78, 245, 0.1);
   --sb-text: #191a21;
@@ -194,6 +220,13 @@ h3 {
   --sb-chip: rgba(255, 255, 255, 0.72);
   --sb-chip-hover: rgba(23, 24, 35, 0.06);
   --sb-surface: linear-gradient(158deg, #ffffff 0%, #f7f7fc 46%, #f1f1f7 100%);
+  /* Navbar : même dégradé, mais translucide pour laisser voir le `backdrop-blur`. */
+  --sb-surface-glass: linear-gradient(
+    158deg,
+    rgba(255, 255, 255, 0.86) 0%,
+    rgba(247, 247, 252, 0.8) 46%,
+    rgba(241, 241, 247, 0.76) 100%
+  );
   --sb-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.75),
     0 0 0 1px rgba(23, 24, 35, 0.04),
@@ -207,9 +240,8 @@ h3 {
   color: var(--sb-text);
 }
 
-.sidebar[data-theme="dark"] {
+.soft-ui[data-theme="dark"] {
   --sb-accent: #4a5bff;
-  background: #0a0a0b;
   --sb-accent-soft: rgba(74, 91, 255, 0.16);
   --sb-text: #f4f4f6;
   --sb-text-soft: #c3c5d1;
@@ -219,6 +251,7 @@ h3 {
   --sb-chip: rgba(255, 255, 255, 0.07);
   --sb-chip-hover: rgba(255, 255, 255, 0.08);
   --sb-surface: #111113;
+  --sb-surface-glass: rgba(17, 17, 19, 0.72);
   --sb-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.06),
     0 30px 70px -30px rgba(0, 0, 0, 0.9),
@@ -227,6 +260,11 @@ h3 {
     inset 0 0 0 1px rgba(255, 255, 255, 0.07),
     0 24px 50px -24px rgba(0, 0, 0, 0.9),
     -18px 0 60px -36px rgba(74, 91, 255, 0.6);
+}
+
+/* La colonne latérale repose sur la page quasi noire. */
+.sidebar[data-theme="dark"] {
+  background: #0a0a0b;
 }
 
 /* Halo bleu diffus sur les bords, dans les deux thèmes. */
@@ -248,6 +286,38 @@ h3 {
   background: radial-gradient(110% 55% at 100% 50%, rgba(74, 91, 255, 0.2), transparent 60%);
 }
 
+/* Navbar : halo bleu plus discret que celui de la colonne, orienté à gauche
+   pour ne pas entrer en concurrence avec l'indicateur d'accent à droite. */
+.navbar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(70% 120% at 0% 0%, rgba(61, 78, 245, 0.1), transparent 60%);
+}
+
+.navbar[data-theme="dark"]::before {
+  background: radial-gradient(70% 120% at 0% 0%, rgba(74, 91, 255, 0.16), transparent 60%);
+}
+
+/* Menus déroulants (notifications, compte) : fondu + léger décalage. */
+@keyframes navbar-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.navbar-menu {
+  animation: navbar-menu-in 0.16s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: top right;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .login-orb,
   .login-orb-alt,
@@ -255,13 +325,14 @@ h3 {
   .login-float,
   .login-panel-glow,
   .login-sky,
-  .madarisk-commune-pulse {
+  .madarisk-commune-pulse,
+  .navbar-menu {
     animation: none !important;
   }
 
-  .sidebar *,
-  .sidebar *::before,
-  .sidebar *::after {
+  .soft-ui *,
+  .soft-ui *::before,
+  .soft-ui *::after {
     transition-duration: 0.01ms !important;
   }
 }

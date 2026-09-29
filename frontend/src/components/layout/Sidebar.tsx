@@ -1,9 +1,11 @@
 import { useId, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { ChevronDown, Moon, PanelLeftClose, PanelLeftOpen, Sun, X } from 'lucide-react';
+import { ChevronDown, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import type { UserRole } from '@/lib/roles';
+import { useThemeStore } from '@/stores/themeStore';
+import { ThemeSwitch } from './ThemeSwitch';
 import {
   SIDEBAR_CONFIG,
   type SidebarAccordion,
@@ -15,10 +17,6 @@ import {
 /** Largeurs synchronisées avec les classes `w-[…]` du composant. */
 export const SIDEBAR_WIDTH = 336;
 export const SIDEBAR_RAIL_WIDTH = 72;
-
-const THEME_KEY = 'madarisk_sidebar_theme';
-
-export type SidebarTheme = 'light' | 'dark';
 
 export interface SidebarProps {
   /** Colonne affichée sur desktop. */
@@ -40,23 +38,6 @@ export interface SidebarProps {
 /** Un lien (ou l'un de ses enfants) correspond-il à l'URL courante ? */
 function matches(to: string, end: boolean | undefined, pathname: string) {
   return end ? pathname === to : pathname === to || pathname.startsWith(`${to}/`);
-}
-
-function useTheme() {
-  const [theme, setTheme] = useState<SidebarTheme>(() => {
-    if (typeof localStorage === 'undefined') return 'light';
-    const stored = localStorage.getItem(THEME_KEY);
-    return stored === 'dark' || stored === 'light' ? stored : 'light';
-  });
-
-  const toggle = () =>
-    setTheme((prev) => {
-      const next = prev === 'dark' ? 'light' : 'dark';
-      if (typeof localStorage !== 'undefined') localStorage.setItem(THEME_KEY, next);
-      return next;
-    });
-
-  return { theme, toggle };
 }
 
 /* -------------------------------------------------------------------- rows */
@@ -332,45 +313,6 @@ function ToggleButton({ collapsed, onClick }: { collapsed: boolean; onClick: () 
   );
 }
 
-function ThemeSwitch({ theme, onToggle }: { theme: SidebarTheme; onToggle: () => void }) {
-  const dark = theme === 'dark';
-  return (
-    <div className="ml-auto flex items-center gap-1.5">
-      <span className="text-[10.5px] font-medium tracking-wide text-[var(--sb-muted)]">
-        {dark ? 'Dark' : 'Light'} Mode
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={dark}
-        onClick={onToggle}
-        aria-label={dark ? 'Passer en mode clair' : 'Passer en mode sombre'}
-        title={dark ? 'Passer en mode clair' : 'Passer en mode sombre'}
-        className={cn(
-          'relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-300',
-          dark
-            ? 'border-[var(--sb-accent)]/40 bg-[var(--sb-accent)]/25'
-            : 'border-[var(--sb-line)] bg-[var(--sb-chip)]',
-        )}
-      >
-        <span
-          className={cn(
-            'absolute top-1/2 grid size-4 -translate-y-1/2 place-items-center rounded-full transition-[left,background-color] duration-300',
-            dark
-              ? 'left-[22px] bg-white text-[var(--sb-accent)]'
-              : 'left-[2px] bg-[var(--sb-accent)] text-white',
-          )}
-        >
-          {dark ? (
-            <Moon className="size-2.5" aria-hidden />
-          ) : (
-            <Sun className="size-2.5" aria-hidden />
-          )}
-        </span>
-      </button>
-    </div>
-  );
-}
 
 /* ---------------------------------------------------------------- composant */
 
@@ -386,7 +328,7 @@ export function Sidebar({
   className,
 }: SidebarProps) {
   const location = useLocation();
-  const { theme, toggle: toggleTheme } = useTheme();
+  const theme = useThemeStore((s) => s.theme);
   const [openGroups, setOpenGroups] = useState<Record<string, boolean | undefined>>({});
   const isDesktop = useMediaQuery('(min-width: 1024px)');
 
@@ -444,7 +386,7 @@ export function Sidebar({
         inert={shown ? undefined : true}
         aria-label="Menu latéral"
         className={cn(
-          'sidebar fixed inset-y-0 left-0 z-40 flex font-menu transition-[width,transform] duration-300 ease-out',
+          'soft-ui sidebar fixed inset-y-0 left-0 z-40 flex font-menu transition-[width,transform] duration-300 ease-out',
           collapsed ? 'w-[72px] p-2.5' : 'w-[336px] p-3',
           shown ? 'translate-x-0' : '-translate-x-full',
           className,
@@ -534,7 +476,7 @@ export function Sidebar({
                 <span className="font-condensed text-[15px] font-semibold tracking-[0.2em] text-[var(--sb-text)] uppercase">
                   {config.title}
                 </span>
-                <ThemeSwitch theme={theme} onToggle={toggleTheme} />
+                <ThemeSwitch className="ml-auto" />
               </header>
               <span aria-hidden className="mx-3.5 h-px shrink-0 bg-[var(--sb-line)]" />
 
