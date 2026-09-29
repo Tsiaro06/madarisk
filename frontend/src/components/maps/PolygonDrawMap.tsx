@@ -6,6 +6,7 @@ import {
   Polygon,
   Polyline,
   TileLayer,
+  ZoomControl,
   useMapEvents,
 } from 'react-leaflet';
 import type { Dispatch, SetStateAction } from 'react';
@@ -46,12 +47,14 @@ export function PolygonDrawMap({
           zoom={6}
           minZoom={4}
           scrollWheelZoom
+          zoomControl={false}
           className="h-full w-full"
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          <ZoomControl position="bottomright" />
           {districtsQ.data ? (
             <GeoJSON
               data={districtsQ.data}

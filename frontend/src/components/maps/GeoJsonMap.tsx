@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, GeoJSON, ZoomControl, useMap } from 'react-leaflet';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { Layer, PathOptions, LeafletMouseEvent } from 'leaflet';
 import L from 'leaflet';
@@ -134,12 +134,14 @@ export function GeoJsonMap({
           center={[-18.9, 47.5]}
           zoom={6}
           scrollWheelZoom
+          zoomControl={false}
           className="h-full w-full"
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          <ZoomControl position="bottomright" />
           <GeoJSON
             key={JSON.stringify(collection.features?.length ?? 0) + String(selectedId ?? '')}
             data={collection}

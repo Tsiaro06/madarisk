@@ -5,6 +5,7 @@ import {
   MapContainer,
   TileLayer,
   Tooltip,
+  ZoomControl,
   useMap,
 } from 'react-leaflet';
 import { Link } from 'react-router-dom';
@@ -320,13 +321,16 @@ export function CrisisMap({
       zoom={6}
       minZoom={4}
       scrollWheelZoom
-      zoomControl
+      zoomControl={false}
       className="h-full w-full"
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
+
+      {/* Le zoom est remonté du coin haut-gauche par défaut vers le coin bas-droit. */}
+      <ZoomControl position="bottomright" />
 
       <MapFocus target={focusTarget} />
       <MapReset />
@@ -482,6 +486,29 @@ export function CrisisMap({
         <Legend />
       </CrisisMapOverlay>
       <CrisisMapOverlay position="top-right">
+        {/* Actions d'état en tête du coin haut-droit ; le coin bas-droit est
+            réservé au zoom, à la légende de droites et à l'attribution OSM. */}
+        <div className="flex flex-col items-end gap-2">
+          {onRefresh ? (
+            <button
+              type="button"
+              onClick={onRefresh}
+              className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
+              title="Actualiser les données de la carte"
+            >
+              <RefreshCw className={cn('size-3.5 text-muted', refreshing && 'animate-spin')} />
+              Actualiser
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={resetView}
+            className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
+            title="Recentrer sur Madagascar"
+          >
+            <LocateFixed className="size-3.5 text-muted" /> Recentrer
+          </button>
+        </div>
         <LayerControls
           showRisks={showRisks}
           showCommunes={showCommunes}
@@ -530,28 +557,6 @@ export function CrisisMap({
           </div>
         ) : null}
       </CrisisMapOverlay>
-
-      <div className="pointer-events-none absolute bottom-3 right-3 z-[500] flex flex-col items-end gap-2">
-        {onRefresh ? (
-          <button
-            type="button"
-            onClick={onRefresh}
-            className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
-            title="Actualiser les données de la carte"
-          >
-            <RefreshCw className={cn('size-3.5 text-muted', refreshing && 'animate-spin')} />
-            Actualiser
-          </button>
-        ) : null}
-        <button
-          type="button"
-          onClick={resetView}
-          className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
-          title="Recentrer sur Madagascar"
-        >
-          <LocateFixed className="size-3.5 text-muted" /> Recentrer
-        </button>
-      </div>
     </MapContainer>
   );
 }

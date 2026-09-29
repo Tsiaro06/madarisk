@@ -26,6 +26,8 @@ vi.mock('react-leaflet', async () => {
     CircleMarker: () => React.createElement('div', { 'data-testid': 'track-point' }),
     Tooltip: ({ children }: { children: React.ReactNode }) =>
       React.createElement('span', null, children),
+    ZoomControl: ({ position }: { position?: string }) =>
+      React.createElement('div', { 'data-testid': 'zoom-control', 'data-position': position }),
     useMap: () => ({}),
   };
 });
@@ -63,14 +65,16 @@ const defaultProps = {
   focusTarget: null,
   mapPhase: '',
   onMapPhaseChange: vi.fn(),
+  onRefresh: undefined as (() => void) | undefined,
+  refreshing: false,
 };
 
-function renderMap(props: typeof defaultProps) {
+function renderMap(props: Partial<typeof defaultProps> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
   return render(
     <MemoryRouter>
       <QueryClientProvider client={qc}>
-        <CrisisMap {...props} />
+        <CrisisMap {...defaultProps} {...props} />
       </QueryClientProvider>
     </MemoryRouter>,
   );
@@ -115,6 +119,26 @@ describe('CrisisMap', () => {
     const label = screen.getByText('Communes exposées');
     const checkbox = label.closest('label')?.querySelector('input[type="checkbox"]');
     expect(checkbox).toBeChecked();
+  });
+
+  it('place le zoom en bas à droite et les actions en haut à droite', () => {
+    const { container } = renderMap({
+      ...defaultProps,
+      onRefresh: vi.fn(),
+      refreshing: true,
+    });
+
+    // Le zoom est le contrôle natif Leaflet : on vérifie sa position demandée.
+    expect(screen.getByTestId('zoom-control')).toHaveAttribute('data-position', 'bottomright');
+
+    // Actualiser et Recentrer partagent le coin haut-droit, avec les couches.
+    const refresh = screen.getByRole('button', { name: /Actualiser/ });
+    const topRight = refresh.closest('.absolute');
+    expect(topRight).toHaveClass('right-3', 'top-3');
+    expect(topRight).toContainElement(screen.getByText('Couches'));
+
+    // Plus rien en bas à droite : ce coin est au zoom.
+    expect(container.querySelector('.bottom-3.right-3')).toBeNull();
   });
 });
 
