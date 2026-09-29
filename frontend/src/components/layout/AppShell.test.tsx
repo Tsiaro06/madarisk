@@ -1,4 +1,4 @@
-import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
@@ -62,16 +62,15 @@ describe('AppShell — icône du navbar', () => {
     const aside = container.querySelector('aside');
     const toggle = screen.getByRole('button', { name: 'Masquer le menu latéral' });
 
-    expect(container.firstElementChild).toHaveClass('lg:grid-cols-[272px_1fr]', { exact: false });
+    expect(aside).toHaveClass('translate-x-0');
     expect(screen.getByRole('navigation', { name: 'Navigation principale' })).toBeInTheDocument();
     expect(toggle).toHaveAttribute('aria-expanded', 'true');
     expect(aside).not.toHaveAttribute('inert');
 
     await user.click(toggle);
 
-    // Masqué : colonne à 0px, tiroir neutralisé, liens hors tabulation.
-    expect(container.firstElementChild).toHaveClass('lg:grid-cols-[0px_1fr]', { exact: false });
-    expect(aside).toHaveClass('lg:w-0');
+    // Masqué : colonne hors écran, liens neutralisés.
+    expect(aside).toHaveClass('-translate-x-full');
     expect(aside).toHaveAttribute('inert');
     expect(screen.getByRole('button', { name: 'Afficher le menu latéral' })).toHaveAttribute(
       'aria-expanded',
@@ -80,7 +79,7 @@ describe('AppShell — icône du navbar', () => {
 
     await user.click(screen.getByRole('button', { name: 'Afficher le menu latéral' }));
 
-    expect(aside).toHaveClass('lg:w-[272px]');
+    expect(aside).toHaveClass('translate-x-0');
     expect(aside).not.toHaveAttribute('inert');
     expect(screen.getByRole('button', { name: 'Masquer le menu latéral' })).toHaveAttribute(
       'aria-expanded',
@@ -110,15 +109,56 @@ describe('AppShell — icône du navbar', () => {
     expect(aside).toHaveClass('-translate-x-full');
   });
 
-  it('conserve le mode rail (72px) indépendant de l’affichage du sidebar', async () => {
+  it('bascule entre la carte étendue et le rail réduit', async () => {
     const user = userEvent.setup();
     const { container } = renderShell();
     const aside = container.querySelector('aside');
 
+    expect(aside).toHaveClass('w-[336px]');
+
     await user.click(screen.getByRole('button', { name: 'Réduire le menu' }));
 
-    expect(container.firstElementChild).toHaveClass('lg:grid-cols-[72px_1fr]', { exact: false });
-    expect(aside).toHaveClass('lg:w-[72px]');
+    expect(aside).toHaveClass('w-[72px]');
     expect(aside).not.toHaveAttribute('inert');
+
+    await user.click(screen.getByRole('button', { name: 'Agrandir le menu' }));
+
+    expect(aside).toHaveClass('w-[336px]');
+  });
+});
+
+describe('AppShell — menu du sidebar', () => {
+  it('déplie le sous-menu Données à la demande', async () => {
+    const user = userEvent.setup();
+    renderShell();
+
+    const trigger = screen.getByRole('button', { name: 'Données' });
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(trigger);
+
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('link', { name: 'Territoires' })).toBeInTheDocument();
+  });
+
+  it('filtre les entrées par rôle', () => {
+    renderShell();
+
+    expect(screen.getByRole('link', { name: 'Carte de crise' })).toBeInTheDocument();
+    // Rôle ADMIN : l'entrée SUPER_ADMIN reste masquée.
+    expect(screen.queryByRole('link', { name: 'Administration' })).not.toBeInTheDocument();
+  });
+
+  it('bascule le thème clair / sombre', async () => {
+    const user = userEvent.setup();
+    const { container } = renderShell();
+    const aside = container.querySelector('aside');
+
+    expect(aside).toHaveAttribute('data-theme', 'light');
+
+    await user.click(screen.getByRole('switch', { name: 'Passer en mode sombre' }));
+
+    expect(aside).toHaveAttribute('data-theme', 'dark');
+    expect(screen.getByRole('switch', { name: 'Passer en mode clair' })).toBeInTheDocument();
   });
 });

@@ -4,6 +4,10 @@
 @theme {
   --font-sans: "Figtree", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Fraunces", ui-serif, Georgia, serif;
+  /* Réservés au Sidebar : sans-serif géométrique pour les items de menu,
+     condensée majuscule pour le titre de la carte. */
+  --font-menu: "Outfit", "Figtree", ui-sans-serif, system-ui, sans-serif;
+  --font-condensed: "Oswald", "Figtree", ui-sans-serif, system-ui, sans-serif;
 
   /* Bleu météo désaturé — plus calme à l’œil */
   --color-brand: #3d7a9a;
@@ -174,6 +178,76 @@ h3 {
   animation: madarisk-commune-pulse 1.1s ease-in-out infinite;
 }
 
+/* ------------------------------------------------------------------
+   Sidebar — thème isolé (clair / sombre)
+   Le thème est piloté par l'attribut `data-theme` posé sur le <aside> :
+   l'application reste en thème clair, seule la carte change d'apparence.
+   ------------------------------------------------------------------ */
+.sidebar {
+  --sb-accent: #3d4ef5;
+  --sb-accent-soft: rgba(61, 78, 245, 0.1);
+  --sb-text: #191a21;
+  --sb-text-soft: #4c4f5e;
+  --sb-muted: #8b8ea0;
+  --sb-line: rgba(23, 24, 35, 0.08);
+  --sb-hover: rgba(23, 24, 35, 0.05);
+  --sb-chip: rgba(255, 255, 255, 0.72);
+  --sb-chip-hover: rgba(23, 24, 35, 0.06);
+  --sb-surface: linear-gradient(158deg, #ffffff 0%, #f7f7fc 46%, #f1f1f7 100%);
+  --sb-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.75),
+    0 0 0 1px rgba(23, 24, 35, 0.04),
+    0 30px 70px -30px rgba(25, 26, 60, 0.35),
+    0 0 90px -34px rgba(61, 78, 245, 0.45);
+  --sb-shadow-collapsed:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.8),
+    0 0 0 1px rgba(23, 24, 35, 0.05),
+    0 24px 50px -24px rgba(25, 26, 60, 0.3),
+    0 0 70px -30px rgba(61, 78, 245, 0.5);
+  color: var(--sb-text);
+}
+
+.sidebar[data-theme="dark"] {
+  --sb-accent: #4a5bff;
+  background: #0a0a0b;
+  --sb-accent-soft: rgba(74, 91, 255, 0.16);
+  --sb-text: #f4f4f6;
+  --sb-text-soft: #c3c5d1;
+  --sb-muted: #7c7f8f;
+  --sb-line: rgba(255, 255, 255, 0.09);
+  --sb-hover: rgba(255, 255, 255, 0.06);
+  --sb-chip: rgba(255, 255, 255, 0.07);
+  --sb-chip-hover: rgba(255, 255, 255, 0.08);
+  --sb-surface: #111113;
+  --sb-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 30px 70px -30px rgba(0, 0, 0, 0.9),
+    -26px 0 70px -40px rgba(74, 91, 255, 0.65);
+  --sb-shadow-collapsed:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
+    0 24px 50px -24px rgba(0, 0, 0, 0.9),
+    -18px 0 60px -36px rgba(74, 91, 255, 0.6);
+}
+
+/* Halo bleu diffus sur les bords, dans les deux thèmes. */
+.sidebar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 44px;
+  pointer-events: none;
+  background: radial-gradient(
+    120% 60% at 100% 0%,
+    rgba(61, 78, 245, 0.16),
+    transparent 62%
+  );
+  opacity: 0.9;
+}
+
+.sidebar[data-theme="dark"]::before {
+  background: radial-gradient(110% 55% at 100% 50%, rgba(74, 91, 255, 0.2), transparent 60%);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .login-orb,
   .login-orb-alt,
@@ -183,5 +257,11 @@ h3 {
   .login-sky,
   .madarisk-commune-pulse {
     animation: none !important;
+  }
+
+  .sidebar *,
+  .sidebar *::before,
+  .sidebar *::after {
+    transition-duration: 0.01ms !important;
   }
 }
