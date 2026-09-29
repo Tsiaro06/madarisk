@@ -204,6 +204,7 @@ function Legend() {
   );
 }
 
+/** Couches repliables : fermé par défaut pour ne pas voler de place à la carte. */
 function LayerControls({
   showRisks,
   showCommunes,
@@ -224,6 +225,29 @@ function LayerControls({
     value: boolean,
   ) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const target = e.target;
+      if (containerRef.current && target instanceof Node && !containerRef.current.contains(target)) {
+        setOpen(false);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
   const items: Array<{
     key: 'risks' | 'communes' | 'districts' | 'weather' | 'event';
     label: string;
@@ -236,25 +260,65 @@ function LayerControls({
     { key: 'weather', label: 'Météo', checked: showWeather },
     { key: 'event', label: 'Événement actif', checked: showEvent, disabled: !hasEvent },
   ];
+
   return (
-    <div className="pointer-events-auto rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
-      <p className="mb-1.5 flex items-center gap-1.5 font-semibold text-ink">
-        <Layers className="size-3.5 text-muted" /> Couches
-      </p>
-      <div className="space-y-1.5">
-        {items.map((item) => (
-          <label key={item.key} className={cn('flex items-center gap-2', item.disabled && 'opacity-40')}>
-            <input
-              type="checkbox"
-              checked={item.checked}
-              disabled={item.disabled}
-              onChange={(e) => onChange(item.key, e.target.checked)}
-              className="size-3.5 accent-brand"
-            />
-            {item.label}
-          </label>
-        ))}
+    <div ref={containerRef} className="pointer-events-auto mt-2 flex w-max flex-col items-end">
+      <div
+        id={panelId}
+        className={cn(
+          'grid transition-[grid-template-rows] duration-200 ease-out',
+          open ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+        )}
+      >
+        <div className="overflow-hidden">
+          {/* Le contenu reste monté pour l'animation : `inert` le sort du
+              parcours clavier tant qu'il est replié. */}
+          <div
+            inert={!open}
+            className="mb-1.5 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur"
+          >
+            <p className="mb-1.5 font-semibold text-ink">Couches</p>
+            <div className="space-y-1.5">
+              {items.map((item) => (
+                <label
+                  key={item.key}
+                  className={cn('flex items-center gap-2', item.disabled && 'opacity-40')}
+                >
+                  <input
+                    type="checkbox"
+                    checked={item.checked}
+                    disabled={item.disabled}
+                    onChange={(e) => onChange(item.key, e.target.checked)}
+                    className="size-3.5 accent-brand"
+                  />
+                  {item.label}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        aria-label={open ? 'Masquer les couches' : 'Afficher les couches'}
+        title={open ? 'Masquer les couches' : 'Afficher les couches'}
+        className={cn(
+          'flex items-center gap-1.5 rounded-xl border bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white',
+          open ? 'border-slate-300' : 'border-slate-200/80',
+        )}
+      >
+        <Layers className="size-3.5 text-muted" aria-hidden />
+        Couches
+        {open ? (
+          <ChevronUp className="size-3.5 text-muted" aria-hidden />
+        ) : (
+          <ChevronDown className="size-3.5 text-muted" aria-hidden />
+        )}
+      </button>
     </div>
   );
 }
@@ -486,55 +550,58 @@ export function CrisisMap({
         <Legend />
       </CrisisMapOverlay>
       <CrisisMapOverlay position="top-right">
-        {/* Actions d'état en tête du coin haut-droit ; le coin bas-droit est
-            réservé au zoom, à la légende de droites et à l'attribution OSM. */}
-        <div className="flex flex-col items-end gap-2">
-          {onRefresh ? (
+        {/* Coin haut-droit aligné à droite : actions, bouton Couches repliable
+            puis sélecteur de phase. Le coin bas-droit est réservé au zoom, à
+            la légende de droites et à l'attribution OSM. */}
+        <div className="flex flex-col items-end">
+          <div className="flex flex-col items-end gap-2">
+            {onRefresh ? (
+              <button
+                type="button"
+                onClick={onRefresh}
+                className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
+                title="Actualiser les données de la carte"
+              >
+                <RefreshCw className={cn('size-3.5 text-muted', refreshing && 'animate-spin')} />
+                Actualiser
+              </button>
+            ) : null}
             <button
               type="button"
-              onClick={onRefresh}
+              onClick={resetView}
               className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
-              title="Actualiser les données de la carte"
+              title="Recentrer sur Madagascar"
             >
-              <RefreshCw className={cn('size-3.5 text-muted', refreshing && 'animate-spin')} />
-              Actualiser
+              <LocateFixed className="size-3.5 text-muted" /> Recentrer
             </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={resetView}
-            className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
-            title="Recentrer sur Madagascar"
-          >
-            <LocateFixed className="size-3.5 text-muted" /> Recentrer
-          </button>
-        </div>
-        <LayerControls
-          showRisks={showRisks}
-          showCommunes={showCommunes}
-          showDistricts={showDistricts}
-          showWeather={showWeather}
-          showEvent={showEvent}
-          hasEvent={Boolean(activeEvent)}
-          onChange={handleToggle}
-        />
-        {activeEvent ? (
-          <div className="pointer-events-auto mt-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
-            <p className="mb-1.5 font-semibold text-ink">Phase affichée</p>
-            <select
-              value={mapPhase}
-              onChange={(e) => onMapPhaseChange(e.target.value)}
-              aria-label="Phase affichée"
-              className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
-            >
-              <option value="">Dernière évaluation</option>
-              <option value="AVANT">AVANT</option>
-              <option value="PENDANT">PENDANT</option>
-              <option value="APRES">APRÈS</option>
-              <option value="RETABLISSEMENT">RÉTABLISSEMENT</option>
-            </select>
           </div>
-        ) : null}
+          <LayerControls
+            showRisks={showRisks}
+            showCommunes={showCommunes}
+            showDistricts={showDistricts}
+            showWeather={showWeather}
+            showEvent={showEvent}
+            hasEvent={Boolean(activeEvent)}
+            onChange={handleToggle}
+          />
+          {activeEvent ? (
+            <div className="pointer-events-auto mt-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
+              <p className="mb-1.5 font-semibold text-ink">Phase affichée</p>
+              <select
+                value={mapPhase}
+                onChange={(e) => onMapPhaseChange(e.target.value)}
+                aria-label="Phase affichée"
+                className="w-full rounded-lg border border-line bg-white px-2 py-1.5 text-xs text-ink outline-none focus:border-slate-400 focus:ring-1 focus:ring-slate-200"
+              >
+                <option value="">Dernière évaluation</option>
+                <option value="AVANT">AVANT</option>
+                <option value="PENDANT">PENDANT</option>
+                <option value="APRES">APRÈS</option>
+                <option value="RETABLISSEMENT">RÉTABLISSEMENT</option>
+              </select>
+            </div>
+          ) : null}
+        </div>
       </CrisisMapOverlay>
 
       <CrisisMapOverlay position="top-left">

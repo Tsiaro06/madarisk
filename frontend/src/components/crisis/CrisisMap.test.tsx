@@ -106,12 +106,47 @@ describe('CrisisMap', () => {
     );
   });
 
-  it('affiche les contrôles de couches incluant Districts', () => {
+  it('replie les couches derrière un bouton et les déplie au clic', async () => {
+    const user = userEvent.setup();
     renderMap(defaultProps);
-    expect(screen.getByText('Couches')).toBeInTheDocument();
+
+    const toggle = screen.getByRole('button', { name: 'Afficher les couches' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    await user.click(toggle);
+
+    expect(screen.getByRole('button', { name: 'Masquer les couches' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
     expect(screen.getByText('Districts')).toBeInTheDocument();
     expect(screen.getByText('Météo')).toBeInTheDocument();
     expect(screen.getByText('Événement actif')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Masquer les couches' }));
+
+    expect(screen.getByRole('button', { name: 'Afficher les couches' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
+  });
+
+  it('ferme les couches au clic extérieur', async () => {
+    const user = userEvent.setup();
+    renderMap(defaultProps);
+
+    await user.click(screen.getByRole('button', { name: 'Afficher les couches' }));
+    expect(screen.getByRole('button', { name: 'Masquer les couches' })).toHaveAttribute(
+      'aria-expanded',
+      'true',
+    );
+
+    await user.click(screen.getByTestId('map'));
+
+    expect(screen.getByRole('button', { name: 'Afficher les couches' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    );
   });
 
   it('active le toggle communes exposées par défaut quand il y a un événement', () => {
@@ -135,7 +170,7 @@ describe('CrisisMap', () => {
     const refresh = screen.getByRole('button', { name: /Actualiser/ });
     const topRight = refresh.closest('.absolute');
     expect(topRight).toHaveClass('right-3', 'top-3');
-    expect(topRight).toContainElement(screen.getByText('Couches'));
+    expect(topRight).toContainElement(screen.getByRole('button', { name: 'Afficher les couches' }));
 
     // Plus rien en bas à droite : ce coin est au zoom.
     expect(container.querySelector('.bottom-3.right-3')).toBeNull();
