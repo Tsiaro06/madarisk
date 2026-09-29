@@ -22,8 +22,8 @@ export function LoginPanel() {
       <LoginIllustration className="pointer-events-none absolute inset-0 -z-20 size-full" />
       <div className="login-panel-veil pointer-events-none absolute inset-0 -z-10" aria-hidden="true" />
 
-      <div className="relative p-10 xl:p-14">
-        <BrandLogo tone="light" />
+      <div className="relative px-10 pt-6 xl:px-12 xl:pt-8">
+        <BrandLogo className="h-28" />
       </div>
 
       <div className="relative px-10 pb-12 xl:px-14">

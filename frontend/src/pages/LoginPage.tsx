@@ -44,7 +44,7 @@ export function LoginPage() {
       <section className="flex items-center justify-center px-5 py-10 sm:px-10 lg:overflow-y-auto lg:rounded-l-[2.5rem] lg:shadow-[-18px_0_50px_-30px_rgba(10,26,40,0.5)]">
         <div className="flex w-full max-w-md flex-col sm:max-w-lg">
           <div className="mb-8 lg:hidden">
-            <BrandLogo tone="dark" />
+            <BrandLogo className="h-14" />
           </div>
 
           <div className="w-full rounded-3xl border border-line bg-surface p-6 shadow-[0_18px_50px_-30px_rgba(10,26,40,0.4)] sm:p-9">
