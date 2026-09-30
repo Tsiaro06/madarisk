@@ -86,6 +86,12 @@ export function WeatherMapPage() {
     queryKey: ["weather", "monitoring"],
     queryFn: () => weatherApi.monitoring(),
     staleTime: 60_000,
+    // L'ancienneté affichée doit se mettre à jour d'elle-même, sinon le
+    // bandeau continue d'annoncer « 31 h » sur un onglet laissé ouvert toute la
+    // journée. Réactif au retour sur l'onglet + tick lent.
+    refetchOnWindowFocus: true,
+    refetchInterval: 120_000,
+    refetchIntervalInBackground: false,
   });
 
   const weather = useWeatherMapLayer({ date, hour, districtId });

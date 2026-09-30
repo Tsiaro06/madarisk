@@ -43,13 +43,19 @@ export function useWeatherMapLayer({
     staleTime: 30_000,
     retry: 2,
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30_000),
-    refetchInterval: (q) =>
-      needsForecast &&
-      (q.state.status === "error" ||
-        !q.state.data ||
-        q.state.data.collection.features.length === 0)
-        ? 60_000
-        : false,
+    // Le backend se synchronise toutes les heures, mais la page doit refléter
+    // l'observation fraîche sans action manuelle : on rafraîchit au retour sur
+    // l'onglet (c'est le cas « je reprends le lendemain ») puis périodiquement
+    // tant que l'onglet est visible. `refetchOnWindowFocus` est désactivé
+    // globalement dans App.tsx, il faut donc le réactiver ici explicitement.
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
+    refetchInterval: (q) => {
+      if (needsForecast && !q.state.data?.collection.features.length) return 60_000;
+      if (typeof document !== "undefined" && document.hidden) return false;
+      return 5 * 60_000;
+    },
+    refetchIntervalInBackground: false,
   });
 
   const layer = query.data?.collection ?? null;

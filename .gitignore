@@ -1,1 +1,4 @@
 database/backups/
+
+# Journal du service Windows (scripts/run-production.cmd)
+backend/logs/

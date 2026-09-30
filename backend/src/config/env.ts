@@ -46,7 +46,10 @@ const envSchema = z.object({
 
   BCRYPT_SALT_ROUNDS: z.coerce.number().default(12),
 
-  FRONTEND_URL: z.string().default('http://localhost:5173'),
+  // Liste d' origines autorisées, séparées par des virgules : en production le
+  // SPA est servi par l'API elle-même (port 5000), tandis qu'en développement
+  // Vite répond sur 5173. Les deux doivent être acceptés.
+  FRONTEND_URL: z.string().default('http://localhost:5173,http://localhost:5000'),
 
   OPEN_METEO_BASE_URL: z.string().default('https://api.open-meteo.com'),
   OPEN_METEO_TIMEOUT_MS: z.coerce.number().default(10000),
@@ -75,13 +78,15 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
-  WEATHER_REFRESH_CRON: z.string().default('0 */4 * * *'),
+  // Open-Meteo ne publie de nouvelles observations que toutes les heures : viser
+  // plus fin n'aurait aucun sens et alourdirait inutilement le fournisseur.
+  WEATHER_REFRESH_CRON: z.string().default('0 * * * *'),
   WEATHER_OBSERVATION_CRON: z.string().default(process.env.WEATHER_REFRESH_CRON ?? '0 * * * *'),
   WEATHER_FORECAST_CRON: z.string().default('0 */3 * * *'),
-  // Doit dépasser la période réelle du cron d'observations (4 h par défaut) :
-  // à 150 min, le bandeau virait au rouge pendant la dernière heure de chaque
-  // cycle alors que la synchronisation était parfaitement saine.
-  WEATHER_OBSERVATION_STALE_MINUTES: z.coerce.number().default(300),
+  // Doit dépasser la période du cron d'observations (1 h) sans le trop, sinon le
+  // bandeau vire au rouge pendant le cycle normal. 150 min = deux runs
+  // consécutifs manqués avant de signaler la péremption.
+  WEATHER_OBSERVATION_STALE_MINUTES: z.coerce.number().default(150),
   WEATHER_FORECAST_STALE_HOURS: z.coerce.number().default(6),
   RISK_RECALCULATION_CRON: z.string().default('10 * * * *'),
 
