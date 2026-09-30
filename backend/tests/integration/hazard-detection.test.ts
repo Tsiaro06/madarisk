@@ -140,7 +140,16 @@ async function insertObservation(
         precipitation_mm, rainfall_24h_mm, wind_speed_kmh, pressure_hpa,
         data_kind, geom)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'OBSERVE',
-             ST_SetSRID(ST_MakePoint($5::numeric, $4::numeric), 4326))`,
+             ST_SetSRID(ST_MakePoint($5::numeric, $4::numeric), 4326))
+     ON CONFLICT (weather_source_id, commune_id, observed_at, event_id) DO UPDATE SET
+       latitude         = EXCLUDED.latitude,
+       longitude        = EXCLUDED.longitude,
+       precipitation_mm = EXCLUDED.precipitation_mm,
+       rainfall_24h_mm  = EXCLUDED.rainfall_24h_mm,
+       wind_speed_kmh   = EXCLUDED.wind_speed_kmh,
+       pressure_hpa     = EXCLUDED.pressure_hpa,
+       data_kind        = EXCLUDED.data_kind,
+       geom             = EXCLUDED.geom`,
     [
       sourceId,
       commune.id,
@@ -750,7 +759,7 @@ describe('Détection automatique - cyclone jamais confirmé par le vent seul', (
     expect(windEvent.status).toBe('PREVISION');
     eventIds.push(windEvent.id);
 
-    await insertObservation(cc, { observedAt, pressureHpa: 980 });
+    await insertObservation(cc, { observedAt, windSpeedKmh: 60, pressureHpa: 980 });
     const withPressure = await hazardDetectionService.run({
       trigger: 'MANUAL',
       scope: 'OBSERVATIONS',
@@ -802,7 +811,7 @@ describe('Détection automatique - inondation jamais confirmée par la pluie seu
       threshold: 40,
       communeId: ci.id,
     });
-    await insertObservation(ci, { observedAt, rainfall24hMm: 60 });
+    await insertObservation(ci, { observedAt, precipitationMm: 30, rainfall24hMm: 60 });
 
     const confirmed = await hazardDetectionService.run({
       trigger: 'MANUAL',

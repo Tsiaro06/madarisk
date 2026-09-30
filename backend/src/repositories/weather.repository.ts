@@ -170,6 +170,19 @@ const OBSERVATION_COLUMNS = `
   w.created_at
 `;
 
+/**
+ * Upsert d'un lot d'observations.
+ *
+ * Clé naturelle : (weather_source_id, commune_id, observed_at, event_id), garantie
+ * par l'index unique `uq_weather_observations_source_commune_observed`
+ * (NULLS NOT DISTINCT, indispensable car event_id est NULL sur les lignes
+ * nationales).
+ *
+ * Le lot est un UPSERT et non un INSERT : une ré-exécution du job pour le même
+ * instant rafraîchit les valeurs au lieu d'ignorer l'apport. Sans cela,
+ * `ON CONFLICT DO NOTHING` figeait la première valeur récupérée pour toute la
+ * durée de la tranche horaire.
+ */
 async function insertObservationBatch(
   rows: WeatherInsertData[],
   sourceId: string,
@@ -215,7 +228,21 @@ async function insertObservationBatch(
         wind_speed_kmh, wind_gusts_kmh, wind_direction_deg, pressure_hpa, weather_code,
         data_kind, raw_data, geom)
      VALUES ${placeholders.join(', ')}
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT (weather_source_id, commune_id, observed_at, event_id) DO UPDATE SET
+       latitude          = EXCLUDED.latitude,
+       longitude         = EXCLUDED.longitude,
+       precipitation_mm  = EXCLUDED.precipitation_mm,
+       rainfall_24h_mm   = EXCLUDED.rainfall_24h_mm,
+       temperature_c     = EXCLUDED.temperature_c,
+       humidity_percent  = EXCLUDED.humidity_percent,
+       wind_speed_kmh    = EXCLUDED.wind_speed_kmh,
+       wind_gusts_kmh    = EXCLUDED.wind_gusts_kmh,
+       wind_direction_deg = EXCLUDED.wind_direction_deg,
+       pressure_hpa      = EXCLUDED.pressure_hpa,
+       weather_code      = EXCLUDED.weather_code,
+       data_kind         = EXCLUDED.data_kind,
+       raw_data          = EXCLUDED.raw_data,
+       geom              = EXCLUDED.geom`,
     values,
   );
   return result.rowCount ?? 0;
@@ -292,11 +319,23 @@ export const weatherRepository = {
     );
   },
 
+  /**
+   * Communes ayant déjà une observation pour la journée (UTC) donnée.
+   *
+   * Le cast doit être ancré sur UTC : `observed_at::date` convertit en heure de
+   * session, et la base tourne en Africa/Nairobi (+03). Pour une observation de
+   * fin de décade à 23:59:59Z, le cast session renvoyait donc le jour SUIVANT
+   * et ne correspondait jamais au `$2::date` (UTC) : la détection d'existant
+   * échouait silencieusement et le job DGM retéléchargait les 1579 communes à
+   * chaque exécution alors que rien n'avait changé.
+   */
   async existingCommunesForDate(sourceId: string, date: Date): Promise<Set<string>> {
     const result = await db.query<{ commune_id: string }>(
       `SELECT DISTINCT w.commune_id
        FROM weather_observations w
-       WHERE w.weather_source_id = $1 AND w.observed_at::date = $2::date AND w.commune_id IS NOT NULL`,
+       WHERE w.weather_source_id = $1
+         AND (w.observed_at AT TIME ZONE 'UTC')::date = $2::date
+         AND w.commune_id IS NOT NULL`,
       [sourceId, date.toISOString()],
     );
     return new Set(result.rows.map((r) => r.commune_id));
