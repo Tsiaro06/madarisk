@@ -1,53 +1,25 @@
 import { useQuery } from '@tanstack/react-query';
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from 'recharts';
 import { Link } from 'react-router-dom';
-import { BarChart3, CloudSun, Radio, Siren } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 import { dashboardApi, weatherApi } from '@/api';
-import { Card } from '@/components/ui/Card';
-import { Spinner } from '@/components/ui/Spinner';
-import { Badge } from '@/components/ui/Badge';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
-import { SEVERITY_LABELS, SEVERITY_TONE } from '@/lib/eventMeta';
-import { formatDate, formatNumber } from '@/lib/utils';
-import { RISK_COLORS, RISK_LABELS, type SeverityLevel } from '@/types';
-
-const HISTOGRAM_ORDER: string[] = ['EXTREME', 'ELEVE', 'MODERE', 'FAIBLE', 'SANS_RISQUE'];
-const HISTOGRAM_COLORS: Record<string, string> = {
-  ...RISK_COLORS,
-  SANS_RISQUE: '#94a3b8',
-};
-const HISTOGRAM_LABELS: Record<string, string> = {
-  ...RISK_LABELS,
-  SANS_RISQUE: 'Sans risque',
-};
-
-function syncStatusLabel(status?: string): string {
-  if (status === 'FRESH') return 'Fraîches';
-  if (status === 'STALE') return 'Périmées';
-  if (status === 'NEVER') return 'Jamais synchronisées';
-  return 'Indisponibles';
-}
-
-function syncTone(status?: string): 'success' | 'warning' | 'danger' | 'neutral' {
-  if (status === 'FRESH') return 'success';
-  if (status === 'STALE') return 'warning';
-  if (status === 'NEVER') return 'danger';
-  return 'neutral';
-}
+import { Spinner } from '@/components/ui/Spinner';
+import { DashCard, IconAction } from '@/components/dashboard/DashCard';
+import { HeroPanel } from '@/components/dashboard/HeroPanel';
+import { KpiCard } from '@/components/dashboard/KpiCard';
+import { StatGrid } from '@/components/dashboard/StatGrid';
+import { VolumeChart } from '@/components/dashboard/VolumeChart';
+import { WeatherCoverageCard } from '@/components/dashboard/WeatherCoverageCard';
+import { buildDashboardView } from '@/data/dashboardView';
+import { formatDate } from '@/lib/utils';
+import { useNow } from '@/hooks/useNow';
+import { useAuthStore } from '@/stores/authStore';
+import type { EventsTimelineEntry, RiskDistribution } from '@/types';
 
 export function DashboardPage() {
+  const user = useAuthStore((s) => s.user);
+  const now = useNow();
+
   const summaryQ = useQuery({
     queryKey: ['dashboard', 'summary'],
     queryFn: () => dashboardApi.summary(),
@@ -66,242 +38,112 @@ export function DashboardPage() {
     staleTime: 60_000,
   });
 
+  const queries = [summaryQ, timelineQ, distQ, monitoringQ];
+  const failedCount = queries.filter((q) => q.isError).length;
+  const isRefreshing = queries.some((q) => q.isFetching);
+
+  const refreshAll = () => {
+    queries.forEach((q) => void q.refetch());
+  };
+
+  const view = buildDashboardView({
+    summary: summaryQ.data,
+    timeline: timelineQ.data as EventsTimelineEntry[] | undefined,
+    distribution: distQ.data as Partial<RiskDistribution> | undefined,
+    monitoring: monitoringQ.data,
+    firstName: user?.firstName,
+  });
+
   if (summaryQ.isLoading) return <Spinner />;
 
-  const s = summaryQ.data;
-  const queriesWithError = [summaryQ, timelineQ, distQ, monitoringQ].filter((q) => q.isError);
-  const lastUpdatedAt = s?.lastUpdatedAt;
-  const staleMinutes =
-    typeof lastUpdatedAt === 'string'
-      ? Math.max(0, Math.round((Date.now() - new Date(lastUpdatedAt).getTime()) / 60_000))
-      : null;
+  const staleMinutes = view.lastUpdatedAt
+    ? Math.max(0, Math.round((now - new Date(view.lastUpdatedAt).getTime()) / 60_000))
+    : null;
 
-  const kpis: {
-    label: string;
-    value: string | number | null | undefined;
-    hint?: string;
-  }[] = [
-    {
-      label: 'Événements actifs',
-      value: s?.activeEvents,
-      hint: 'Actifs ou suivis',
-    },
-    { label: 'Prévisions', value: s?.forecastEvents, hint: 'À surveiller' },
-    { label: 'Alertes actives', value: s?.activeAlerts },
-    { label: 'Districts couverts', value: s?.totalDistricts },
-    { label: 'Communes suivies', value: s?.totalCommunes },
-    { label: 'Population exposée', value: s?.exposedPopulation },
-  ];
-
-  const latestAlerts = s?.latestAlerts ?? [];
-  const obs = monitoringQ.data?.sync.observations;
-  const obsSource =
-    monitoringQ.data?.sources.find((src) => src.isActive) ?? monitoringQ.data?.sources[0];
-
-  const timeline = (timelineQ.data ?? []).map((e) => ({
-    date: e.date.slice(0, 10),
-    total: e.total,
-  }));
-
-  const dist = (distQ.data ?? {}) as unknown as Record<string, number>;
-
-  const histogram = HISTOGRAM_ORDER.filter((lvl) => lvl in dist).map((lvl) => ({
-    level: lvl,
-    label: HISTOGRAM_LABELS[lvl] ?? lvl,
-    count: dist[lvl] ?? 0,
-    color: HISTOGRAM_COLORS[lvl] ?? '#94a3b8',
-  }));
+  const hasRiskData = view.risks.some((r) => r.count > 0);
 
   return (
-    <div className="space-y-5">
-      <div>
-        <h1 className="font-display text-3xl font-semibold text-ink">Tableau de bord</h1>
-        <p className="mt-1 text-sm text-muted">
-          Vue opérationnelle nationale · mise à jour {formatDate(s?.lastUpdatedAt)}
-        </p>
-      </div>
-
-      {queriesWithError.length > 0 ? (
-        <AlertBanner tone="danger" title="Chargement partiel">
-          Certaines données du tableau de bord n&apos;ont pas pu être chargées (
-          {queriesWithError.length} section(s) en erreur). Rechargez la page ou réessayez plus tard.
-        </AlertBanner>
+    <div className="dash-surface min-h-full rounded-[28px] p-4 sm:p-6">
+      {failedCount > 0 ? (
+        <div className="mb-5">
+          <AlertBanner tone="danger" title="Chargement partiel">
+            {failedCount} section(s) n&apos;ont pas pu être actualisées. Les valeurs affichées
+            peuvent être obsolètes.
+          </AlertBanner>
+        </div>
       ) : null}
 
       {staleMinutes !== null && staleMinutes > 30 ? (
-        <AlertBanner tone="warning" title="Données potentiellement périmées">
-          Dernière mise à jour des données opérationnelles il y a {staleMinutes} min — lancez un
-          rafraîchissement si nécessaire.
-        </AlertBanner>
+        <div className="mb-5">
+          <AlertBanner tone="warning" title="Données potentiellement périmées">
+            Dernière actualisation il y a {staleMinutes} min — lancez un rafraîchissement si
+            nécessaire.
+          </AlertBanner>
+        </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-        {kpis.map((k) => (
-          <Card key={k.label} className="!p-4">
-            <p className="text-xs uppercase tracking-wide text-muted">{k.label}</p>
-            <p className="mt-1 text-3xl font-bold tracking-tight text-brand">
-              {typeof k.value === 'number' ? formatNumber(k.value) : (k.value ?? '—')}
-            </p>
-            {k.hint ? <p className="mt-1 text-xs text-muted">{k.hint}</p> : null}
-          </Card>
-        ))}
-      </div>
+      <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+        <HeroPanel hero={view.hero} />
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <Card
-          title="Dernières alertes publiées"
-          description="Alertes en cours sur l’ensemble du territoire"
-          className="lg:col-span-2"
-          actions={
-            <Link to="/alertes" className="text-sm font-medium text-brand hover:underline">
-              Voir toutes les alertes →
-            </Link>
-          }
-        >
-          {latestAlerts.length === 0 ? (
-            <EmptyState
-              title="Aucune alerte publiée"
-              description="Les alertes opérationnelles publiées apparaîtront ici."
-              icon={<Siren className="size-6" />}
-              className="py-8"
+        <div className="min-w-0 space-y-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h1 className="font-[Outfit] text-2xl font-bold tracking-tight text-[var(--dash-ink)] sm:text-3xl">
+                Vue d&apos;ensemble
+              </h1>
+              <p className="mt-1 text-sm text-[var(--dash-muted)]">
+                Mise à jour {formatDate(view.lastUpdatedAt)}
+              </p>
+            </div>
+            <IconAction
+              label="Rafraîchir les données"
+              icon={
+                <RefreshCw className={`size-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+              }
+              onClick={refreshAll}
             />
-          ) : (
-            <ul className="space-y-2">
-              {latestAlerts.map((a) => {
-                const severity = a.severity as SeverityLevel;
-                const label = SEVERITY_LABELS[severity] ?? a.severity;
-                const tone = SEVERITY_TONE[severity] ?? 'neutral';
-                return (
-                  <li
-                    key={a.id}
-                    className="flex items-start gap-3 rounded-xl border border-line bg-white p-3"
-                  >
-                    <Badge tone={tone}>{label}</Badge>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-ink">{a.title}</p>
-                      <p className="mt-0.5 text-xs text-muted">
-                        {a.type}
-                        {a.publishedAt ? ` · ${formatDate(a.publishedAt)}` : ''}
-                      </p>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
+          </div>
 
-        <div className="space-y-5">
-          <Card
-            title="État de la météo"
-            description={obsSource?.name ?? 'Source météo'}
+          <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
+            {view.kpis.map((datum, index) => (
+              <KpiCard key={datum.id} datum={datum} index={index} />
+            ))}
+          </div>
+
+          <div className="grid gap-5 2xl:grid-cols-3">
+            <div className="2xl:col-span-2">
+              <VolumeChart
+                points={view.timeline}
+                total={view.timelineTotal}
+                title="Évolution des événements"
+                description="Volume quotidien sur les 30 derniers jours"
+              />
+            </div>
+
+            <WeatherCoverageCard weather={view.weather} />
+          </div>
+
+          <DashCard
+            title="Répartition des risques"
+            description="Nombre de communes par niveau de risque, sur le territoire national"
             actions={
-              <Link to="/meteo" className="text-sm font-medium text-brand hover:underline">
-                Carte météo →
+              <Link
+                to="/risques"
+                className="text-sm font-semibold text-[var(--dash-accent)] hover:underline"
+              >
+                Voir la carte →
               </Link>
             }
           >
-            <dl className="space-y-2.5 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <dt className="flex items-center gap-1.5 text-muted">
-                  <CloudSun className="size-4" /> Observations
-                </dt>
-                <dd>
-                  <Badge tone={syncTone(obs?.status)}>{syncStatusLabel(obs?.status)}</Badge>
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <dt className="text-muted">Communes avec données</dt>
-                <dd className="font-medium text-ink">
-                  {obs?.communesData != null
-                    ? `${formatNumber(obs.communesData)}${s?.totalCommunes != null ? ` / ${formatNumber(s.totalCommunes)}` : ''}`
-                    : '—'}
-                </dd>
-              </div>
-              <div className="flex items-center justify-between gap-2">
-                <dt className="text-muted">Dernière donnée</dt>
-                <dd className="font-medium text-ink">
-                  {obs?.lastDataAt ? formatDate(obs.lastDataAt) : '—'}
-                </dd>
-              </div>
-            </dl>
-          </Card>
+            {hasRiskData ? (
+              <StatGrid items={view.risks} />
+            ) : (
+              <p className="py-6 text-center text-sm text-[var(--dash-muted)]">
+                Aucune évaluation de risque disponible pour le moment.
+              </p>
+            )}
+          </DashCard>
         </div>
-      </div>
-
-      <div className="grid gap-5 xl:grid-cols-2">
-        <Card
-          title="Répartition des risques (nationale)"
-          description="Nombre de communes par niveau de risque"
-          actions={
-            <Link to="/?tab=carte" className="text-sm font-medium text-brand hover:underline">
-              Carte →
-            </Link>
-          }
-        >
-          {histogram.every((d) => d.count === 0) ? (
-            <EmptyState
-              title="Aucune évaluation de risque"
-              description="Les communes par niveau de risque apparaîtront ici."
-              icon={<BarChart3 className="size-6" />}
-              className="py-8"
-            />
-          ) : (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={histogram} margin={{ top: 20, right: 8, left: -12, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar
-                    dataKey="count"
-                    name="Communes"
-                    radius={[6, 6, 0, 0]}
-                    label={{ position: 'top', fontSize: 11, fill: '#475569' }}
-                  >
-                    {histogram.map((d) => (
-                      <Cell key={d.level} fill={d.color} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Card>
-
-        <Card
-          title="Chronologie des événements"
-          description="Volume quotidien sur les 30 derniers jours"
-        >
-          {timeline.length === 0 ? (
-            <EmptyState
-              title="Aucun événement enregistré"
-              description="La chronologie des événements apparaîtra ici."
-              icon={<Radio className="size-6" />}
-              className="py-8"
-            />
-          ) : (
-            <div className="h-72">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={timeline}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
-                  <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="total"
-                    name="Événements"
-                    stroke="#3d7a9a"
-                    strokeWidth={2}
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </Card>
       </div>
     </div>
   );

@@ -191,6 +191,143 @@ h3 {
 }
 
 /* ------------------------------------------------------------------
+   Tableau de bord — style « SaaS analytics » clair.
+
+   Les jetons sont scopés à `.dash-surface` (et non ajoutés au `@theme`)
+   pour ne pas recolorer le reste de l'application : les palettes
+   sémantiques de risque (vert/ambre/orange/rouge) doivent rester
+   inchangées sur les cartes et les jauges météo.
+   ------------------------------------------------------------------ */
+.dash-surface {
+  --dash-canvas: #f3f6fc;
+  --dash-card: #ffffff;
+  --dash-accent: #2f5bea;
+  --dash-accent-light: #5b82f5;
+  --dash-accent-soft: #eaf0fe;
+  --dash-ink: #101828;
+  --dash-ink-soft: #475467;
+  --dash-muted: #98a2b3;
+  --dash-line: #e7ecf5;
+  --dash-positive: #17b26a;
+  --dash-negative: #f04438;
+  --dash-lime: #a8e63a;
+  --dash-radius: 24px;
+  --dash-shadow:
+    0 1px 2px rgba(16, 24, 40, 0.04), 0 12px 32px -14px rgba(47, 91, 234, 0.22);
+  --dash-shadow-hover:
+    0 2px 4px rgba(16, 24, 40, 0.05), 0 22px 48px -18px rgba(47, 91, 234, 0.32);
+  --dash-hero: linear-gradient(158deg, #4a72f3 0%, var(--dash-accent) 46%, #2447c4 100%);
+
+  background: var(--dash-canvas);
+  color: var(--dash-ink);
+  font-family: var(--font-sans);
+}
+
+.dash-surface .dash-card {
+  background: var(--dash-card);
+  border-radius: var(--dash-radius);
+  box-shadow: var(--dash-shadow);
+  transition:
+    box-shadow 0.28s ease,
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dash-surface .dash-card-hover:hover {
+  box-shadow: var(--dash-shadow-hover);
+  transform: translateY(-2px);
+}
+
+.dash-surface .dash-hero {
+  background: var(--dash-hero);
+  border-radius: var(--dash-radius);
+  box-shadow: 0 18px 44px -18px rgba(47, 91, 234, 0.55);
+}
+
+/* Chiffres clés : grande taille, graisse forte, interlettrage serré. */
+.dash-surface .dash-figure {
+  font-size: clamp(1.75rem, 1.2rem + 1.6vw, 2.5rem);
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+}
+
+.dash-surface .dash-label {
+  color: var(--dash-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+.dash-surface .dash-figure-inverse {
+  color: #ffffff;
+  text-shadow: 0 1px 12px rgba(16, 24, 40, 0.18);
+}
+
+.dark .dash-surface {
+  --dash-canvas: #0d1220;
+  --dash-card: #161c2e;
+  --dash-accent-soft: rgba(47, 91, 234, 0.18);
+  --dash-ink: #f2f5fb;
+  --dash-ink-soft: #c3cbdd;
+  --dash-muted: #8b94ab;
+  --dash-line: rgba(255, 255, 255, 0.09);
+  --dash-positive: #3ecf8e;
+  --dash-negative: #ff6b61;
+  --dash-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4), 0 12px 32px -14px rgba(0, 0, 0, 0.7);
+  --dash-shadow-hover:
+    0 2px 4px rgba(0, 0, 0, 0.45), 0 22px 48px -18px rgba(0, 0, 0, 0.8);
+}
+
+@keyframes dash-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dash-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.dash-rise {
+  animation: dash-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dash-fade {
+  animation: dash-fade 0.5s ease both;
+}
+
+/* Anneau de jauge : tracé progressif au montage. La longueur du trait est
+   pilotée par `--dash-ring-offset`, recalculé par le composant. */
+.dash-ring-track,
+.dash-ring-value {
+  transition: stroke-dashoffset 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dash-rise,
+  .dash-fade {
+    animation: none !important;
+  }
+
+  .dash-surface .dash-card,
+  .dash-ring-track,
+  .dash-ring-value {
+    transition: none !important;
+  }
+}
+
+/* ------------------------------------------------------------------
    Chrome « soft UI » — sidebar et navbar partagent les mêmes variables.
    Le thème est piloté par l'attribut `data-theme` posé sur le conteneur,
    lui-même alimenté par le store global `themeStore` (donc identique à
