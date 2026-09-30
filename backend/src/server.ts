@@ -21,6 +21,19 @@ async function main(): Promise<void> {
     logger.info('Connexion PostgreSQL établie.');
   }
 
+  // Le port doit ouvrir AVANT le démarrage des jobs : une ingestion lourde au boot
+  // bloquerait l'event loop et rendrait l'API injoignable (login compris) pendant plusieurs minutes.
+  await new Promise<void>((resolve) => {
+    app.listen(env.PORT, () => resolve());
+  });
+
+  logger.info(`🚀 MadaRisk API démarrée sur http://localhost:${env.PORT}`);
+  logger.info(`📡 Environnement : ${env.NODE_ENV}`);
+  logger.info(`📊 Base de données : ${dbOk ? 'connectée' : 'indisponible'}`);
+  if (env.DEMO_MODE) {
+    logger.warn('🧪 Mode démonstration : jobs planifiés et appels externes neutralisés.');
+  }
+
   if (env.DEMO_MODE) {
     console.warn(`\n${DEMO_BANNER}\n`);
     logger.warn(
@@ -33,15 +46,6 @@ async function main(): Promise<void> {
     startRiskRecalculationJob();
     startDgmMaproomIngestJob();
   }
-
-  app.listen(env.PORT, () => {
-    logger.info(`🚀 MadaRisk API démarrée sur http://localhost:${env.PORT}`);
-    logger.info(`📡 Environnement : ${env.NODE_ENV}`);
-    logger.info(`📊 Base de données : ${dbOk ? 'connectée' : 'indisponible'}`);
-    if (env.DEMO_MODE) {
-      logger.warn('🧪 Mode démonstration : jobs planifiés et appels externes neutralisés.');
-    }
-  });
 }
 
 main().catch((err) => {

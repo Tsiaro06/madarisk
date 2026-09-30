@@ -45,8 +45,11 @@ export function bindAuthHandlers(handlers: {
 
 const raw: AxiosInstance = axios.create({
   baseURL: API_BASE,
-  timeout: 60000,
+  timeout: 30000,
 });
+
+/** Login / refresh doivent échouer vite : ce sont des appels DB, jamais des requêtes lourdes. */
+const AUTH_TIMEOUT_MS = 15000;
 
 let refreshPromise: Promise<boolean> | null = null;
 
@@ -57,6 +60,7 @@ async function refreshAccessToken(): Promise<boolean> {
     const res = await axios.post<ApiSuccess<{ accessToken: string; refreshToken: string }>>(
       `${API_BASE}/auth/refresh`,
       { refreshToken },
+      { timeout: AUTH_TIMEOUT_MS },
     );
     if (!res.data.success || !res.data.data) return false;
     setTokens(res.data.data.accessToken, res.data.data.refreshToken);
@@ -70,6 +74,9 @@ raw.interceptors.request.use((config) => {
   const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
+  }
+  if (!config.timeout && config.url?.includes('/auth/')) {
+    config.timeout = AUTH_TIMEOUT_MS;
   }
   return config;
 });

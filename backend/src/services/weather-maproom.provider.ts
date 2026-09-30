@@ -15,7 +15,15 @@ export interface GridSample {
   valueMm: number;
 }
 
+/** Index spatial : clé de cellule (pas de 0.01°) -> points de grille contenus. */
+export type GridIndex = Map<string, GridSample[]>;
+
 const KM_PER_DEG = 111.32;
+const BUCKET_STEP = 0.01;
+
+function bucketKey(lon: number, lat: number): string {
+  return `${lon.toFixed(2)},${lat.toFixed(2)}`;
+}
 
 function isNumericToken(token: string): boolean {
   return token !== '' && !Number.isNaN(Number(token));
@@ -127,36 +135,43 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
 }
 
 /**
- * Échantillonne la valeur du point de grille le plus proche du centroïde de la commune,
- * dans un rayon maximal donné (en degrés). Retourne null si aucun point dans le rayon.
+ * Construit l'index spatial de la grille. À appeler UNE SEULE FOIS par jeu de points :
+ * le reconstruire pour chaque commune coûte O(communes × points) et bloque l'event loop.
  */
-export function sampleNearest(
-  points: GridSample[],
-  longitude: number,
-  latitude: number,
-  maxDistanceDeg: number,
-): number | null {
-  const buckets = new Map<string, GridSample[]>();
-  const bucketKey = (lon: number, lat: number) => `${lon.toFixed(2)},${lat.toFixed(2)}`;
+export function buildGridIndex(points: GridSample[]): GridIndex {
+  const buckets: GridIndex = new Map();
   for (const p of points) {
     const key = bucketKey(p.longitude, p.latitude);
     const list = buckets.get(key);
     if (list) list.push(p);
     else buckets.set(key, [p]);
   }
+  return buckets;
+}
 
-  const bucketStep = 0.01;
-  const kMax = Math.max(1, Math.ceil(maxDistanceDeg / bucketStep));
+/**
+ * Échantillonne la valeur du point de grille le plus proche du centroïde de la commune,
+ * dans un rayon maximal donné (en degrés). Retourne null si aucun point dans le rayon.
+ *
+ * @param buckets Index produit par {@link buildGridIndex} (réutilisable d'une commune à l'autre).
+ */
+export function sampleNearestFromIndex(
+  buckets: GridIndex,
+  longitude: number,
+  latitude: number,
+  maxDistanceDeg: number,
+): number | null {
+  const kMax = Math.max(1, Math.ceil(maxDistanceDeg / BUCKET_STEP));
   const maxDistanceKm = maxDistanceDeg * KM_PER_DEG;
-  const baseLon = Math.round(longitude / bucketStep) * bucketStep;
-  const baseLat = Math.round(latitude / bucketStep) * bucketStep;
+  const baseLon = Math.round(longitude / BUCKET_STEP) * BUCKET_STEP;
+  const baseLat = Math.round(latitude / BUCKET_STEP) * BUCKET_STEP;
 
   let best: GridSample | null = null;
   let bestKm = Infinity;
 
   for (let oy = -kMax; oy <= kMax; oy += 1) {
     for (let ox = -kMax; ox <= kMax; ox += 1) {
-      const cell = buckets.get(bucketKey(baseLon + ox * bucketStep, baseLat + oy * bucketStep));
+      const cell = buckets.get(bucketKey(baseLon + ox * BUCKET_STEP, baseLat + oy * BUCKET_STEP));
       if (!cell) continue;
       for (const candidate of cell) {
         const km = haversineKm(latitude, longitude, candidate.latitude, candidate.longitude);
@@ -169,6 +184,16 @@ export function sampleNearest(
   }
 
   return best && bestKm <= maxDistanceKm ? best.valueMm : null;
+}
+
+/** Variante pratique pour un usage ponctuel : construit l'index puis échantillonne. */
+export function sampleNearest(
+  points: GridSample[],
+  longitude: number,
+  latitude: number,
+  maxDistanceDeg: number,
+): number | null {
+  return sampleNearestFromIndex(buildGridIndex(points), longitude, latitude, maxDistanceDeg);
 }
 
 export class DgmMaproomProvider {
@@ -215,10 +240,13 @@ export class DgmMaproomProvider {
     let communesSampled = 0;
     let communesWithoutValue = 0;
 
+    // Index spatial construit une seule fois, réutilisé pour chaque commune.
+    const gridIndex = buildGridIndex(points);
+
     for (const target of targets) {
       if (existing.has(target.id)) continue;
-      const value = sampleNearest(
-        points,
+      const value = sampleNearestFromIndex(
+        gridIndex,
         target.longitude,
         target.latitude,
         env.DGM_MAPROOM_MAX_DISTANCE_DEG,
