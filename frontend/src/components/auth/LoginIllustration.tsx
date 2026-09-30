@@ -62,7 +62,7 @@ export function LoginIllustration({ className }: { className?: string }) {
         </linearGradient>
         <linearGradient id={islandFill} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor="#3ec9d6" stopOpacity="0.16" />
-          <stop offset="1" stopColor="#2f5f78" stopOpacity="0.06" />
+          <stop offset="1" stopColor="#03224c" stopOpacity="0.06" />
         </linearGradient>
         <radialGradient id={radarGlow}>
           <stop offset="0" stopColor="#3ec9d6" stopOpacity="0.3" />

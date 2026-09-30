@@ -105,7 +105,7 @@ const NAVBAR_ACCOUNT_MENU: NavbarMenuItem[] = [
 ];
 
 const TONE_DOT: Record<NavbarNotificationTone, string> = {
-  neutral: 'bg-[var(--sb-muted)]',
+  neutral: 'bg-(--sb-muted)',
   warning: 'bg-[#d9a441]',
   danger: 'bg-[#e5484d]',
 };
@@ -228,10 +228,10 @@ function Dropdown({ label, trigger, badge, align = 'right', triggerClassName, ch
         aria-label={label}
         title={label}
         className={cn(
-          'relative grid size-10 place-items-center rounded-full border text-[var(--sb-text-soft)] transition-colors duration-200',
+          'relative grid size-10 place-items-center rounded-full border text-(--sb-text-soft) transition-colors duration-200',
           open
-            ? 'border-[var(--sb-accent)]/40 bg-[var(--sb-accent-soft)] text-[var(--sb-accent)]'
-            : 'border-[var(--sb-line)] bg-[var(--sb-chip)] hover:bg-[var(--sb-chip-hover)] hover:text-[var(--sb-text)]',
+            ? 'border-(--sb-accent)/40 bg-(--sb-accent-soft) text-(--sb-accent)'
+            : 'border-(--sb-line) bg-(--sb-chip) hover:bg-(--sb-chip-hover) hover:text-(--sb-text)',
           triggerClassName,
         )}
       >
@@ -246,7 +246,7 @@ function Dropdown({ label, trigger, badge, align = 'right', triggerClassName, ch
           aria-label={label}
           onKeyDown={onPanelKeyDown}
           className={cn(
-            'navbar-menu soft-ui absolute z-50 mt-2 w-[288px] overflow-hidden rounded-[20px] border border-[var(--sb-line)] p-1.5 backdrop-blur-xl',
+            'navbar-menu soft-ui absolute z-50 mt-2 w-[288px] overflow-hidden rounded-[20px] border border-(--sb-line) p-1.5 backdrop-blur-xl',
             align === 'right' ? 'right-0' : 'left-0',
           )}
           style={{ background: 'var(--sb-surface-glass)', boxShadow: 'var(--sb-shadow)' }}
@@ -290,7 +290,7 @@ function SearchField({
       </label>
       <div className="relative">
         <Search
-          className="pointer-events-none absolute top-1/2 left-3.5 size-[17px] -translate-y-1/2 text-[var(--sb-muted)]"
+          className="pointer-events-none absolute top-1/2 left-3.5 size-[17px] -translate-y-1/2 text-(--sb-muted)"
           aria-hidden
         />
         <input
@@ -304,14 +304,14 @@ function SearchField({
             if (e.key === 'Escape') e.currentTarget.blur();
           }}
           className={cn(
-            'h-10 w-full rounded-full border border-[var(--sb-line)] bg-[var(--sb-chip)] pr-3 pl-10 text-sm font-medium text-[var(--sb-text)] outline-none',
-            'placeholder:font-normal placeholder:text-[var(--sb-muted)]',
-            'focus:border-[var(--sb-accent)] focus:ring-4 focus:ring-[var(--sb-accent)]/15',
+            'h-10 w-full rounded-full border border-(--sb-line) bg-(--sb-chip) pr-3 pl-10 text-sm font-medium text-(--sb-text) outline-none',
+            'placeholder:font-normal placeholder:text-(--sb-muted)',
+            'focus:border-(--sb-accent) focus:ring-4 focus:ring-(--sb-accent)/15',
             '[&::-webkit-search-cancel-button]:hidden',
           )}
         />
         {showShortcut ? (
-          <kbd className="pointer-events-none absolute top-1/2 right-2.5 hidden -translate-y-1/2 rounded-full border border-[var(--sb-line)] bg-[var(--sb-chip-hover)] px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-[var(--sb-muted)] select-none xl:block">
+          <kbd className="pointer-events-none absolute top-1/2 right-2.5 hidden -translate-y-1/2 rounded-full border border-(--sb-line) bg-(--sb-chip-hover) px-1.5 py-0.5 text-[10px] font-semibold tracking-wide text-(--sb-muted) select-none xl:block">
             {shortcutLabel()}
           </kbd>
         ) : null}
@@ -378,14 +378,14 @@ export function Navbar({
     const shared = cn(
       'rounded-full px-1.5 py-0.5 transition-colors duration-150',
       isCurrent
-        ? 'font-semibold text-[var(--sb-text)]'
-        : 'font-medium text-[var(--sb-muted)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+        ? 'font-semibold text-(--sb-text)'
+        : 'font-medium text-(--sb-muted) hover:bg-(--sb-hover) hover:text-(--sb-text)',
     );
 
     return (
       <li key={`${crumb.label}-${index}`} className="flex min-w-0 items-center gap-1.5">
         {index > 0 ? (
-          <ChevronRight className="size-3.5 shrink-0 text-[var(--sb-muted)]" aria-hidden />
+          <ChevronRight className="size-3.5 shrink-0 text-(--sb-muted)" aria-hidden />
         ) : null}
         {crumb.to ? (
           <Link to={crumb.to} className={cn(shared, 'truncate')} onClick={crumb.onSelect}>
@@ -413,7 +413,7 @@ export function Navbar({
         menuItemClass,
         item.danger
           ? 'text-[#e5484d] hover:bg-[#e5484d]/10'
-          : 'text-[var(--sb-text-soft)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+          : 'text-(--sb-text-soft) hover:bg-(--sb-hover) hover:text-(--sb-text)',
       );
       const content = (
         <>
@@ -471,9 +471,9 @@ export function Navbar({
             aria-expanded={!sidebarCollapsed}
             title={toggleLabel}
             className={cn(
-              'grid size-10 shrink-0 place-items-center rounded-full border border-[var(--sb-line)] bg-[var(--sb-chip)]',
-              'text-[var(--sb-text-soft)] transition-colors duration-200',
-              'hover:bg-[var(--sb-chip-hover)] hover:text-[var(--sb-accent)]',
+              'grid size-10 shrink-0 place-items-center rounded-full border border-(--sb-line) bg-(--sb-chip)',
+              'text-(--sb-text-soft) transition-colors duration-200',
+              'hover:bg-(--sb-chip-hover) hover:text-(--sb-accent)',
               'disabled:pointer-events-none disabled:opacity-50',
             )}
           >
@@ -491,7 +491,7 @@ export function Navbar({
           ) : null}
           <h1
             className={cn(
-              'min-w-0 truncate pr-1 font-condensed text-[15px] font-semibold tracking-[0.16em] text-[var(--sb-text)] uppercase',
+              'min-w-0 truncate pr-1 font-condensed text-[15px] font-semibold tracking-[0.16em] text-(--sb-text) uppercase',
               isTablet && breadcrumb.length > 0 && 'sr-only',
             )}
           >
@@ -520,7 +520,7 @@ export function Navbar({
                     onClick={() => setSearchOpen(false)}
                     aria-label="Fermer la recherche"
                     title="Fermer la recherche"
-                    className="grid size-10 shrink-0 place-items-center rounded-full border border-[var(--sb-line)] bg-[var(--sb-chip)] text-[var(--sb-text-soft)] transition-colors duration-200 hover:bg-[var(--sb-chip-hover)] hover:text-[var(--sb-text)]"
+                    className="grid size-10 shrink-0 place-items-center rounded-full border border-(--sb-line) bg-(--sb-chip) text-(--sb-text-soft) transition-colors duration-200 hover:bg-(--sb-chip-hover) hover:text-(--sb-text)"
                   >
                     <X className="size-[17px]" aria-hidden />
                   </button>
@@ -532,7 +532,7 @@ export function Navbar({
                 onClick={() => setSearchOpen(true)}
                 aria-label="Rechercher"
                 title="Rechercher"
-                className="grid size-10 place-items-center rounded-full border border-[var(--sb-line)] bg-[var(--sb-chip)] text-[var(--sb-text-soft)] transition-colors duration-200 hover:bg-[var(--sb-chip-hover)] hover:text-[var(--sb-text)]"
+                className="grid size-10 place-items-center rounded-full border border-(--sb-line) bg-(--sb-chip) text-(--sb-text-soft) transition-colors duration-200 hover:bg-(--sb-chip-hover) hover:text-(--sb-text)"
               >
                 <Search className="size-[17px]" aria-hidden />
               </button>
@@ -550,7 +550,7 @@ export function Navbar({
               onClick={createAction.onSelect}
               className={cn(
                 'inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-4 text-[13.5px] font-semibold text-white',
-                'bg-[var(--sb-accent)] transition-[filter,box-shadow] duration-200',
+                'bg-(--sb-accent) transition-[filter,box-shadow] duration-200',
                 'hover:brightness-110 hover:shadow-[0_10px_24px_-10px_var(--sb-accent)]',
               )}
             >
@@ -580,7 +580,7 @@ export function Navbar({
           >
             {(close) => (
               <>
-                <p className="px-2.5 pt-1 pb-2 font-condensed text-[11px] font-semibold tracking-[0.12em] text-[var(--sb-muted)] uppercase">
+                <p className="px-2.5 pt-1 pb-2 font-condensed text-[11px] font-semibold tracking-[0.12em] text-(--sb-muted) uppercase">
                   Notifications
                 </p>
                 {notifications.length > 0 ? (
@@ -589,7 +589,7 @@ export function Navbar({
                       const row = cn(
                         menuItemClass,
                         'items-start',
-                        'text-[var(--sb-text-soft)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+                        'text-(--sb-text-soft) hover:bg-(--sb-hover) hover:text-(--sb-text)',
                       );
                       const inner = (
                         <>
@@ -601,17 +601,17 @@ export function Navbar({
                             aria-hidden
                           />
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13.5px] font-semibold text-[var(--sb-text)]">
+                            <span className="block truncate text-[13.5px] font-semibold text-(--sb-text)">
                               {notification.title}
                             </span>
                             {notification.description ? (
-                              <span className="mt-0.5 block line-clamp-2 text-[12.5px] font-normal text-[var(--sb-muted)]">
+                              <span className="mt-0.5 block line-clamp-2 text-[12.5px] font-normal text-(--sb-muted)">
                                 {notification.description}
                               </span>
                             ) : null}
                           </span>
                           {notification.meta ? (
-                            <span className="shrink-0 text-[11px] text-[var(--sb-muted)]">
+                            <span className="shrink-0 text-[11px] text-(--sb-muted)">
                               {notification.meta}
                             </span>
                           ) : null}
@@ -650,7 +650,7 @@ export function Navbar({
                     })}
                   </ul>
                 ) : (
-                  <p className="px-2.5 py-4 text-center text-[13px] text-[var(--sb-muted)]">
+                  <p className="px-2.5 py-4 text-center text-[13px] text-(--sb-muted)">
                     Aucune notification
                   </p>
                 )}
@@ -669,7 +669,7 @@ export function Navbar({
                       <button
                         type="button"
                         role="menuitem"
-                        className={cn(menuItemClass, 'text-white bg-[var(--sb-accent)] hover:brightness-110')}
+                        className={cn(menuItemClass, 'text-white bg-(--sb-accent) hover:brightness-110')}
                         onClick={() => {
                           createAction.onSelect();
                           close();
@@ -681,7 +681,7 @@ export function Navbar({
                     ) : null}
 
                     {breadcrumb.length > 0 ? (
-                      <ol className="my-1 border-y border-[var(--sb-line)] py-1">
+                      <ol className="my-1 border-y border-(--sb-line) py-1">
                         {breadcrumb.map((crumb, index) => (
                           <li key={`${crumb.label}-${index}`}>
                             {crumb.to ? (
@@ -690,7 +690,7 @@ export function Navbar({
                                 role="menuitem"
                                 className={cn(
                                   menuItemClass,
-                                  'text-[var(--sb-muted)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+                                  'text-(--sb-muted) hover:bg-(--sb-hover) hover:text-(--sb-text)',
                                 )}
                                 onClick={() => {
                                   crumb.onSelect?.();
@@ -705,7 +705,7 @@ export function Navbar({
                                 role="menuitem"
                                 className={cn(
                                   menuItemClass,
-                                  'text-[var(--sb-muted)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+                                  'text-(--sb-muted) hover:bg-(--sb-hover) hover:text-(--sb-text)',
                                 )}
                                 onClick={() => {
                                   crumb.onSelect?.();
@@ -721,23 +721,23 @@ export function Navbar({
                     ) : null}
 
                     <div className="flex items-center justify-between gap-2 px-2.5 py-2">
-                      <span className="text-[13px] font-medium text-[var(--sb-muted)]">
+                      <span className="text-[13px] font-medium text-(--sb-muted)">
                         Mode sombre
                       </span>
                       <ThemeSwitch showLabel={false} />
                     </div>
 
-                    <span aria-hidden className="mx-1 my-1 block h-px bg-[var(--sb-line)]" />
+                    <span aria-hidden className="mx-1 my-1 block h-px bg-(--sb-line)" />
                   </>
                 )}
 
                 {user ? (
                   <div className="px-2.5 pt-1.5 pb-2">
-                    <p className="truncate text-[13.5px] font-semibold text-[var(--sb-text)]">
+                    <p className="truncate text-[13.5px] font-semibold text-(--sb-text)">
                       {user.name}
                     </p>
                     {user.email ? (
-                      <p className="truncate text-[12px] text-[var(--sb-muted)]">{user.email}</p>
+                      <p className="truncate text-[12px] text-(--sb-muted)">{user.email}</p>
                     ) : null}
                   </div>
                 ) : null}
@@ -758,7 +758,7 @@ function AvatarTrigger(user?: NavbarUser) {
       <img
         src={user.avatarUrl}
         alt=""
-        className="size-7 rounded-full object-cover ring-1 ring-[var(--sb-line)]"
+        className="size-7 rounded-full object-cover ring-1 ring-(--sb-line)"
       />
     );
   }
@@ -766,7 +766,7 @@ function AvatarTrigger(user?: NavbarUser) {
   return (
     <span
       aria-hidden
-      className="grid size-8 place-items-center rounded-full bg-[var(--sb-accent-soft)] text-[11.5px] font-bold text-[var(--sb-accent)] ring-1 ring-[var(--sb-accent)]/30"
+      className="grid size-8 place-items-center rounded-full bg-(--sb-accent-soft) text-[11.5px] font-bold text-(--sb-accent) ring-1 ring-(--sb-accent)/30"
     >
       {user?.initials ?? initialsOf(user?.name ?? '')}
     </span>

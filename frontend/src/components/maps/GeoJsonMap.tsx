@@ -34,7 +34,7 @@ function styleForFeature(feature?: Feature, selectedId?: string | null): PathOpt
   const id = String(props?.id ?? props?.communeId ?? props?.commune_id ?? '');
   const selected = selectedId != null && id === String(selectedId);
   const track = trackKind(props);
-  let color = '#3d7a9a';
+  let color = '#03224c';
   let dashArray: PathOptions['dashArray'];
   if (track === 'PREVUE') {
     color = '#ea580c';
@@ -159,7 +159,7 @@ export function GeoJsonMap({
               <p className="font-semibold text-ink">Trajectoire</p>
               <ul className="space-y-1">
                 <li className="flex items-center gap-2">
-                  <span className="inline-block size-3 rounded-sm bg-[#3d7a9a]" />
+                  <span className="inline-block size-3 rounded-sm bg-[#03224c]" />
                   Observée
                 </li>
                 <li className="flex items-center gap-2">

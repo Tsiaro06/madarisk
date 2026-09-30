@@ -64,8 +64,8 @@ function Row({ item, variant, alertCount, onNavigate }: RowProps) {
           cn(
             'group relative grid size-10 shrink-0 place-items-center rounded-full transition-colors duration-200',
             isActive
-              ? 'bg-[var(--sb-accent)] text-white'
-              : 'text-[var(--sb-muted)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+              ? 'bg-(--sb-accent) text-white'
+              : 'text-(--sb-muted) hover:bg-(--sb-hover) hover:text-(--sb-text)',
           )
         }
       >
@@ -77,7 +77,7 @@ function Row({ item, variant, alertCount, onNavigate }: RowProps) {
                 aria-hidden
                 className={cn(
                   'absolute top-0.5 right-0.5 grid h-4 min-w-4 place-items-center rounded-full px-1 text-[9px] font-semibold leading-none',
-                  isActive ? 'bg-white text-[var(--sb-accent)]' : 'bg-[#e5484d] text-white',
+                  isActive ? 'bg-white text-(--sb-accent)' : 'bg-[#e5484d] text-white',
                 )}
               >
                 {badge > 9 ? '9+' : badge}
@@ -102,8 +102,8 @@ function Row({ item, variant, alertCount, onNavigate }: RowProps) {
           'group flex items-center rounded-full transition-colors duration-200',
           compact ? 'h-9 w-full gap-2 px-1.5' : 'h-10 w-full gap-2.5 px-2.5',
           isActive
-            ? 'bg-[var(--sb-accent)] text-white'
-            : 'text-[var(--sb-text-soft)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+            ? 'bg-(--sb-accent) text-white'
+            : 'text-(--sb-text-soft) hover:bg-(--sb-hover) hover:text-(--sb-text)',
         )
       }
     >
@@ -115,7 +115,7 @@ function Row({ item, variant, alertCount, onNavigate }: RowProps) {
               compact ? 'size-4' : 'size-5',
               isActive
                 ? 'text-white'
-                : 'text-[var(--sb-muted)] group-hover:text-[var(--sb-text)]',
+                : 'text-(--sb-muted) group-hover:text-(--sb-text)',
             )}
           >
             <Icon className={compact ? 'size-4' : 'size-[17px]'} aria-hidden />
@@ -173,8 +173,8 @@ function RailAccordion({
         className={cn(
           'grid size-10 place-items-center rounded-full transition-colors duration-200',
           active || open
-            ? 'bg-[var(--sb-accent)] text-white'
-            : 'text-[var(--sb-muted)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+            ? 'bg-(--sb-accent) text-white'
+            : 'text-(--sb-muted) hover:bg-(--sb-hover) hover:text-(--sb-text)',
         )}
       >
         <Icon className="size-[19px]" aria-hidden />
@@ -184,7 +184,7 @@ function RailAccordion({
         aria-hidden
         className={cn(
           'my-1 h-6 w-px',
-          active || open ? 'bg-[var(--sb-accent)]/40' : 'bg-[var(--sb-line)]',
+          active || open ? 'bg-(--sb-accent)/40' : 'bg-(--sb-line)',
         )}
       />
     </div>
@@ -220,8 +220,8 @@ function Submenu({
         className={cn(
           'flex h-10 w-full items-center gap-2.5 rounded-full px-2.5 transition-colors duration-200',
           active || open
-            ? 'bg-[var(--sb-accent)] text-white'
-            : 'text-[var(--sb-text-soft)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+            ? 'bg-(--sb-accent) text-white'
+            : 'text-(--sb-text-soft) hover:bg-(--sb-hover) hover:text-(--sb-text)',
         )}
       >
         <span className="grid size-5 shrink-0 place-items-center">
@@ -250,7 +250,7 @@ function Submenu({
           <ul className="relative mt-1 space-y-0.5 pl-3">
             <span
               aria-hidden
-              className="absolute top-1 bottom-1 left-[5px] w-px bg-[var(--sb-line)]"
+              className="absolute top-1 bottom-1 left-[5px] w-px bg-(--sb-line)"
             />
             {item.children.map((child) => (
               <li key={child.to}>
@@ -262,8 +262,8 @@ function Submenu({
                     cn(
                       'flex h-9 w-full items-center gap-2.5 rounded-full pr-2.5 pl-3.5 transition-colors duration-200',
                       isActive
-                        ? 'bg-[var(--sb-chip-hover)] text-[var(--sb-text)]'
-                        : 'text-[var(--sb-muted)] hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]',
+                        ? 'bg-(--sb-chip-hover) text-(--sb-text)'
+                        : 'text-(--sb-muted) hover:bg-(--sb-hover) hover:text-(--sb-text)',
                     )
                   }
                 >
@@ -272,7 +272,7 @@ function Submenu({
                       <span
                         className={cn(
                           'grid size-4 shrink-0 place-items-center',
-                          isActive ? 'text-[var(--sb-accent)]' : 'text-[var(--sb-muted)]',
+                          isActive ? 'text-(--sb-accent)' : 'text-(--sb-muted)',
                         )}
                       >
                         <child.icon className="size-4" aria-hidden />
@@ -302,7 +302,7 @@ function ToggleButton({ collapsed, onClick }: { collapsed: boolean; onClick: () 
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="grid size-9 shrink-0 place-items-center rounded-xl border border-[var(--sb-line)] bg-[var(--sb-chip)] text-[var(--sb-text-soft)] transition-colors duration-200 hover:text-[var(--sb-accent)]"
+      className="grid size-9 shrink-0 place-items-center rounded-xl border border-(--sb-line) bg-(--sb-chip) text-(--sb-text-soft) transition-colors duration-200 hover:text-(--sb-accent)"
     >
       {collapsed ? (
         <PanelLeftOpen className="size-[17px]" aria-hidden />
@@ -408,7 +408,7 @@ export function Sidebar({
               type="button"
               onClick={() => onOpenChange(false)}
               aria-label="Fermer le menu"
-              className="absolute top-3.5 right-3.5 z-10 grid size-8 place-items-center rounded-full text-[var(--sb-muted)] transition-colors duration-200 hover:bg-[var(--sb-hover)] hover:text-[var(--sb-text)]"
+              className="absolute top-3.5 right-3.5 z-10 grid size-8 place-items-center rounded-full text-(--sb-muted) transition-colors duration-200 hover:bg-(--sb-hover) hover:text-(--sb-text)"
             >
               <X className="size-4" aria-hidden />
             </button>
@@ -419,7 +419,7 @@ export function Sidebar({
             <>
               <div className="flex flex-col items-center pt-2.5 pb-1">
                 <ToggleButton collapsed onClick={() => onCollapsedChange(false)} />
-                <span aria-hidden className="mt-2 h-px w-6 bg-[var(--sb-line)]" />
+                <span aria-hidden className="mt-2 h-px w-6 bg-(--sb-line)" />
               </div>
 
               <nav
@@ -454,7 +454,7 @@ export function Sidebar({
 
               {footer.length > 0 ? (
                 <div className="flex flex-col items-center pt-2 pb-2.5">
-                  <span aria-hidden className="mb-2 h-px w-6 bg-[var(--sb-line)]" />
+                  <span aria-hidden className="mb-2 h-px w-6 bg-(--sb-line)" />
                   {footer.map((item) => (
                     <Row
                       key={item.to}
@@ -477,12 +477,12 @@ export function Sidebar({
                 )}
               >
                 <ToggleButton collapsed={false} onClick={() => onCollapsedChange(true)} />
-                <span className="font-condensed text-[15px] font-semibold tracking-[0.2em] text-[var(--sb-text)] uppercase">
+                <span className="font-condensed text-[15px] font-semibold tracking-[0.2em] text-(--sb-text) uppercase">
                   {config.title}
                 </span>
                 <ThemeSwitch className="ml-auto" />
               </header>
-              <span aria-hidden className="mx-3.5 h-px shrink-0 bg-[var(--sb-line)]" />
+              <span aria-hidden className="mx-3.5 h-px shrink-0 bg-(--sb-line)" />
 
               <div className="flex min-h-0 flex-1 gap-3 overflow-y-auto px-3.5 py-3.5">
                 <nav className="flex min-w-0 flex-1 flex-col" aria-label="Navigation principale">
@@ -529,20 +529,20 @@ export function Sidebar({
 
                 {sections.length > 0 ? (
                   <>
-                    <span aria-hidden className="w-px shrink-0 self-stretch bg-[var(--sb-line)]" />
+                    <span aria-hidden className="w-px shrink-0 self-stretch bg-(--sb-line)" />
                     <nav className="w-[120px] shrink-0" aria-label="Menu secondaire">
                       <ul className="space-y-4">
                         {sections.map((section, index) => (
                           <li
                             key={section.id}
-                            className={cn(index > 0 && 'border-t border-[var(--sb-line)] pt-4')}
+                            className={cn(index > 0 && 'border-t border-(--sb-line) pt-4')}
                           >
                             <div className="mb-1.5 flex items-center gap-1.5 pr-1.5 pl-1">
-                              <h2 className="min-w-0 flex-1 truncate font-condensed text-[11px] font-semibold tracking-[0.12em] text-[var(--sb-muted)] uppercase">
+                              <h2 className="min-w-0 flex-1 truncate font-condensed text-[11px] font-semibold tracking-[0.12em] text-(--sb-muted) uppercase">
                                 {section.label}
                               </h2>
                               <section.icon
-                                className="size-3.5 shrink-0 text-[var(--sb-muted)]"
+                                className="size-3.5 shrink-0 text-(--sb-muted)"
                                 aria-hidden
                               />
                             </div>

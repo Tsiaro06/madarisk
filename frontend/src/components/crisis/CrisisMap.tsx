@@ -410,9 +410,9 @@ export function CrisisMap({
             } as Feature<Geometry>
           }
           style={() => ({
-            color: '#2f5f78',
+            color: '#03224c',
             weight: 3.5,
-            fillColor: '#3d7a9a',
+            fillColor: '#03224c',
             fillOpacity: 0.28,
             opacity: 1,
           })}

@@ -86,7 +86,7 @@ export function ProfilePage() {
           <div className="flex flex-col gap-6 p-6 sm:flex-row sm:items-center sm:gap-8 sm:p-8">
             <div className="relative shrink-0">
               <div className="absolute inset-0 rounded-2xl bg-brand/10 blur-xl" aria-hidden />
-              <div className="relative grid size-24 place-items-center rounded-2xl bg-gradient-to-br from-brand-deep to-[#4a8eae] font-display text-3xl font-semibold tracking-wide text-white shadow-inner sm:size-28 sm:text-4xl">
+              <div className="relative grid size-24 place-items-center rounded-2xl bg-gradient-to-br from-brand-deep to-[#03224c] font-display text-3xl font-semibold tracking-wide text-white shadow-inner sm:size-28 sm:text-4xl">
                 {initials || <UserRound className="size-10 opacity-90" />}
               </div>
             </div>

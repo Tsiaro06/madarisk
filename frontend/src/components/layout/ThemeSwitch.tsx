@@ -20,7 +20,7 @@ export function ThemeSwitch({ showLabel = true, className }: ThemeSwitchProps) {
   return (
     <div className={cn('flex items-center gap-1.5', className)}>
       {showLabel ? (
-        <span className="text-[10.5px] font-medium tracking-wide text-[var(--sb-muted)]">
+        <span className="text-[10.5px] font-medium tracking-wide text-(--sb-muted)">
           {dark ? 'Dark' : 'Light'} Mode
         </span>
       ) : null}
@@ -34,16 +34,16 @@ export function ThemeSwitch({ showLabel = true, className }: ThemeSwitchProps) {
         className={cn(
           'relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-300',
           dark
-            ? 'border-[var(--sb-accent)]/40 bg-[var(--sb-accent)]/25'
-            : 'border-[var(--sb-line)] bg-[var(--sb-chip)]',
+            ? 'border-(--sb-accent)/40 bg-(--sb-accent)/25'
+            : 'border-(--sb-line) bg-(--sb-chip)',
         )}
       >
         <span
           className={cn(
             'absolute top-1/2 grid size-4 -translate-y-1/2 place-items-center rounded-full transition-[left,background-color] duration-300',
             dark
-              ? 'left-[22px] bg-white text-[var(--sb-accent)]'
-              : 'left-[2px] bg-[var(--sb-accent)] text-white',
+              ? 'left-[22px] bg-white text-(--sb-accent)'
+              : 'left-[2px] bg-(--sb-accent) text-white',
           )}
         >
           {dark ? <Moon className="size-2.5" aria-hidden /> : <Sun className="size-2.5" aria-hidden />}

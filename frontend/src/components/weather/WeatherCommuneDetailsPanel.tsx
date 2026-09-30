@@ -295,7 +295,7 @@ export function WeatherCommuneDetailsPanel({
                         type="monotone"
                         dataKey="value"
                         name={config.label}
-                        stroke="#1d4ed8"
+                        stroke="#03224c"
                         strokeWidth={2}
                         dot={false}
                         isAnimationActive={false}
@@ -353,7 +353,7 @@ export function WeatherCommuneDetailsPanel({
                       type="monotone"
                       dataKey="value"
                       name={config.label}
-                      stroke="#3d7a9a"
+                      stroke="#03224c"
                       strokeWidth={2}
                       dot={false}
                       isAnimationActive={false}
