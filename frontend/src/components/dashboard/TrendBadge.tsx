@@ -31,10 +31,10 @@ export function TrendBadge({ value, label, invert = false, className }: TrendBad
       className={cn(
         'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold',
         flat
-          ? 'bg-[var(--dash-navy-08)] text-[var(--dash-navy-80)]'
+          ? 'bg-(--dash-navy-08) text-(--dash-navy-80)'
           : strong
-            ? 'bg-[var(--dash-black)] text-white'
-            : 'bg-[var(--dash-navy)] text-white',
+            ? 'bg-(--dash-black) text-white'
+            : 'bg-(--dash-navy) text-white',
         className,
       )}
     >

@@ -22,7 +22,7 @@ export function DashNotice({ title, children, severity = 'info', className }: Da
     <div
       role={severity === 'warning' ? 'alert' : 'status'}
       className={cn(
-        'flex items-start gap-3 rounded-2xl border border-[var(--dash-navy)] bg-[var(--dash-navy)] px-4 py-3.5 text-white',
+        'flex items-start gap-3 rounded-2xl border border-(--dash-navy) bg-(--dash-navy) px-4 py-3.5 text-white',
         className,
       )}
     >

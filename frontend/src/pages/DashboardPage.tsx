@@ -13,11 +13,9 @@ import { WeatherCoverageCard } from '@/components/dashboard/WeatherCoverageCard'
 import { buildDashboardView } from '@/data/dashboardView';
 import { formatDate } from '@/lib/utils';
 import { useNow } from '@/hooks/useNow';
-import { useAuthStore } from '@/stores/authStore';
 import type { EventsTimelineEntry, RiskDistribution } from '@/types';
 
 export function DashboardPage() {
-  const user = useAuthStore((s) => s.user);
   const now = useNow();
 
   const summaryQ = useQuery({
@@ -51,7 +49,6 @@ export function DashboardPage() {
     timeline: timelineQ.data as EventsTimelineEntry[] | undefined,
     distribution: distQ.data as Partial<RiskDistribution> | undefined,
     monitoring: monitoringQ.data,
-    firstName: user?.firstName,
   });
 
   if (summaryQ.isLoading) return <Spinner />;
@@ -84,10 +81,10 @@ export function DashboardPage() {
         <div className="min-w-0 space-y-5">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="font-[Outfit] text-2xl font-bold tracking-tight text-[var(--dash-text)] sm:text-3xl">
+              <h1 className="font-[Outfit] text-2xl font-bold tracking-tight text-(--dash-text) sm:text-3xl">
                 Vue d&apos;ensemble
               </h1>
-              <p className="mt-1 text-sm text-[var(--dash-text-muted)]">
+              <p className="mt-1 text-sm text-(--dash-text-muted)">
                 Mise à jour {formatDate(view.lastUpdatedAt)}
               </p>
             </div>
@@ -123,7 +120,7 @@ export function DashboardPage() {
             actions={
               <Link
                 to="/risques"
-                className="text-sm font-semibold text-[var(--dash-navy)] hover:underline"
+                className="text-sm font-semibold text-(--dash-navy) hover:underline"
               >
                 Voir la carte →
               </Link>
@@ -132,7 +129,7 @@ export function DashboardPage() {
             {hasRiskData ? (
               <StatGrid items={view.risks} />
             ) : (
-              <p className="py-6 text-center text-sm text-[var(--dash-text-muted)]">
+              <p className="py-6 text-center text-sm text-(--dash-text-muted)">
                 Aucune évaluation de risque disponible pour le moment.
               </p>
             )}

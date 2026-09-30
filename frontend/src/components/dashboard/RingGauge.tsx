@@ -65,7 +65,7 @@ export function RingGauge({
             r={radius}
             fill="none"
             strokeWidth={thickness}
-            className="stroke-[var(--dash-navy-08)]"
+            className="stroke-(--dash-navy-08)"
           />
 
           <circle
@@ -85,19 +85,19 @@ export function RingGauge({
 
         <div className="absolute inset-0 grid place-items-center">
           <div
-            className="grid place-items-center rounded-full bg-white ring-1 ring-[var(--dash-navy-14)] text-center"
+            className="grid place-items-center rounded-full bg-white ring-1 ring-(--dash-navy-14) text-center"
             style={{ width: size * 0.46, height: size * 0.46 }}
           >
             <div>
               <p
-                className="font-[Outfit] font-bold leading-none tracking-tight text-[var(--dash-navy)]"
+                className="font-[Outfit] font-bold leading-none tracking-tight text-(--dash-navy)"
                 style={{ fontSize: size * 0.17 }}
               >
                 {bubbleLabel ?? `${formatNumber(Math.round(percent))}%`}
               </p>
               {!bubbleLabel ? (
                 <p
-                  className="mt-1 leading-none text-[var(--dash-navy-72)]"
+                  className="mt-1 leading-none text-(--dash-navy-72)"
                   style={{ fontSize: Math.max(9, size * 0.05) }}
                 >
                   couvert
@@ -109,7 +109,7 @@ export function RingGauge({
       </div>
 
       {detail ? (
-        <p className="mt-4 text-center text-sm font-medium text-[var(--dash-text-soft)]">
+        <p className="mt-4 text-center text-sm font-medium text-(--dash-text-soft)">
           {detail}
         </p>
       ) : null}

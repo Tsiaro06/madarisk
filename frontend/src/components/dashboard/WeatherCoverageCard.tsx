@@ -39,16 +39,16 @@ export function WeatherCoverageCard({ weather }: WeatherCoverageCardProps) {
         />
       </div>
 
-      <p className="mt-4 text-center text-sm font-medium text-[var(--dash-text-soft)]">
-        <CloudSun className="mr-1.5 inline size-4 text-[var(--dash-navy)]" aria-hidden="true" />
+      <p className="mt-4 text-center text-sm font-medium text-(--dash-text-soft)">
+        <CloudSun className="mr-1.5 inline size-4 text-(--dash-navy)" aria-hidden="true" />
         {weather.percent > 0
           ? `${weather.percent} % des communes suivies disposent d'une observation`
           : 'Aucune observation météo disponible'}
       </p>
 
-      <dl className="mt-6 space-y-3 border-t border-[var(--dash-line)] pt-5 text-sm">
+      <dl className="mt-6 space-y-3 border-t border-(--dash-line) pt-5 text-sm">
         <div className="flex items-center justify-between gap-3">
-          <dt className="flex items-center gap-2 text-[var(--dash-text-soft)]">
+          <dt className="flex items-center gap-2 text-(--dash-text-soft)">
             <span
               aria-hidden="true"
               className="size-2.5 rounded-full"
@@ -56,12 +56,12 @@ export function WeatherCoverageCard({ weather }: WeatherCoverageCardProps) {
             />
             Observations
           </dt>
-          <dd className="truncate font-medium tabular-nums text-[var(--dash-text)]">
+          <dd className="truncate font-medium tabular-nums text-(--dash-text)">
             {weather.observationsStatus}
           </dd>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <dt className="flex items-center gap-2 text-[var(--dash-text-soft)]">
+          <dt className="flex items-center gap-2 text-(--dash-text-soft)">
             <span
               aria-hidden="true"
               className="size-2.5 rounded-full"
@@ -69,21 +69,21 @@ export function WeatherCoverageCard({ weather }: WeatherCoverageCardProps) {
             />
             Prévisions
           </dt>
-          <dd className="truncate font-medium tabular-nums text-[var(--dash-text)]">
+          <dd className="truncate font-medium tabular-nums text-(--dash-text)">
             {weather.forecastsStatus}
           </dd>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <dt className="text-[var(--dash-text-soft)]">Communes couvertes</dt>
-          <dd className="font-medium tabular-nums text-[var(--dash-text)]">
+          <dt className="text-(--dash-text-soft)">Communes couvertes</dt>
+          <dd className="font-medium tabular-nums text-(--dash-text)">
             {weather.totalCommunes > 0
               ? `${weather.communesData.toLocaleString('fr-FR')} / ${weather.totalCommunes.toLocaleString('fr-FR')}`
               : '—'}
           </dd>
         </div>
         <div className="flex items-center justify-between gap-3">
-          <dt className="text-[var(--dash-text-soft)]">Dernière donnée</dt>
-          <dd className="truncate font-medium text-[var(--dash-text)]">
+          <dt className="text-(--dash-text-soft)">Dernière donnée</dt>
+          <dd className="truncate font-medium text-(--dash-text)">
             {weather.observationsAt ? formatDate(weather.observationsAt) : '—'}
           </dd>
         </div>

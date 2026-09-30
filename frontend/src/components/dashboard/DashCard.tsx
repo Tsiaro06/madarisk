@@ -27,12 +27,12 @@ export function DashCard({
         <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             {title ? (
-              <h2 className="font-[Outfit] text-lg font-semibold tracking-tight text-[var(--dash-text)]">
+              <h2 className="font-[Outfit] text-lg font-semibold tracking-tight text-(--dash-text)">
                 {title}
               </h2>
             ) : null}
             {description ? (
-              <p className="mt-1 text-sm text-[var(--dash-text-muted)]">{description}</p>
+              <p className="mt-1 text-sm text-(--dash-text-muted)">{description}</p>
             ) : null}
           </div>
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
@@ -56,9 +56,9 @@ export function IconAction({ label, icon, className, ...props }: IconActionProps
       aria-label={label}
       title={label}
       className={cn(
-        'inline-grid size-9 place-items-center rounded-full border border-[var(--dash-navy-14)] bg-white text-[var(--dash-navy)] transition',
-        'hover:border-[var(--dash-navy)] hover:bg-[var(--dash-navy)] hover:text-white',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--dash-navy)]',
+        'inline-grid size-9 place-items-center rounded-full border border-(--dash-navy-14) bg-white text-(--dash-navy) transition',
+        'hover:border-(--dash-navy) hover:bg-(--dash-navy) hover:text-white',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--dash-navy)',
         className,
       )}
       {...props}

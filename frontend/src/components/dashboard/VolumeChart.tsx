@@ -47,7 +47,7 @@ export function VolumeChart({ points, total, title, description }: VolumeChartPr
       }
     >
       {points.length === 0 ? (
-        <div className="grid h-64 place-items-center rounded-2xl border border-dashed border-[var(--dash-navy-14)] bg-white text-center text-sm text-[var(--dash-text-muted)]">
+        <div className="grid h-64 place-items-center rounded-2xl border border-dashed border-(--dash-navy-14) bg-white text-center text-sm text-(--dash-text-muted)">
           Aucun événement enregistré sur la période.
         </div>
       ) : (
@@ -55,14 +55,14 @@ export function VolumeChart({ points, total, title, description }: VolumeChartPr
           <div className="mb-4 flex items-end justify-between gap-4">
             <div>
               <p className="dash-label">Total de la période</p>
-              <p className="dash-figure mt-1 text-[var(--dash-text)]">{formatNumber(total)}</p>
+              <p className="dash-figure mt-1 text-(--dash-text)">{formatNumber(total)}</p>
             </div>
             {highlighted != null && points[highlighted] ? (
               <div className="text-right">
                 <p className="dash-label">Pic</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums text-[var(--dash-text)]">
+                <p className="mt-1 text-lg font-semibold tabular-nums text-(--dash-text)">
                   {formatNumber(points[highlighted].total)}
-                  <span className="ml-1.5 text-xs font-medium text-[var(--dash-text-muted)]">
+                  <span className="ml-1.5 text-xs font-medium text-(--dash-text-muted)">
                     {points[highlighted].label}
                   </span>
                 </p>
@@ -97,7 +97,7 @@ export function VolumeChart({ points, total, title, description }: VolumeChartPr
                     if (!active || !payload?.length) return null;
                     const point = payload[0].payload as TimelinePoint;
                     return (
-                      <div className="rounded-2xl bg-[var(--dash-black)] px-3.5 py-2.5 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)]">
+                      <div className="rounded-2xl bg-(--dash-black) px-3.5 py-2.5 shadow-[0_18px_40px_-18px_rgba(0,0,0,0.6)]">
                         <p className="text-[11px] font-medium tracking-wide text-white/60">
                           {point.label}
                         </p>

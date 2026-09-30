@@ -48,7 +48,6 @@ export interface RiskBucket {
 }
 
 export interface HeroView {
-  greeting: string;
   subtitle: string;
   coverage: {
     percent: number;
@@ -127,9 +126,8 @@ export function buildDashboardView(input: {
   timeline?: EventsTimelineEntry[];
   distribution?: Partial<RiskDistribution>;
   monitoring?: WeatherMonitoring;
-  firstName?: string;
 }): DashboardView {
-  const { summary, timeline, distribution, monitoring, firstName } = input;
+  const { summary, timeline, distribution, monitoring } = input;
 
   const totalCommunes = summary?.totalCommunes ?? 0;
   const assessed = sumRisks(distribution);
@@ -159,7 +157,6 @@ export function buildDashboardView(input: {
 
   return {
     hero: {
-      greeting: firstName ? `Bonjour, ${firstName} !` : 'Bonjour !',
       subtitle: 'Vue opérationnelle nationale · Madagascar',
       coverage: {
         percent: coveragePercent,
