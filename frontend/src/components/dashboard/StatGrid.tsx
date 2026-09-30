@@ -17,21 +17,21 @@ export function StatGrid({ items, className }: StatGridProps) {
             <dt className="flex items-center gap-2">
               <span
                 aria-hidden="true"
-                className="size-2.5 shrink-0 rounded-full"
+                className="size-2.5 shrink-0 rounded-full ring-1 ring-[var(--dash-navy-14)]"
                 style={{ backgroundColor: item.color }}
               />
               <span className="dash-label truncate">{item.label}</span>
             </dt>
             <dd className="mt-1.5 flex items-baseline gap-2">
-              <span className="font-[Outfit] text-2xl font-bold tracking-tight tabular-nums text-[var(--dash-ink)]">
+              <span className="font-[Outfit] text-2xl font-bold tracking-tight tabular-nums text-[var(--dash-text)]">
                 {formatNumber(item.count)}
               </span>
               <span
                 className={cn(
                   'rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums',
                   item.share > 0
-                    ? 'bg-[var(--dash-positive)]/12 text-[var(--dash-positive)]'
-                    : 'bg-[var(--dash-accent-soft)] text-[var(--dash-muted)]',
+                    ? 'bg-[var(--dash-navy)] text-white'
+                    : 'bg-[var(--dash-navy-08)] text-[var(--dash-navy-80)]',
                 )}
               >
                 {item.share} %
@@ -42,7 +42,7 @@ export function StatGrid({ items, className }: StatGridProps) {
       </dl>
 
       <div
-        className="mt-6 flex h-2.5 w-full overflow-hidden rounded-full bg-[var(--dash-accent-soft)]"
+        className="mt-6 flex h-2.5 w-full gap-0.5 overflow-hidden rounded-full border border-[var(--dash-navy-14)] bg-white p-px"
         role="img"
         aria-label={items
           .filter((i) => i.count > 0)

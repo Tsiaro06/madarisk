@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { RefreshCw } from 'lucide-react';
 import { dashboardApi, weatherApi } from '@/api';
-import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Spinner } from '@/components/ui/Spinner';
 import { DashCard, IconAction } from '@/components/dashboard/DashCard';
+import { DashNotice } from '@/components/dashboard/DashNotice';
 import { HeroPanel } from '@/components/dashboard/HeroPanel';
 import { KpiCard } from '@/components/dashboard/KpiCard';
 import { StatGrid } from '@/components/dashboard/StatGrid';
@@ -65,21 +65,17 @@ export function DashboardPage() {
   return (
     <div className="dash-surface min-h-full rounded-[28px] p-4 sm:p-6">
       {failedCount > 0 ? (
-        <div className="mb-5">
-          <AlertBanner tone="danger" title="Chargement partiel">
-            {failedCount} section(s) n&apos;ont pas pu être actualisées. Les valeurs affichées
-            peuvent être obsolètes.
-          </AlertBanner>
-        </div>
+        <DashNotice title="Chargement partiel" className="mb-5">
+          {failedCount} section(s) n&apos;ont pas pu être actualisées. Les valeurs affichées
+          peuvent être obsolètes.
+        </DashNotice>
       ) : null}
 
       {staleMinutes !== null && staleMinutes > 30 ? (
-        <div className="mb-5">
-          <AlertBanner tone="warning" title="Données potentiellement périmées">
-            Dernière actualisation il y a {staleMinutes} min — lancez un rafraîchissement si
-            nécessaire.
-          </AlertBanner>
-        </div>
+        <DashNotice title="Données potentiellement périmées" severity="warning" className="mb-5">
+          Dernière actualisation il y a {staleMinutes} min — lancez un rafraîchissement si
+          nécessaire.
+        </DashNotice>
       ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
@@ -88,18 +84,16 @@ export function DashboardPage() {
         <div className="min-w-0 space-y-5">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h1 className="font-[Outfit] text-2xl font-bold tracking-tight text-[var(--dash-ink)] sm:text-3xl">
+              <h1 className="font-[Outfit] text-2xl font-bold tracking-tight text-[var(--dash-text)] sm:text-3xl">
                 Vue d&apos;ensemble
               </h1>
-              <p className="mt-1 text-sm text-[var(--dash-muted)]">
+              <p className="mt-1 text-sm text-[var(--dash-text-muted)]">
                 Mise à jour {formatDate(view.lastUpdatedAt)}
               </p>
             </div>
             <IconAction
               label="Rafraîchir les données"
-              icon={
-                <RefreshCw className={`size-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-              }
+              icon={<RefreshCw className={`size-4 ${isRefreshing ? 'animate-spin' : ''}`} />}
               onClick={refreshAll}
             />
           </div>
@@ -129,7 +123,7 @@ export function DashboardPage() {
             actions={
               <Link
                 to="/risques"
-                className="text-sm font-semibold text-[var(--dash-accent)] hover:underline"
+                className="text-sm font-semibold text-[var(--dash-navy)] hover:underline"
               >
                 Voir la carte →
               </Link>
@@ -138,7 +132,7 @@ export function DashboardPage() {
             {hasRiskData ? (
               <StatGrid items={view.risks} />
             ) : (
-              <p className="py-6 text-center text-sm text-[var(--dash-muted)]">
+              <p className="py-6 text-center text-sm text-[var(--dash-text-muted)]">
                 Aucune évaluation de risque disponible pour le moment.
               </p>
             )}

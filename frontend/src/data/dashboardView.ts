@@ -4,7 +4,7 @@ import type {
   RiskDistribution,
 } from '@/types';
 import type { WeatherMonitoring } from '@/types/weather';
-import { RISK_HEX } from '@/lib/dashboardTheme';
+import { RISK_RAMP } from '@/lib/dashboardTheme';
 
 export interface TrendDelta {
   /** Variation en pourcentage sur la période précédente. `null` masque le badge. */
@@ -167,9 +167,9 @@ export function buildDashboardView(input: {
         total: totalCommunes,
       },
       miniStats: [
-        { label: 'Risque extrême', value: extreme, color: RISK_HEX.EXTREME },
-        { label: 'Risque élevé', value: high, color: RISK_HEX.ELEVE },
-        { label: 'Risque modéré', value: moderate, color: RISK_HEX.MODERE },
+        { label: 'Risque extrême', value: extreme, color: RISK_RAMP.EXTREME },
+        { label: 'Risque élevé', value: high, color: RISK_RAMP.ELEVE },
+        { label: 'Risque modéré', value: moderate, color: RISK_RAMP.MODERE },
       ],
       total: {
         value: totalCommunes,
@@ -223,7 +223,7 @@ export function buildDashboardView(input: {
         label: RISK_LABELS[level],
         count,
         share: assessed > 0 ? Math.round((count / assessed) * 100) : 0,
-        color: RISK_HEX[level],
+        color: RISK_RAMP[level],
       };
     }),
 

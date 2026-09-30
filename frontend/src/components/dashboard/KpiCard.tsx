@@ -32,23 +32,23 @@ export function KpiCard({ datum, index = 0, className }: KpiCardProps) {
       </div>
 
       <div className="mt-4 flex items-end justify-between gap-3">
-        <p className="dash-figure text-[var(--dash-ink)]">
+        <p className="dash-figure text-[var(--dash-text)]">
           {empty ? '—' : formatNumber(datum.value)}
           {datum.unit && !empty ? (
-            <span className="ml-1 text-base font-medium text-[var(--dash-muted)]">
+            <span className="ml-1 text-base font-medium text-[var(--dash-text-muted)]">
               {datum.unit}
             </span>
           ) : null}
         </p>
         <span
           aria-hidden="true"
-          className="mb-1 grid size-10 shrink-0 place-items-center rounded-2xl bg-[var(--dash-accent-soft)] text-[var(--dash-accent)]"
+          className="mb-1 grid size-10 shrink-0 place-items-center rounded-2xl bg-[var(--dash-navy)] text-white"
         >
           <Icon className="size-5" />
         </span>
       </div>
 
-      <p className="mt-2 truncate text-xs text-[var(--dash-muted)]">{datum.hint}</p>
+      <p className="mt-2 truncate text-xs text-[var(--dash-text-muted)]">{datum.hint}</p>
     </article>
   );
 }

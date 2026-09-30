@@ -1,49 +1,39 @@
+/**
+ * Palette du tableau de bord : trois teintes seulement — noir, blanc et
+ * bleu marine. Toute la variation est obtenue par opacite du bleu marine,
+ * ce qui produit une rampe ordinale lisible pour les niveaux de risque
+ * (plus le niveau est eleve, plus la teinte est dense).
+ */
 export const DASH = {
-  accent: '#2F5BEA',
-  accentLight: '#5B82F5',
-  accentSoft: '#EAF0FE',
-  canvas: '#F3F6FC',
-  card: '#FFFFFF',
-  ink: '#101828',
-  inkSoft: '#475467',
-  muted: '#98A2B3',
-  line: '#E7ECF5',
-  positive: '#17B26A',
-  negative: '#F04438',
-  lime: '#A8E63A',
-  heroFrom: '#4A72F3',
-  heroTo: '#2447C4',
+  navy: '#03224C',
+  black: '#000000',
+  white: '#FFFFFF',
 } as const;
 
-export const RISK_HEX: Record<string, string> = {
-  EXTREME: '#F04438',
-  ELEVE: '#F79009',
-  MODERE: '#FDB022',
-  FAIBLE: '#17B26A',
-  SANS_RISQUE: '#98A2B3',
+export const DASH_NAVY = {
+  a04: 'rgba(3, 34, 76, 0.04)',
+  a08: 'rgba(3, 34, 76, 0.08)',
+  a14: 'rgba(3, 34, 76, 0.14)',
+  a24: 'rgba(3, 34, 76, 0.24)',
+  a38: 'rgba(3, 34, 76, 0.38)',
+  a56: 'rgba(3, 34, 76, 0.56)',
+  a72: 'rgba(3, 34, 76, 0.72)',
+  a78: 'rgba(3, 34, 76, 0.78)',
+} as const;
+
+/** Rampe ordinale des niveaux de risque, du plus severe au plus faible. */
+export const RISK_RAMP: Record<string, string> = {
+  EXTREME: DASH.navy,
+  ELEVE: DASH_NAVY.a78,
+  MODERE: DASH_NAVY.a56,
+  FAIBLE: DASH_NAVY.a38,
+  SANS_RISQUE: DASH_NAVY.a14,
 };
 
-export function hexToRgba(hex: string, alpha: number): string {
-  const clean = hex.replace('#', '');
-  const full =
-    clean.length === 3
-      ? clean
-          .split('')
-          .map((c) => c + c)
-          .join('')
-      : clean;
-  const int = Number.parseInt(full, 16);
-  const r = (int >> 16) & 255;
-  const g = (int >> 8) & 255;
-  const b = int & 255;
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 export const BAR_GRADIENT_ID = 'dash-bar-gradient';
-export const RING_GRADIENT_ID = 'dash-ring-gradient';
 
 export const CHART_AXIS = {
-  tick: { fill: DASH.muted, fontSize: 11 },
+  tick: { fill: DASH_NAVY.a56, fontSize: 11 },
   axisLine: false,
   tickLine: false,
 } as const;

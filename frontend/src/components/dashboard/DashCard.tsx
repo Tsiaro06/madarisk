@@ -27,12 +27,12 @@ export function DashCard({
         <header className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             {title ? (
-              <h2 className="font-[Outfit] text-lg font-semibold tracking-tight text-[var(--dash-ink)]">
+              <h2 className="font-[Outfit] text-lg font-semibold tracking-tight text-[var(--dash-text)]">
                 {title}
               </h2>
             ) : null}
             {description ? (
-              <p className="mt-1 text-sm text-[var(--dash-muted)]">{description}</p>
+              <p className="mt-1 text-sm text-[var(--dash-text-muted)]">{description}</p>
             ) : null}
           </div>
           {actions ? <div className="flex shrink-0 items-center gap-2">{actions}</div> : null}
@@ -46,27 +46,19 @@ export function DashCard({
 interface IconActionProps extends HTMLAttributes<HTMLButtonElement> {
   label: string;
   icon: ReactNode;
-  variant?: 'ghost' | 'inverse';
 }
 
-export function IconAction({
-  label,
-  icon,
-  variant = 'ghost',
-  className,
-  ...props
-}: IconActionProps) {
+/** Bouton rond : fond blanc, bordure marine fine, remplissage marine au survol. */
+export function IconAction({ label, icon, className, ...props }: IconActionProps) {
   return (
     <button
       type="button"
       aria-label={label}
       title={label}
       className={cn(
-        'inline-grid size-9 place-items-center rounded-full transition',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--dash-accent)]',
-        variant === 'ghost'
-          ? 'bg-[var(--dash-accent-soft)] text-[var(--dash-accent)] hover:bg-[var(--dash-accent)] hover:text-white'
-          : 'bg-white/15 text-white hover:bg-white/25',
+        'inline-grid size-9 place-items-center rounded-full border border-[var(--dash-navy-14)] bg-white text-[var(--dash-navy)] transition',
+        'hover:border-[var(--dash-navy)] hover:bg-[var(--dash-navy)] hover:text-white',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--dash-navy)]',
         className,
       )}
       {...props}
