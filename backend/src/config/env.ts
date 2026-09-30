@@ -78,7 +78,10 @@ const envSchema = z.object({
   WEATHER_REFRESH_CRON: z.string().default('0 */4 * * *'),
   WEATHER_OBSERVATION_CRON: z.string().default(process.env.WEATHER_REFRESH_CRON ?? '0 * * * *'),
   WEATHER_FORECAST_CRON: z.string().default('0 */3 * * *'),
-  WEATHER_OBSERVATION_STALE_MINUTES: z.coerce.number().default(150),
+  // Doit dépasser la période réelle du cron d'observations (4 h par défaut) :
+  // à 150 min, le bandeau virait au rouge pendant la dernière heure de chaque
+  // cycle alors que la synchronisation était parfaitement saine.
+  WEATHER_OBSERVATION_STALE_MINUTES: z.coerce.number().default(300),
   WEATHER_FORECAST_STALE_HOURS: z.coerce.number().default(6),
   RISK_RECALCULATION_CRON: z.string().default('10 * * * *'),
 

@@ -295,10 +295,20 @@ export const weatherService = {
 
     let observedAt = query.observedAt;
     if (query.date) {
-      const hh = query.hour !== undefined ? String(query.hour).padStart(2, '0') : '23';
+      // `date` est une date LOCALE (Madagascar, UTC+3) alors que
+      // `weather_observations.observed_at` est stocké en UTC. Interpréter
+      // `...T23:59:59.000Z` comme une borne UTC revenait à remonter jusqu'à
+      // 02:59 du lendemain local : les observations du lendemain fuitaient dans
+      // la journée demandée, et les 3 dernières heures du jour n'étaient
+      // jamais couvertes. On ancre donc l'instant en heure locale puis on
+      // convertit en UTC.
+      const hh = String(query.hour ?? 23).padStart(2, '0');
       const mm = query.hour !== undefined ? '00' : '59';
       const ss = query.hour !== undefined ? '00' : '59';
-      observedAt = new Date(`${query.date}T${hh}:${mm}:${ss}.000Z`);
+      const localEnd = new Date(`${query.date}T${hh}:${mm}:${ss}+03:00`);
+      // Garde-fou : une date illisible produirait un `Invalid Date` et ferait
+      // échouer le `.toISOString()` du repository en 500 sur l'endpoint.
+      if (!Number.isNaN(localEnd.getTime())) observedAt = localEnd;
     }
     return weatherRepository.mapPoints({
       districtId: query.districtId,

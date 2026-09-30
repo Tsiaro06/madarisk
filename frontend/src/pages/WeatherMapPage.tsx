@@ -222,6 +222,11 @@ export function WeatherMapPage() {
         failed = result.totalFailed;
       }
       await qc.invalidateQueries({ queryKey: ["weather", "map-layer"] });
+      // Sans cette invalidation, le bandeau de fraîcheur continuait d'annoncer
+      // l'ancienneté calculée AVANT la synchronisation, alors même que les
+      // données venaient d'être rafraîchies : `monitoring` a un staleTime de
+      // 60 s et le refocus global est désactivé.
+      await qc.invalidateQueries({ queryKey: ["weather", "monitoring"] });
       toast(
         failed > 0
           ? `Synchronisation terminée : ${ok} district(s) à jour, ${failed} en échec.`

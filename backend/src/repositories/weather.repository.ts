@@ -639,7 +639,9 @@ export const weatherRepository = {
       values.push(query.districtId);
     }
     if (query.eventId) {
-      conditions.push(`w.event_id = $${idx++}`);
+      // Le sync national écrit `event_id = NULL` : filtrer sur l'égalité seule
+      // écartait les observations nationales de la couche de la salle de crise.
+      conditions.push(`(w.event_id = $${idx++} OR w.event_id IS NULL)`);
       values.push(query.eventId);
     }
     if (query.observedAt) {
@@ -649,6 +651,18 @@ export const weatherRepository = {
 
     const where = conditions.length ? `AND ${conditions.join(' AND ')}` : '';
 
+    // Une seule ligne est retenue par commune. Sans tri supplémentaire, c'est
+    // la ligne la PLUS RÉCENTE qui gagne, or les sources ne publie pas les mêmes
+    // indicateurs : la DGM ne diffuse que la pluie décennale. Comme sa date
+    // d'observation est la date d'ingestion, elle écrasait systématiquement
+    // Open-Meteo et renvoyait temperatureC/humidityPercent/windSpeedKmh/
+    // pressureHpa à NULL sur les 1579 communes — d'où une carte vide dès que
+    // l'on choisissait un indicateur autre que « Pluie ».
+    //
+    // Le tri retient donc, dans l'ordre :
+    //   1. les lignes « riches » (au moins une observation réelle) ;
+    //   2. à égalité, la source d'observation horaire plutôt que la DGM ;
+    //   3. puis la plus récente.
     const result = await db.query<WeatherMapPoint>(
       `SELECT DISTINCT ON (w.commune_id)
          c.id AS "communeId",
@@ -670,7 +684,16 @@ export const weatherRepository = {
        JOIN communes c ON c.id = w.commune_id
        JOIN districts d ON d.id = c.district_id
        WHERE w.commune_id IS NOT NULL ${where}
-       ORDER BY w.commune_id, w.observed_at DESC`,
+       ORDER BY
+         w.commune_id,
+         (w.temperature_c IS NOT NULL
+           OR w.humidity_percent IS NOT NULL
+           OR w.wind_speed_kmh IS NOT NULL
+           OR w.pressure_hpa IS NOT NULL) DESC,
+         (w.weather_source_id = (
+            SELECT id FROM weather_sources WHERE provider_type = 'DGM_MAPROOM' LIMIT 1
+          )) ASC,
+         w.observed_at DESC`,
       values,
     );
 

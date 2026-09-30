@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  lastCompletedDekadEnd,
   parseDekadEndDate,
   parseIridlCsv,
   sampleNearest,
@@ -72,6 +73,41 @@ describe('parseDekadEndDate', () => {
   it('retourne null si le libellé est invalide', () => {
     expect(parseDekadEndDate(null)).toBeNull();
     expect(parseDekadEndDate('inconnu')).toBeNull();
+  });
+});
+
+describe('lastCompletedDekadEnd', () => {
+  it('retombe sur la fin du mois précédent pendant la décade 1-10', () => {
+    expect(lastCompletedDekadEnd(new Date('2026-02-05T00:00:00Z')).toISOString()).toBe(
+      '2026-01-31T23:59:59.000Z',
+    );
+  });
+
+  it('retombe sur la décade 11-20 à partir du 11', () => {
+    expect(lastCompletedDekadEnd(new Date('2026-02-11T00:00:00Z')).toISOString()).toBe(
+      '2026-02-20T23:59:59.000Z',
+    );
+  });
+
+  it('reste sur la décade 11-20 une fois la décade 21- commencée', () => {
+    expect(lastCompletedDekadEnd(new Date('2026-02-25T12:00:00Z')).toISOString()).toBe(
+      '2026-02-20T23:59:59.000Z',
+    );
+    expect(lastCompletedDekadEnd(new Date('2026-02-28T23:59:59Z')).toISOString()).toBe(
+      '2026-02-20T23:59:59.000Z',
+    );
+  });
+
+  it('gère le changement d’année en janvier', () => {
+    expect(lastCompletedDekadEnd(new Date('2026-01-03T00:00:00Z')).toISOString()).toBe(
+      '2025-12-31T23:59:59.000Z',
+    );
+  });
+
+  it('ne depend pas de l heure de la journee (dedoublonnage au redemarrage)', () => {
+    const matin = lastCompletedDekadEnd(new Date('2026-03-04T01:00:00Z'));
+    const soir = lastCompletedDekadEnd(new Date('2026-03-04T22:30:00Z'));
+    expect(matin.toISOString()).toBe(soir.toISOString());
   });
 });
 

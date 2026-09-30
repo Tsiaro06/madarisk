@@ -124,6 +124,33 @@ export function parseDekadEndDate(label: string | null): Date | null {
   return new Date(Date.UTC(year, month - 1, day, 23, 59, 59));
 }
 
+/**
+ * Fin de la dernière décade ACHEVÉE à la date de référence.
+ *
+ * Repli utilisé quand l'en-tête IRI ne fournit pas de libellé de décade
+ * exploitable. Horodater l'ingestion avec `new Date()` était le pire choix :
+ * la valeur changeait à chaque redémarrage, ce qui réinscrivait les 1579
+ * communes à chaque `tsx watch` (6304 lignes pour 1579 communes dans la base)
+ * et faisait passer la DGM pour la source la plus fraîche alors qu'elle publie
+ * une donnée décennale.
+ *
+ * Les décades malgaches sont 1-10, 11-20 puis 21-fin du mois ; la décade en
+ * cours n'étant pas achevée avant son dernier jour, on retient 11-20 dès le 11.
+ */
+export function lastCompletedDekadEnd(reference: Date): Date {
+  const year = reference.getUTCFullYear();
+  const month = reference.getUTCMonth();
+  const day = reference.getUTCDate();
+
+  if (day <= 10) {
+    // Décade 21..fin du mois précédent.
+    const lastDayOfPrevMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return new Date(Date.UTC(year, month - 1, lastDayOfPrevMonth, 23, 59, 59));
+  }
+  // Décade 11-20, que l'on soit en 11-20 ou au-delà.
+  return new Date(Date.UTC(year, month, 20, 23, 59, 59));
+}
+
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const dLat = toRad(lat2 - lat1);
@@ -231,7 +258,7 @@ export class DgmMaproomProvider {
       );
     }
 
-    const observedAt = parseDekadEndDate(timeLabel) ?? new Date();
+    const observedAt = parseDekadEndDate(timeLabel) ?? lastCompletedDekadEnd(new Date());
     const sourceId = await weatherRepository.getDgmSourceId();
     const existing = await weatherRepository.existingCommunesForDate(sourceId, observedAt);
     const targets = await weatherRepository.targetCommunes({});
