@@ -18,6 +18,7 @@ import {
 import { PaginatedResult } from '../types/territory.types';
 import { ActorRef, UserRole } from '../types/auth.types';
 import { IncomingHttpHeaders } from 'http';
+import { randomUUID } from 'crypto';
 
 interface RequestContext {
   ip?: string;
@@ -67,9 +68,133 @@ async function runPool<T>(
   await Promise.all(workers);
 }
 
+/**
+ * Rafraîchissements météo lancés en tâche de fond.
+ *
+ * Un run national interroge le fournisseur par lots de 400 coordonnées et
+ * prend 3 à 4 minutes. Le faire dans la requête HTTP exposait l'utilisateur à
+ * deux mauvaises surprises : le proxy et le navigateur abandonnent vers 30 à
+ * 60 s, donc l'interface affichait « échec » alors que le run se terminait
+ * correctement et écrivait toutes les données. Le même clic relançait alors un
+ * second run, pour rien.
+ *
+ * Le lancement renvoie donc immédiatement un identifiant et l'état réel est
+ * lu par polling. Une seule entrée à la fois : deux runs concurrents
+ * doubleraient la consommation de quota Open-Meteo pour un résultat identique.
+ */
+const backgroundRefreshes = new Map<string, RefreshState>();
+let activeRefreshId: string | null = null;
+
+/** Durée de vie d'un état de run, pour qu'il ne reste pas accessible indéfiniment. */
+const REFRESH_STATE_TTL_MS = 30 * 60 * 1000;
+
+export type RefreshState =
+  | { status: 'RUNNING'; startedAt: string }
+  | { status: 'SUCCESS'; startedAt: string; finishedAt: string; result: WeatherRefreshResult }
+  | {
+      status: 'FAILED';
+      startedAt: string;
+      finishedAt: string;
+      error: string;
+    };
+
+function publicRefreshState(id: string): RefreshState | null {
+  const state = backgroundRefreshes.get(id);
+  if (!state) return null;
+  // Nettoyage opportuniste : la Map ne doit pas survivre à la session.
+  if ('finishedAt' in state && Date.now() - Date.parse(state.finishedAt) > REFRESH_STATE_TTL_MS) {
+    backgroundRefreshes.delete(id);
+    return null;
+  }
+  return state;
+}
+
 export const weatherService = {
   setProvider(provider: WeatherProvider): void {
     setWeatherProvider(provider);
+  },
+
+  /**
+   * Lance un rafraîchissement sans bloquer la requête HTTP.
+   *
+   * Le District est court (une poignée de communes) et tient dans le délai du
+   * client ; il reste donc synchrone, pour ne pas faire changer l'UX d'un clic
+   * qui répond déjà en quelques secondes. Seul le run national passe en tâche
+   * de fond.
+   */
+  async startRefresh(
+    input: {
+      communeIds?: string[];
+      districtId?: string;
+      eventId?: string;
+      confirmAll?: boolean;
+    },
+    actor: ActorRef,
+    req: RequestContext,
+  ): Promise<{ refreshId: string; state: RefreshState; background: boolean }> {
+    const isNational = !input.districtId && !input.communeIds?.length;
+
+    if (!isNational) {
+      const result = await this.refresh(input, actor, req);
+      return {
+        refreshId: 'sync',
+        state: {
+          status: 'SUCCESS',
+          startedAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+          result,
+        },
+        background: false,
+      };
+    }
+
+    if (activeRefreshId) {
+      const current = publicRefreshState(activeRefreshId);
+      if (current && current.status === 'RUNNING') {
+        throw AppError.conflict(
+          'Une synchronisation nationale est déjà en cours. Patientez quelques minutes avant d’en relancer une.',
+        );
+      }
+    }
+
+    const refreshId = randomUUID();
+    const startedAt = new Date().toISOString();
+    backgroundRefreshes.set(refreshId, { status: 'RUNNING', startedAt });
+    activeRefreshId = refreshId;
+
+    void this.refresh(input, actor, req)
+      .then((result) => {
+        backgroundRefreshes.set(refreshId, {
+          status: 'SUCCESS',
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          result,
+        });
+      })
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Erreur inconnue';
+        backgroundRefreshes.set(refreshId, {
+          status: 'FAILED',
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          error: message,
+        });
+        logger.warn({ err, refreshId }, 'Rafraîchissement météo national en échec');
+      })
+      .finally(() => {
+        if (activeRefreshId === refreshId) activeRefreshId = null;
+      });
+
+    return { refreshId, state: { status: 'RUNNING', startedAt }, background: true };
+  },
+
+  /** État d'un rafraîchissement lancé en tâche de fond. */
+  refreshStatus(refreshId: string): RefreshState {
+    const state = publicRefreshState(refreshId);
+    if (!state) {
+      throw AppError.notFound('Rafraîchissement météo introuvable ou expiré');
+    }
+    return state;
   },
 
   async refresh(
@@ -79,7 +204,7 @@ export const weatherService = {
       eventId?: string;
       confirmAll?: boolean;
     },
-    actor: { id: string; role: UserRole },
+    actor: ActorRef,
     req: RequestContext,
   ): Promise<WeatherRefreshResult> {
     assertAdmin(actor);

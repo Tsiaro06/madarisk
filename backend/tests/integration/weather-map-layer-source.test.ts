@@ -3,6 +3,14 @@ import { db } from '../../src/config/database';
 import { weatherRepository } from '../../src/repositories/weather.repository';
 import { openMeteoProvider } from '../../src/services/openmeteo.provider';
 import { weatherService } from '../../src/services/weather.service';
+import type { RequestContext } from '../../src/types/http.types';
+import type {
+  BatchCommuneInput,
+  WeatherProvider,
+  WeatherRefreshResult,
+} from '../../src/types/weather.types';
+import { usersRepository } from '../../src/repositories/users.repository';
+import { password } from '../../src/utils/password';
 
 /**
  * Source de la couche cartographique en mode « journée ».
@@ -24,6 +32,13 @@ const DATE_THIN = '2027-02-20';
 
 let communeId: string;
 let sourceId: string;
+/** Acteur réel : `refresh` écrit une trace d'audit à son nom. */
+let admin: { id: string; role: 'ADMIN' };
+/** Contexte de requête minimal : seuls `ip` et l'écriture d'audit sont lus. */
+const requestContext = {
+  ip: '127.0.0.1',
+  socket: { remoteAddress: '127.0.0.1' },
+} as unknown as RequestContext;
 
 /**
  * Insère `hours` lignes horaires synthétiques pour le début de `date`
@@ -65,10 +80,29 @@ describe('couche cartographique : source des données', () => {
 
     await insertHours(DATE_COVERED, 24);
     await insertHours(DATE_THIN, 3);
+
+    const user = await usersRepository.create({
+      email: `refresh-runner-${Date.now()}@madarisk.test`,
+      passwordHash: await password.hash('Passw0rd!'),
+      firstName: 'Refresh',
+      lastName: 'Runner',
+      role: 'ADMIN',
+    });
+    admin = { id: user.id, role: 'ADMIN' };
+
+    weatherService.setProvider(stubProvider);
   });
 
   afterAll(async () => {
     await db.query(`DELETE FROM weather_hourly WHERE hour_at >= '2027-01-01'::timestamptz`);
+    // Le refresh de district passe par le vrai chemin d'écriture : on efface les
+    // observations du stub plutôt que de laisser des valeurs synthétiques
+    // (température 21 partout) passer pour des relevés réels.
+    await db.query(
+      `DELETE FROM weather_observations
+        WHERE weather_code = '03' AND temperature_c = 21 AND humidity_percent = 70
+          AND wind_speed_kmh = 12 AND wind_direction_deg = 180 AND pressure_hpa = 1010`,
+    );
     await db.pool.end();
   });
 
@@ -107,6 +141,104 @@ describe('couche cartographique : source des données', () => {
     await weatherService.mapLayer({ date: DATE_THIN });
 
     expect(getForecastBatch).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Fournisseur de substitution.
+   *
+   * `refresh` interroge le fournisseur pour les 1 579 communes. Sans stub, le
+   * test dépendrait du réseau — et d'un quota Open-Meteo réel, ce qui rendrait
+   * la suite non déterministe et coûteuse. Le stub rend le run instantané tout
+   * en empruntant le vrai chemin de code (batch, agrégat, écriture).
+   */
+  const stubProvider = {
+    getCurrent: vi.fn(),
+    getForecast: vi.fn(),
+    getCurrentBatch: vi.fn(async (communes: BatchCommuneInput[]) =>
+      communes.map((c) => ({
+        communeId: c.id,
+        current: {
+          observedAt: '2026-10-01T06:00:00Z',
+          temperatureC: 21,
+          humidityPercent: 70,
+          precipitationMm: 0,
+          rainfall24hMm: 0,
+          windSpeedKmh: 12,
+          windDirectionDeg: 180,
+          pressureHpa: 1010,
+          weatherCode: '03',
+        },
+      })),
+    ),
+  } as unknown as WeatherProvider;
+
+  it('sert un refresh national en tâche de fond et refuse un doublon', async () => {
+    // Un run national réel interroge le fournisseur pour 1 579 communes et écrit
+    // 1 579 observations : le laisser atteindre la base rendrait la suite lente
+    // et écraserait les observations réelles du poste de dev. On vérifie donc le
+    // contrat de pilotage — main rendue tout de suite, refus du doublon,
+    // transition d'état — avec un `refresh` neutralisé que l'onpilote.
+    let release!: (result: WeatherRefreshResult) => void;
+    const pending = new Promise<WeatherRefreshResult>((resolve) => {
+      release = resolve;
+    });
+    const runRefresh = vi.spyOn(weatherService, 'refresh').mockReturnValue(pending);
+
+    try {
+      const started = await weatherService.startRefresh(
+        { confirmAll: true },
+        admin,
+        requestContext,
+      );
+
+      // La main est rendue immédiatement, sans attendre le run.
+      expect(started.background).toBe(true);
+      expect(started.state.status).toBe('RUNNING');
+      expect(await weatherService.refreshStatus(started.refreshId)).toEqual(started.state);
+      expect(runRefresh).toHaveBeenCalledTimes(1);
+
+      // Un second clic ne relance pas un run concurrent, ce qui doublerait la
+      // consommation de quota Open-Meteo pour le même résultat.
+      await expect(
+        weatherService.startRefresh({ confirmAll: true }, admin, requestContext),
+      ).rejects.toThrow(/déjà en cours/i);
+
+      const result: WeatherRefreshResult = {
+        totalTargeted: 1579,
+        totalSaved: 1579,
+        totalFailed: 0,
+        failures: [],
+      };
+      release(result);
+
+      const deadline = Date.now() + 5000;
+      let state = await weatherService.refreshStatus(started.refreshId);
+      while (state.status === 'RUNNING') {
+        if (Date.now() > deadline) throw new Error('le run national ne s\'est pas terminé');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        state = await weatherService.refreshStatus(started.refreshId);
+      }
+      expect(state.status).toBe('SUCCESS');
+      expect(state.result).toEqual(result);
+    } finally {
+      runRefresh.mockRestore();
+    }
+  });
+
+  it('garde un refresh de district synchrone', async () => {
+    // Un district tient dans le délai du client : le passer en tâche de fond
+    // changerait l'UX d'un clic qui répond déjà en quelques secondes.
+    const communes = await db.query<{ id: string; district_id: string }>(
+      'SELECT id, district_id FROM communes ORDER BY admin_code LIMIT 1',
+    );
+    const started = await weatherService.startRefresh(
+      { districtId: communes.rows[0].district_id },
+      admin,
+      requestContext,
+    );
+
+    expect(started.background).toBe(false);
+    expect(started.state.status).toBe('SUCCESS');
   });
 
   it('respecte le filtre par district sur la couche servie en base', async () => {

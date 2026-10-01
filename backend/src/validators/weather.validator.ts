@@ -28,6 +28,11 @@ export const communeIdParamsSchema = z.object({
   communeId: z.string().uuid('Identifiant de commune invalide'),
 });
 
+/** Identifiant d'un rafraîchissement lancé en tâche de fond. */
+export const refreshIdParamsSchema = z.object({
+  refreshId: z.string().uuid('Identifiant de rafraîchissement invalide'),
+});
+
 export const weatherHistoryQuerySchema = z
   .object({
     dateFrom: z.coerce.date().optional(),

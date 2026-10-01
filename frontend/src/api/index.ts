@@ -31,7 +31,8 @@ import type {
   WeatherHourPoint,
   WeatherMapLayerMeta,
   WeatherMonitoring,
-  WeatherRefreshResult,
+  WeatherRefreshStart,
+  WeatherRefreshState,
 } from "@/types/weather";
 import type { DemoScenarioState, DemoStep } from "@/types/demo";
 import type { FeatureCollection } from "geojson";
@@ -256,7 +257,9 @@ export const weatherApi = {
     };
   },
   refresh: (body: unknown) =>
-    apiPost<WeatherRefreshResult>("/weather/refresh/communes", body),
+    apiPost<WeatherRefreshStart>("/weather/refresh/communes", body),
+  refreshStatus: (refreshId: string) =>
+    apiGet<WeatherRefreshState>(`/weather/refresh/${refreshId}`),
   monitoring: () => apiGet<WeatherMonitoring>("/weather/monitoring"),
 };
 

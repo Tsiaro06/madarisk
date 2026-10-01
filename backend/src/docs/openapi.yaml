@@ -2169,26 +2169,72 @@ paths:
                 $ref: '#/components/examples/weatherRefresh'
       responses:
         '200':
-          description: Rafraîchissement météo terminé
+          description: >-
+            Rafraîchissement d'un district terminé. La réponse contient
+            `background: false` et l'état `SUCCESS`.
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success: { type: boolean }
-                  message: { type: string }
-                  data:
-                    type: object
-                    properties:
-                      communesUpdated: { type: integer }
+                $ref: '#/components/schemas/WeatherRefreshStart'
+        '202':
+          description: >-
+            Run national accepté, traité en tâche de fond. La réponse contient
+            `background: true` et un état `RUNNING` ; l'interface suit
+            l'avancement via `GET /weather/refresh/{refreshId}`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WeatherRefreshStart'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Un run national est déjà en cours
         '502':
           description: Source météo (Open-Meteo) inaccessible
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /weather/refresh/{refreshId}:
+    get:
+      tags: [Météo]
+      summary: État d'un rafraîchissement météo national (ADMIN / SUPER_ADMIN)
+      description: >-
+        Un run national interroge Open-Meteo par lots de 400 coordonnées et
+        dure plusieurs minutes. Le POST de lancement rend la main immédiatement
+        avec un identifiant : cet endpoint remplace l'attente bloquante qui
+        exposait l'utilisateur à un timeout alors que le run aboutissait.
+      security:
+        - bearerAuth: []
+      operationId: getWeatherRefreshStatus
+      parameters:
+        - in: path
+          name: refreshId
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: État du run
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ApiSuccess'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/WeatherRefreshState'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: Run inconnu ou expiré
         '500':
           $ref: '#/components/responses/InternalError'
 
@@ -4539,6 +4585,41 @@ components:
               $ref: '#/components/schemas/WeatherSyncStatusSnapshot'
             forecasts:
               $ref: '#/components/schemas/WeatherSyncStatusSnapshot'
+    WeatherRefreshResult:
+      type: object
+      description: Bilan chiffré d'un rafraîchissement terminé
+      properties:
+        totalTargeted: { type: integer }
+        totalSaved: { type: integer }
+        totalFailed: { type: integer }
+        failures:
+          type: array
+          items:
+            type: object
+            properties:
+              communeId: { type: string, format: uuid }
+              reason: { type: string }
+    WeatherRefreshState:
+      type: object
+      description: >-
+        État d'un run de rafraîchissement. `RUNNING` tant que le fournisseur est
+        interrogé ; sinon un état terminal qui porte soit le bilan, soit l'erreur.
+      properties:
+        status: { type: string, enum: [RUNNING, SUCCESS, FAILED] }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: string, format: date-time }
+        result: { $ref: '#/components/schemas/WeatherRefreshResult' }
+        error: { type: string }
+    WeatherRefreshStart:
+      type: object
+      description: >-
+        Réponse au lancement d'un rafraîchissement. `background` distingue le
+        district (synchrone, `false`) du run national, rendu immédiatement car il
+        dure plusieurs minutes (`true`).
+      properties:
+        refreshId: { type: string, format: uuid }
+        background: { type: boolean }
+        state: { $ref: '#/components/schemas/WeatherRefreshState' }
     WeatherSyncStatusSnapshot:
       type: object
       description: Statut et fraîcheur d'un type de synchronisation

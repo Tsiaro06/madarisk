@@ -24,7 +24,7 @@ import {
   todayISO,
 } from "@/services/weather.service";
 import { useAuthStore } from "@/stores/authStore";
-import type { WeatherMetric } from "@/types/weather";
+import type { WeatherMetric, WeatherRefreshState } from "@/types/weather";
 import type { FeatureCollection } from "geojson";
 
 export function WeatherMapPage() {
@@ -217,34 +217,28 @@ export function WeatherMapPage() {
     }
     setRefreshing(true);
     setRefreshProgress(null);
-    let ok = 0;
-    let failed = 0;
     try {
       if (districtId) {
         setRefreshProgress("Synchronisation du district…");
-        await weatherApi.refresh({ districtId });
-        ok = 1;
+        const started = await weatherApi.refresh({ districtId });
+        await announceRefresh(started.state);
       } else {
         // Un seul appel « national » : l'API regroupe toutes les communes en
         // lots de 400 coordonnées. Boucler district par district imposait
         // 6 requêtes HTTP séquentielles.
-        setRefreshProgress("Synchronisation nationale…");
-        const result = await weatherApi.refresh({ confirmAll: true });
-        ok = 1;
-        failed = result.totalFailed;
+        //
+        // Le run national dure 3 à 4 minutes, bien au-delà du délai du client
+        // (30 s) : le serveur le traite donc en tâche de fond et rend la main
+        // immédiatement. On suit l'état par polling au lieu d'attendre une
+        // réponse qui aurait été interrompue alors que le run, lui, aboutissait.
+        setRefreshProgress("Synchronisation nationale lancée…");
+        const started = await weatherApi.refresh({ confirmAll: true });
+        if (started.background) {
+          await followBackgroundRefresh(started.refreshId);
+          return;
+        }
+        await announceRefresh(started.state);
       }
-      await qc.invalidateQueries({ queryKey: ["weather", "map-layer"] });
-      // Sans cette invalidation, le bandeau de fraîcheur continuait d'annoncer
-      // l'ancienneté calculée AVANT la synchronisation, alors même que les
-      // données venaient d'être rafraîchies : `monitoring` a un staleTime de
-      // 60 s et le refocus global est désactivé.
-      await qc.invalidateQueries({ queryKey: ["weather", "monitoring"] });
-      toast(
-        failed > 0
-          ? `Synchronisation terminée : ${ok} district(s) à jour, ${failed} en échec.`
-          : "Synchronisation des données météo terminée.",
-        ok > 0 ? "success" : "error",
-      );
     } catch (err) {
       toast(
         err instanceof Error
@@ -256,6 +250,67 @@ export function WeatherMapPage() {
       setRefreshing(false);
       setRefreshProgress(null);
       closeConfirm();
+    }
+  };
+
+  /** Rend compte du résultat d'un run et réactive la carte. */
+  const announceRefresh = async (state: WeatherRefreshState): Promise<void> => {
+    if (state.status === "FAILED") {
+      toast(state.error, "error");
+      return;
+    }
+    if (state.status !== "SUCCESS") return;
+
+    const failed = state.result.totalFailed;
+    await qc.invalidateQueries({ queryKey: ["weather", "map-layer"] });
+    // Sans cette invalidation, le bandeau de fraîcheur continuait d'annoncer
+    // l'ancienneté calculée AVANT la synchronisation, alors même que les
+    // données venaient d'être rafraîchies : `monitoring` a un staleTime de
+    // 60 s et le refocus global est désactivé.
+    await qc.invalidateQueries({ queryKey: ["weather", "monitoring"] });
+    toast(
+      failed > 0
+        ? `Synchronisation terminée : ${state.result.totalSaved} commune(s) à jour, ${failed} en échec.`
+        : `Synchronisation terminée : ${state.result.totalSaved} commune(s) à jour.`,
+      failed > 0 ? "error" : "success",
+    );
+  };
+
+  /**
+   * Suit un run national jusqu'à sa fin.
+   *
+   * L'utilisateur reste sur la carte : laMaj des données arrive par
+   * invalidation en fin de run. L'onglet masqué interrompt le polling — inutile
+   * de consommer des requêtes pour un écran que personne ne regarde.
+   */
+  const followBackgroundRefresh = async (refreshId: string): Promise<void> => {
+    const startedAt = Date.now();
+    for (;;) {
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      if (document.hidden) {
+        setRefreshProgress("Synchronisation nationale en cours (en arrière-plan)…");
+        continue;
+      }
+
+      const elapsed = Math.round((Date.now() - startedAt) / 1000);
+      setRefreshProgress(
+        `Synchronisation nationale en cours… (~${Math.floor(elapsed / 60)} min)`,
+      );
+
+      try {
+        const state = await weatherApi.refreshStatus(refreshId);
+        if (state.status !== "RUNNING") {
+          await announceRefresh(state);
+          return;
+        }
+      } catch {
+        // Le run reste invisible dans la base si l'état a expiré : on arrête de sonner
+        // plutôt que de boucler sur une erreur répétée. Le bandeau de fraîcheur
+        // indiquera de toute façon l'ancienneté réelle des données.
+        setRefreshProgress(null);
+        return;
+      }
     }
   };
 

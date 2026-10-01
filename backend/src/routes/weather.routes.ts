@@ -7,6 +7,7 @@ import { validate } from '../middlewares/validate.middleware';
 import {
   refreshWeatherSchema,
   communeIdParamsSchema,
+  refreshIdParamsSchema,
   weatherHistoryQuerySchema,
   weatherHourlyLayerQuerySchema,
   weatherHourlyQuerySchema,
@@ -46,6 +47,14 @@ router.post(
   authorize('ADMIN', 'SUPER_ADMIN'),
   validate({ body: refreshWeatherSchema }),
   asyncHandler(weatherController.refresh),
+);
+
+// Suivi d'un run national lancé en tâche de fond (voir weatherController.refresh).
+router.get(
+  '/refresh/:refreshId',
+  authorize('ADMIN', 'SUPER_ADMIN'),
+  validate({ params: refreshIdParamsSchema }),
+  asyncHandler(weatherController.refreshStatus),
 );
 
 router.post(

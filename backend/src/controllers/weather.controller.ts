@@ -16,12 +16,27 @@ interface CommuneIdParams {
   communeId: string;
 }
 
+interface RefreshParams {
+  refreshId: string;
+}
+
 export const weatherController = {
-  refresh: async (req: Request, res: Response): Promise<void> => {
+refresh: async (req: Request, res: Response): Promise<void> => {
     if (!req.user) throw AppError.unauthorized();
     const body = req.validatedBody as RefreshWeatherInput;
-    const result = await weatherService.refresh(body, req.user, req);
-    res.status(200).json(successResponse(result, 'Rafraîchissement météo terminé'));
+    const started = await weatherService.startRefresh(body, req.user, req);
+    // 202 : le run national se poursuit en tâche de fond. Le front relit
+    // l'état via GET /weather/refresh/:refreshId au lieu d'attendre une
+    // réponse qui exceededait le délai du navigateur.
+    res
+      .status(started.background ? 202 : 200)
+      .json(successResponse(started, started.background ? 'Synchronisation lancée' : 'Rafraîchissement météo terminé'));
+  },
+
+  refreshStatus: (req: Request, res: Response): void => {
+    const { refreshId } = req.validatedParams as RefreshParams;
+    const state = weatherService.refreshStatus(refreshId);
+    res.status(200).json(successResponse(state, 'État du rafraîchissement météo'));
   },
 
   latest: async (req: Request, res: Response): Promise<void> => {

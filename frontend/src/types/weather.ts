@@ -74,6 +74,30 @@ export interface WeatherRefreshResult {
   failures: { communeId: string; reason: string }[];
 }
 
+export type WeatherRefreshState =
+  | { status: "RUNNING"; startedAt: string }
+  | {
+      status: "SUCCESS";
+      startedAt: string;
+      finishedAt: string;
+      result: WeatherRefreshResult;
+    }
+  | { status: "FAILED"; startedAt: string; finishedAt: string; error: string };
+
+/**
+ * Réponse du lancement d'un rafraîchissement.
+ *
+ * `background` distingue les deux régimes : un district répond dans la seconde
+ * (`background: false`), un run national part en tâche de fond et rend la main
+ * immédiatement (`background: true`) car il interroge le fournisseur par lots et
+ * dure plusieurs minutes.
+ */
+export interface WeatherRefreshStart {
+  refreshId: string;
+  state: WeatherRefreshState;
+  background: boolean;
+}
+
 export interface WeatherSyncStatusSnapshot {
   lastSuccessAt: string | null;
   lastDataAt: string | null;

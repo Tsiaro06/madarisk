@@ -263,10 +263,16 @@ describe('Météo - endpoints données', () => {
       .post('/api/v1/weather/refresh/communes')
       .set('Authorization', `Bearer ${admin.token}`)
       .send({ communeIds: [communeId] });
+    // Un refresh ciblé reste synchrone : `background: false` signale que le
+    // bilan est déjà dans la réponse, là où un run national répond 202 avec un
+    // identifiant à suivre.
     expect(res.status).toBe(200);
-    expect(res.body.data.totalTargeted).toBe(1);
-    expect(res.body.data.totalSaved).toBe(1);
-    expect(res.body.data.totalFailed).toBe(0);
+    expect(res.body.data.background).toBe(false);
+    expect(res.body.data.state.status).toBe('SUCCESS');
+    const result = res.body.data.state.result;
+    expect(result.totalTargeted).toBe(1);
+    expect(result.totalSaved).toBe(1);
+    expect(result.totalFailed).toBe(0);
   });
 
   it('renvoie la dernière observation avec les valeurs Open-Meteo', async () => {
