@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { weatherSyncTriggerSchema } from '../../src/validators/weather.validator';
 import { dedupeByExisting } from '../../src/services/weather-sync.service';
+import { staleWeatherScopes } from '../../src/jobs/weather-refresh.job';
 
 describe('weather-sync : déduplication (helper pur)', () => {
   it('garde les lignes nouvelles et compte les doublons existants', () => {
@@ -196,3 +197,63 @@ function selectNeeding(
   }
   return count;
 }
+
+/**
+ * Périmètres à rattraper, au démarrage comme au retour de veille.
+ *
+ * Régression constatée : le process survit à une veille S3, pas ses timers.
+ * Le 01/10 au réveil, les observations dataient de la veille au soir — 712 min,
+ * bandeau rouge — et le rattrapage ne couvrait que les observations. Les
+ * prévisions, périodicité 3 h pour un seuil de 6 h, restaient donc STALE pour
+ * des heures après que le rattrapage eut rendu les observations fraiches.
+ */
+describe('weather-sync : périmètres périmés', () => {
+  const NOW = Date.parse('2026-10-01T08:45:00Z');
+  const OBSERVATION_STALE_MINUTES = 150;
+  const FORECAST_STALE_HOURS = 6;
+
+  /** Construit un instant il y a `minutes` (ou `null` : jamais de donnée). */
+  const ago = (minutes: number | null): string | null =>
+    minutes === null ? null : new Date(NOW - minutes * 60_000).toISOString();
+
+  const stale = (observations: number | null, forecastsHours: number | null) =>
+    staleWeatherScopes({
+      lastObservationAt: ago(observations),
+      lastForecastAt:
+        forecastsHours === null ? null : new Date(NOW - forecastsHours * 3_600_000).toISOString(),
+      observationStaleMinutes: OBSERVATION_STALE_MINUTES,
+      forecastStaleHours: FORECAST_STALE_HOURS,
+      now: NOW,
+    });
+
+  it('ne rattrape rien quand tout est frais', () => {
+    // Run horaire attendu : 5 min d'ancienneté observations, 30 min de
+    // prévisions. Le rattrapage doit être gratuit, sinon il s'auto-déclenche.
+    expect(stale(5, 0.5)).toEqual([]);
+  });
+
+  it('rattrape les deux périmètres après une longue veille', () => {
+    // Le cas mesuré : 11 h 37 de sommeil depuis le run de 21 h 00.
+    expect(stale(712, 11.6)).toEqual(['OBSERVATIONS', 'FORECASTS']);
+  });
+
+  it('rattrape les observations seules quand les prévisions tiennent', () => {
+    expect(stale(712, 1)).toEqual(['OBSERVATIONS']);
+  });
+
+  it('rattrape les prévisions seules quand les observations tiennent', () => {
+    expect(stale(5, 9)).toEqual(['FORECASTS']);
+  });
+
+  it('considère une base vide comme entièrement périmée', () => {
+    expect(stale(null, null)).toEqual(['OBSERVATIONS', 'FORECASTS']);
+  });
+
+  it('tolère un run manqué avant de crier au péremption', () => {
+    // Le seuil est celui du bandeau : deux runs consécutifs manqués. Au
+    // premier run manqué (60 min), le bandeau ne doit pas encore virer.
+    expect(stale(60, 1)).toEqual([]);
+    expect(stale(151, 1)).toEqual(['OBSERVATIONS']);
+    expect(stale(5, 6.1)).toEqual(['FORECASTS']);
+  });
+});

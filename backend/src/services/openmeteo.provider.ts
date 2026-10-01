@@ -174,6 +174,34 @@ export class OpenMeteoProvider implements WeatherProvider {
   private readonly batchCacheKey = (date: string, hour?: number): string =>
     `${date}:${hour ?? 'day'}`;
 
+  /**
+   * File d'attente des appels à Open-Meteo.
+   *
+   * Le fournisseur rationne par IP et refuse deux requêtes simultanées
+   * (`too many concurrent requests`). Or rien, dans le processus, n'empêchait
+   * les lots d'observations et de prévisions de partir ensemble : le job météo
+   * ne sérialise que par sous-périmètre, et une synchronisation déclenchée à la
+   * main depuis l'interfacecourt-circuite même ce garde-fou. Deux lots
+   * nationaliaux simultanés = 1579 communes, et un 429 sur un lot de 400 en
+   * fait perdre 400 d'un coup.
+   *
+   * Un seul appel en vol à la fois, quel que soit le déclencheur. Le quota
+   * d'Open-Meteo étant dimensionné pour un seul flux, sérialiser ne coûte
+   * rien : chaque sous-périmètre est déjà traité en série en interne.
+   */
+  private queue: Promise<unknown> = Promise.resolve();
+
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    // `then(task, task)` : un appel précédent en échec ne doit pas bloquer la
+    // file, sinon un 429 monterait en tête et paralyserait les runs suivants.
+    const result = this.queue.then(task, task);
+    this.queue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
   constructor() {
     this.client = axios.create({
       baseURL: env.OPEN_METEO_BASE_URL,
@@ -186,10 +214,14 @@ export class OpenMeteoProvider implements WeatherProvider {
     return `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
   }
 
-  private async request<T>(
+  private request<T>(
     params: Record<string, unknown>,
     retries: number = this.maxRetries,
   ): Promise<T> {
+    return this.enqueue(() => this.requestNow<T>(params, retries));
+  }
+
+  private async requestNow<T>(params: Record<string, unknown>, retries: number): Promise<T> {
     if (Date.now() < this.rateLimitedUntil) {
       logger.warn(
         { until: new Date(this.rateLimitedUntil).toISOString() },

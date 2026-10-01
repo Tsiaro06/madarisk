@@ -82,7 +82,12 @@ const envSchema = z.object({
   // plus fin n'aurait aucun sens et alourdirait inutilement le fournisseur.
   WEATHER_REFRESH_CRON: z.string().default('0 * * * *'),
   WEATHER_OBSERVATION_CRON: z.string().default(process.env.WEATHER_REFRESH_CRON ?? '0 * * * *'),
-  WEATHER_FORECAST_CRON: z.string().default('0 */3 * * *'),
+  // Volontairement décalé de 20 min après le cron d'observations. Les deux à la
+  // même minute, les lots partaient en parallèle et Open-Meteo — qui rationne
+  // par IP — refusait la requête (`too many concurrent requests`) : la moitié
+  // des communes finissait en 429 sur les deux runs. Le run d'observations
+  // pouvant durer 15 min quand il converge, l'écart doit dépasser cette durée.
+  WEATHER_FORECAST_CRON: z.string().default('20 */3 * * *'),
   // Doit dépasser la période du cron d'observations (1 h) sans le trop, sinon le
   // bandeau vire au rouge pendant le cycle normal. 150 min = deux runs
   // consécutifs manqués avant de signaler la péremption.
