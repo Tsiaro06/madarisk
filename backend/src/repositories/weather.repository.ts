@@ -280,6 +280,25 @@ async function insertObservationBatch(
   return result.rowCount ?? 0;
 }
 
+/**
+ * Insertion des prévisions quotidiennes d'un run, par lots.
+ *
+ * Le DO UPDATE est délibéré, comme pour `weather_observations` et
+ * `weather_hourly`. Un `ON CONFLICT DO NOTHING` figeait la première prévision
+ * téléchargée pour toute la durée de vie de la ligne (une commune, une source,
+ * un jour) : après une longue absence de la machine, le rattrapage au démarrage
+ * réinscrivait les mêmes dates sans rien corriger, et les townships restaient
+ * figés sur le premier modèle. Pire, `generated_at` n'avançait pas non plus —
+ * or c'est lui qui alimente la détection de péremption des prévisions
+ * (`forecastDataInfo`), donc le job se croyait toujours en retard et
+ * resynchronisait à chaque démarrage pour rien.
+ *
+ * La cible de conflit doit reprendre le prédicat de l'unique index
+ * `uq_weather_forecasts_commune_day`, qui est partiel
+ * (`WHERE commune_id IS NOT NULL`) : sans lui, PostgreSQL ne peut pas inférer
+ * quel index utiliser. Les lignes sans commune ne sont donc jamais en conflit,
+ * comme auparavant.
+ */
 async function insertForecastBatch(
   rows: WeatherForecastInsertData[],
   sourceId: string,
@@ -324,7 +343,23 @@ async function insertForecastBatch(
         wind_speed_max_kmh, wind_gusts_max_kmh, wind_direction_deg, pressure_avg_hpa,
         weather_code, data_kind, raw_data)
      VALUES ${placeholders.join(', ')}
-     ON CONFLICT DO NOTHING`,
+     ON CONFLICT (commune_id, weather_source_id, forecast_day)
+       WHERE commune_id IS NOT NULL
+     DO UPDATE SET
+       generated_at           = EXCLUDED.generated_at,
+       latitude               = EXCLUDED.latitude,
+       longitude              = EXCLUDED.longitude,
+       temperature_min_c      = EXCLUDED.temperature_min_c,
+       temperature_max_c      = EXCLUDED.temperature_max_c,
+       relative_humidity_avg  = EXCLUDED.relative_humidity_avg,
+       precipitation_sum_mm   = EXCLUDED.precipitation_sum_mm,
+       wind_speed_max_kmh     = EXCLUDED.wind_speed_max_kmh,
+       wind_gusts_max_kmh     = EXCLUDED.wind_gusts_max_kmh,
+       wind_direction_deg     = EXCLUDED.wind_direction_deg,
+       pressure_avg_hpa       = EXCLUDED.pressure_avg_hpa,
+       weather_code           = EXCLUDED.weather_code,
+       data_kind              = EXCLUDED.data_kind,
+       raw_data               = EXCLUDED.raw_data`,
     values,
   );
   return result.rowCount ?? 0;
@@ -718,22 +753,6 @@ export const weatherRepository = {
       inserted += await insertForecastBatch(batch, sourceId);
     }
     return inserted;
-  },
-
-  async existingForecastKeys(
-    sourceId: string,
-    keys: { communeId: string; forecastDay: string }[],
-  ): Promise<Set<string>> {
-    if (keys.length === 0) return new Set();
-    const result = await db.query<{ commune_id: string; forecast_day: string }>(
-      `SELECT f.commune_id, f.forecast_day::text
-       FROM weather_forecasts f
-       WHERE f.weather_source_id = $1
-         AND f.commune_id = ANY($2::uuid[])
-         AND f.forecast_day = ANY($3::date[])`,
-      [sourceId, keys.map((k) => k.communeId), keys.map((k) => k.forecastDay)],
-    );
-    return new Set(result.rows.map((r) => `${r.commune_id}|${r.forecast_day}`));
   },
 
   async findLatest(communeId: string): Promise<WeatherObservation | null> {

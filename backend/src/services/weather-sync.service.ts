@@ -463,14 +463,21 @@ async function syncForecasts(opts: { communeIds?: string[] }): Promise<SyncOutco
     }
   }
 
-  const existing = await weatherRepository.existingForecastKeys(
-    sourceId,
-    rows.map((r) => ({ communeId: r.communeId, forecastDay: r.forecastDay })),
-  );
-  const dedupe = dedupeByExisting(rows, existing, (r) => `${r.communeId}|${r.forecastDay}`);
-  const saved = await weatherRepository.insertForecasts(dedupe.kept, sourceId);
+  // Pas de dédoublonnage par (commune, jour) ici, contrairement aux
+  // observations. Le filtre de fraîcheur des communes fait déjà le travail qui
+  // économise le quota, et un second filtre sur les lignes_exists annulait
+  // complètement le rafraîchissement : pour une commune deemed stale, ses
+  // journées de prévision sont déjà toutes en base, donc toutes les lignes
+  // étaient écartées et le run se terminait en « SUCCESS » sans rien écrire.
+  // Conséquence après plusieurs jours d'arrêt de la machine : les prévisions
+  // restaient figées sur le premier modèle téléchargé, et `generated_at`
+  // n'avançait pas — c'est pourtant lui qui alimente la détection de
+  // péremption des prévisions, donc le job se croyait toujours en retard.
+  // L'idempotence est désormais assurée par l'upsert du repository
+  // (`ON CONFLICT ... DO UPDATE`).
+  const saved = await weatherRepository.insertForecasts(rows, sourceId);
 
-  const noSavedData = dedupe.kept.length === 0;
+  const noSavedData = rows.length === 0;
   let status: AutomationRunStatus;
   if (failures.length > 0) {
     status = noSavedData && items.length === 0 ? 'FAILED' : 'PARTIAL';
@@ -491,7 +498,7 @@ async function syncForecasts(opts: { communeIds?: string[] }): Promise<SyncOutco
     communes: inputs.length,
     failures: failures.length + missingData,
     error: failures.length === inputs.length ? 'Aucune donnée prévision obtenue' : null,
-    details: { missingData, duplicatesSkipped: dedupe.skipped },
+    details: { missingData, duplicatesSkipped: 0 },
   };
 }
 

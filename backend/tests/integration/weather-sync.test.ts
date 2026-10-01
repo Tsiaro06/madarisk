@@ -64,6 +64,11 @@ class SyncMockProvider implements WeatherProvider {
   currentCalls = 0;
   forecastCalls = 0;
   goodCurrentOverride: ((c: WeatherCurrent) => WeatherCurrent) | null = null;
+  /**
+   * Rafales des prévisions quotidiennes du fixture. Modifiable pour vérifier
+   * qu'une seconde exécution rafraîchit bien les lignes déjà présentes.
+   */
+  forecastWindGustsMaxKmh = 75;
 
   private goodCurrent(observedAt: string): WeatherCurrent {
     const base: WeatherCurrent = {
@@ -184,7 +189,7 @@ class SyncMockProvider implements WeatherProvider {
         relativeHumidityAvg: 80,
         precipitationSumMm: 25,
         windSpeedMaxKmh: 55,
-        windGustsMaxKmh: 75,
+        windGustsMaxKmh: this.forecastWindGustsMaxKmh,
         windDirectionDeg: 120,
         pressureAvgHpa: 1005,
         weatherCode: '80',
@@ -423,6 +428,59 @@ describe('Synchronisation météo - succès', () => {
       [communeIds, FORECAST_DAYS],
     );
     expect(parseInt(kinds.rows[0].n, 10)).toBe(communeIds.length * FORECAST_DAYS.length);
+  });
+
+  /**
+   * Non-régression : une prévision doit être rafraîchie à chaque run.
+   *
+   * `weather_forecasts` est protégé par l'unique index
+   * `uq_weather_forecasts_commune_day` (une source, une commune, un jour). Un
+   * `ON CONFLICT DO NOTHING` y figeait la première prévision téléchargée : après
+   * plusieurs jours d'absence de la machine, le rattrapage au démarrage
+   * réinscrivait les mêmes dates sans les corriger, et `generated_at`
+   * n'avançait pas — or c'est lui qui alimente la détection de péremption des
+   * prévisions, donc le job se croyait toujours en retard.
+   */
+  it('rafraîchit les prévisions déjà présentes au lieu de les figer', async () => {
+    mock.forecastError = null;
+    mock.forecastWindGustsMaxKmh = 75;
+    // Fenêtre propre à ce test : la base est celle du dev et contient les
+    // prévisions réelles de ces communes, aux mêmes dates.
+    await db.query(
+      `DELETE FROM weather_forecasts
+        WHERE commune_id = ANY($1::uuid[]) AND forecast_day = ANY($2::date[])`,
+      [communeIds, FORECAST_DAYS],
+    );
+
+    const readWindow = () =>
+      db.query<{ n: string; gust: string; generated: string }>(
+        `SELECT COUNT(*)::text AS n,
+                MAX(wind_gusts_max_kmh)::text AS gust,
+                MAX(generated_at)::text AS generated
+           FROM weather_forecasts
+          WHERE commune_id = ANY($1::uuid[]) AND forecast_day = ANY($2::date[])`,
+        [communeIds, FORECAST_DAYS],
+      );
+
+    await weatherSyncService.trigger({ scope: 'FORECASTS', communeIds });
+    const first = await readWindow();
+    const expected = String(communeIds.length * FORECAST_DAYS.length);
+    expect(first.rows[0].n).toBe(expected);
+    expect(Number(first.rows[0].gust)).toBe(75);
+
+    mock.forecastWindGustsMaxKmh = 99;
+    await weatherSyncService.trigger({ scope: 'FORECASTS', communeIds });
+    const second = await readWindow();
+    mock.forecastWindGustsMaxKmh = 75;
+
+    // Même nombre de lignes (pas de doublon) mais valeurs rafraîchies.
+    expect(second.rows[0].n).toBe(expected);
+    expect(Number(second.rows[0].gust)).toBe(99);
+    // `generated_at` progresse aussi : c'est ce champ qui débloque la
+    // détection de péremption (`forecastDataInfo`) après un long arrêt.
+    expect(new Date(second.rows[0].generated).getTime()).toBeGreaterThanOrEqual(
+      new Date(first.rows[0].generated).getTime(),
+    );
   });
 });
 
