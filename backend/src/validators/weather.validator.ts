@@ -70,9 +70,35 @@ export type WeatherHistoryQuery = z.infer<typeof weatherHistoryQuerySchema>;
 export type WeatherMapQuery = z.infer<typeof weatherMapQuerySchema>;
 export type WeatherMetric = z.infer<typeof weatherMetricSchema>;
 export type WeatherSyncTriggerInput = z.infer<typeof weatherSyncTriggerSchema>;
+export type WeatherHourlyQuery = z.infer<typeof weatherHourlyQuerySchema>;
+export type WeatherHourlyLayerQuery = z.infer<typeof weatherHourlyLayerQuerySchema>;
 
 export const weatherSyncTriggerSchema = z.object({
   scope: z
     .enum(['OBSERVATIONS', 'FORECASTS', 'OBSERVATIONS_AND_FORECASTS'])
     .default('OBSERVATIONS_AND_FORECASTS'),
+});
+
+/**
+ * Requête de la courbe horaire d'une commune. Les bornes sont optionnelles :
+ * sans `dateFrom`, le service renvoie toute la fenêtre disponible.
+ */
+export const weatherHourlyQuerySchema = z.object({
+  dateFrom: z.coerce.date().optional(),
+  dateTo: z.coerce.date().optional(),
+});
+
+/**
+ * Requête de la couche horaire : `date` + `hour` en heure de Madagascar.
+ * L'API travaille en UTC (+03 déduit côté service) pour éviter qu'un client
+ * et le serveur ne TOMBENT pas d'accord sur la même heure.
+ */
+export const weatherHourlyLayerQuerySchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Date invalide (format attendu : AAAA-MM-JJ)')
+    .optional(),
+  hour: z.coerce.number().int().min(0).max(23).optional(),
+  districtId: z.string().uuid('Identifiant de district invalide').optional(),
+  eventId: z.string().uuid("Identifiant d'événement invalide").optional(),
 });

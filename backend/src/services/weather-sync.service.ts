@@ -3,7 +3,7 @@ import { logger } from '../config/logger';
 import { env } from '../config/env';
 import { usersRepository } from '../repositories/users.repository';
 import { weatherRepository } from '../repositories/weather.repository';
-import type { WeatherInsertData } from '../repositories/weather.repository';
+import type { WeatherInsertData, WeatherHourlyInsertData } from '../repositories/weather.repository';
 import { weatherSyncRepository } from '../repositories/weather-sync.repository';
 import { getWeatherProvider } from './weather-provider';
 import { AutomationRunStatus } from '../types/automation.types';
@@ -283,6 +283,45 @@ function observationRowsFromItems(items: WeatherCurrentBatchItem[]): {
   return { rows, missingData };
 }
 
+/**
+ * Transforme la série horaire renvoyée par le provider en lignes
+ * `weather_hourly`. Aucune requête HTTP supplémentaire : les heures arrivent
+ * dans la réponse du batch d'observations.
+ *
+ * `isForecast` est calculé ici plutôt que réutilisé du fournisseur : une heure
+ * peut être passée dans la réponse d'un run tardif (l'analyse réanalyse le
+ * passé), et une heure à venir reste une prévision même après son passage.
+ */
+function hourlyRowsFromItems(items: WeatherCurrentBatchItem[]): WeatherHourlyInsertData[] {
+  const nowMs = Date.now();
+  const rows: WeatherHourlyInsertData[] = [];
+
+  for (const item of items) {
+    if (!item?.hours?.length) continue;
+    for (const h of item.hours) {
+      const hourMs = Date.parse(h.hourAt);
+      if (!Number.isFinite(hourMs)) continue;
+      rows.push({
+        communeId: item.communeId,
+        hourAt: new Date(hourMs).toISOString(),
+        latitude: item.latitude,
+        longitude: item.longitude,
+        temperatureC: h.temperatureC,
+        humidityPercent: h.humidityPercent,
+        precipitationMm: h.precipitationMm,
+        rainMm: h.rainMm,
+        windSpeedKmh: h.windSpeedKmh,
+        windGustsKmh: h.windGustsKmh,
+        windDirectionDeg: h.windDirectionDeg,
+        pressureHpa: h.pressureHpa,
+        weatherCode: h.weatherCode,
+        isForecast: hourMs > nowMs,
+      });
+    }
+  }
+  return rows;
+}
+
 async function syncObservations(opts: { communeIds?: string[] }): Promise<SyncOutcome> {
   const provider = getWeatherProvider();
   const sourceId = await weatherRepository.getSourceId();
@@ -316,6 +355,15 @@ async function syncObservations(opts: { communeIds?: string[] }): Promise<SyncOu
   );
   const saved = await weatherRepository.insertObservations(dedupe.kept, sourceId);
 
+  // Courbe horaire (passé + prévision) : même appel Open-Meteo, donc aucun
+  // quota supplémentaire. Elle est écrite pour toutes les communes ciblées par
+  // le run — à chaque cron de 6 h le cutoff de fraîcheur est dépassé, donc les
+  // 1579 communes passent, et la fenêtre glissante de 48 h est reconstituée.
+  const hourlySaved = await weatherRepository.insertHourly(
+    hourlyRowsFromItems(items),
+    sourceId,
+  );
+
   const noSavedData = dedupe.kept.length === 0;
   let status: AutomationRunStatus;
   if (failures.length > 0) {
@@ -327,7 +375,13 @@ async function syncObservations(opts: { communeIds?: string[] }): Promise<SyncOu
   }
 
   logger.info(
-    { targeted: inputs.length, saved, failed: failures.length, missing: missingData },
+    {
+      targeted: inputs.length,
+      saved,
+      failed: failures.length,
+      missing: missingData,
+      hourlySaved,
+    },
     'Synchronisation météo : observations terminées',
   );
 

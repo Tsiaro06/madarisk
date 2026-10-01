@@ -9,6 +9,7 @@ import {
   WeatherCurrent,
   WeatherDgmIngestResult,
   WeatherForecast,
+  WeatherHourPoint,
   WeatherMapGeoJson,
   WeatherMapPoint,
   WeatherProvider,
@@ -315,6 +316,45 @@ export const weatherService = {
       eventId: query.eventId,
       observedAt,
     });
+  },
+
+  async hourlySeries(
+    communeId: string,
+    query: { dateFrom?: Date; dateTo?: Date },
+  ): Promise<(WeatherHourPoint & { isForecast: boolean })[]> {
+    const sourceId = await weatherRepository.getSourceId();
+    return weatherRepository.hourlyForCommune(communeId, {
+      sourceId,
+      dateFrom: query.dateFrom?.toISOString(),
+      dateTo: query.dateTo?.toISOString(),
+    });
+  },
+
+  async hourlyMapLayer(query: {
+    date?: string;
+    hour?: number;
+    districtId?: string;
+    eventId?: string;
+  }): Promise<WeatherMapGeoJson> {
+    const now = new Date();
+    const hourAt = new Date(
+      `${query.date ?? now.toISOString().slice(0, 10)}T${String(query.hour ?? now.getHours()).padStart(2, '0')}:00:00+03:00`,
+    );
+    const sourceId = await weatherRepository.getSourceId();
+    const points = await weatherRepository.hourlyMapLayer(hourAt.toISOString(), {
+      sourceId,
+      districtId: query.districtId,
+      eventId: query.eventId,
+    });
+    return {
+      type: 'FeatureCollection',
+      features: points.map((p) => ({
+        type: 'Feature',
+        id: p.communeId,
+        geometry: { type: 'Point', coordinates: [p.longitude, p.latitude] },
+        properties: p as unknown as WeatherMapPoint,
+      })),
+    };
   },
 
   async latestObservationAt(): Promise<string | null> {

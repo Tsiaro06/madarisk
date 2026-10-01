@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { cn, formatNumber } from '@/lib/utils';
 import { DASH, DASH_NAVY } from '@/lib/dashboardTheme';
 
@@ -7,10 +7,22 @@ interface RingGaugeProps {
   value: number;
   size?: number;
   thickness?: number;
+  /** Alias de `thickness`, avec le nom utilisé par les jauges du dashboard. */
+  strokeWidth?: number;
+  /** Couleur de l'anneau de valeur. Par défaut, le dégradé bleu du thème. */
+  color?: string;
+  /** Couleur de la piste non remplie. Par défaut, la teinte navy du thème. */
+  trackColor?: string;
+  /** Contenu de la bulle centrale ; prime sur `bubbleLabel`. */
+  children?: ReactNode;
   /** Texte dans la bulle centrale ; par défaut le pourcentage. */
   bubbleLabel?: string;
+  /** Classes CSS de la bulle centrale, pour l'adapter au panneau d'accueil. */
+  bubbleClassName?: string;
   /** Ligne de détail sous la jauge, ex. « 4 653 sur 5 952 communes ». */
   detail?: string;
+  /** Libellé accessible ; remplace le pourcentage par défaut. */
+  label?: string;
   ariaLabel?: string;
   className?: string;
 }
@@ -18,9 +30,15 @@ interface RingGaugeProps {
 export function RingGauge({
   value,
   size = 200,
-  thickness = 12,
+  thickness,
+  strokeWidth,
+  color,
+  trackColor,
+  children,
   bubbleLabel,
+  bubbleClassName,
   detail,
+  label,
   ariaLabel,
   className,
 }: RingGaugeProps) {
@@ -32,8 +50,9 @@ export function RingGauge({
     return () => cancelAnimationFrame(frame);
   }, []);
 
+  const ringThickness = thickness ?? strokeWidth ?? 12;
   const percent = Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : 0;
-  const radius = 50 - thickness / 2 - 2;
+  const radius = 50 - ringThickness / 2 - 2;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference * (1 - percent / 100);
 
@@ -41,7 +60,7 @@ export function RingGauge({
     <div
       className={cn('flex flex-col items-center', className)}
       role="img"
-      aria-label={ariaLabel ?? `${formatNumber(Math.round(percent))} %`}
+      aria-label={ariaLabel ?? label ?? `${formatNumber(Math.round(percent))} %`}
     >
       <div className="relative" style={{ width: size, height: size }}>
         <svg
@@ -64,8 +83,9 @@ export function RingGauge({
             cy="50"
             r={radius}
             fill="none"
-            strokeWidth={thickness}
-            className="stroke-(--dash-navy-08)"
+            strokeWidth={ringThickness}
+            stroke={trackColor ?? undefined}
+            className={trackColor ? undefined : 'stroke-(--dash-navy-08)'}
           />
 
           <circle
@@ -73,8 +93,8 @@ export function RingGauge({
             cy="50"
             r={radius}
             fill="none"
-            stroke={`url(#${gradientId})`}
-            strokeWidth={thickness}
+            stroke={color ?? `url(#${gradientId})`}
+            strokeWidth={ringThickness}
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={mounted ? offset : circumference}
@@ -85,17 +105,22 @@ export function RingGauge({
 
         <div className="absolute inset-0 grid place-items-center">
           <div
-            className="grid place-items-center rounded-full bg-white ring-1 ring-(--dash-navy-14) text-center"
-            style={{ width: size * 0.46, height: size * 0.46 }}
+            className={cn(
+              'grid place-items-center rounded-full bg-white ring-1 ring-(--dash-navy-14) text-center',
+              bubbleClassName,
+            )}
+            style={bubbleClassName ? undefined : { width: size * 0.46, height: size * 0.46 }}
           >
             <div>
-              <p
-                className="font-[Outfit] font-bold leading-none tracking-tight text-(--dash-navy)"
-                style={{ fontSize: size * 0.17 }}
-              >
-                {bubbleLabel ?? `${formatNumber(Math.round(percent))}%`}
-              </p>
-              {!bubbleLabel ? (
+              {children ?? (
+                <p
+                  className="font-[Outfit] font-bold leading-none tracking-tight text-(--dash-navy)"
+                  style={{ fontSize: size * 0.17 }}
+                >
+                  {bubbleLabel ?? `${formatNumber(Math.round(percent))}%`}
+                </p>
+              )}
+              {!children && !bubbleLabel ? (
                 <p
                   className="mt-1 leading-none text-(--dash-navy-72)"
                   style={{ fontSize: Math.max(9, size * 0.05) }}

@@ -6,6 +6,8 @@ import { AppError } from '../utils/app-error';
 import {
   RefreshWeatherInput,
   WeatherHistoryQuery,
+  WeatherHourlyLayerQuery,
+  WeatherHourlyQuery,
   WeatherMapQuery,
   WeatherSyncTriggerInput,
 } from '../validators/weather.validator';
@@ -49,6 +51,19 @@ export const weatherController = {
       weatherService.latestObservationAt(),
     ]);
     res.status(200).json(successResponse(geojson, 'Couche météo', { latestObservationAt }));
+  },
+
+  hourlySeries: async (req: Request, res: Response): Promise<void> => {
+    const { communeId } = req.validatedParams as CommuneIdParams;
+    const query = req.validatedQuery as WeatherHourlyQuery;
+    const hours = await weatherService.hourlySeries(communeId, query);
+    res.status(200).json(successResponse(hours, 'Météo horaire de la commune'));
+  },
+
+  hourlyLayer: async (req: Request, res: Response): Promise<void> => {
+    const query = req.validatedQuery as WeatherHourlyLayerQuery;
+    const geojson = await weatherService.hourlyMapLayer(query);
+    res.status(200).json(successResponse(geojson, 'Couche météo horaire'));
   },
 
   ingestDgmMaproom: async (req: Request, res: Response): Promise<void> => {

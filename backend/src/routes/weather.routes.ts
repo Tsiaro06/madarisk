@@ -8,6 +8,8 @@ import {
   refreshWeatherSchema,
   communeIdParamsSchema,
   weatherHistoryQuerySchema,
+  weatherHourlyLayerQuerySchema,
+  weatherHourlyQuerySchema,
   weatherMapQuerySchema,
   weatherSyncTriggerSchema,
 } from '../validators/weather.validator';
@@ -29,6 +31,14 @@ router.get(
   '/map-layer',
   validate({ query: weatherMapQuerySchema }),
   asyncHandler(weatherController.mapLayer),
+);
+
+// Couche carte figée sur une heure (passée ou future) : même clé que
+// map-layer mais lue dans weather_hourly, sans coût Open-Meteo.
+router.get(
+  '/hourly-layer',
+  validate({ query: weatherHourlyLayerQuerySchema }),
+  asyncHandler(weatherController.hourlyLayer),
 );
 
 router.post(
@@ -60,6 +70,14 @@ router.get(
   '/communes/:communeId/history',
   validate({ params: communeIdParamsSchema, query: weatherHistoryQuerySchema }),
   asyncHandler(weatherController.history),
+);
+
+// Courbe horaire d'une commune : passé (réanalyse) et prévision mélangés,
+// distingués par `isForecast`.
+router.get(
+  '/communes/:communeId/hourly',
+  validate({ params: communeIdParamsSchema, query: weatherHourlyQuerySchema }),
+  asyncHandler(weatherController.hourlySeries),
 );
 
 export default router;

@@ -9,6 +9,26 @@ export type WeatherMetric =
 
 export type WeatherViewMode = "OBSERVATION" | "PREVISION" | "HISTORIQUE";
 
+/**
+ * Une heure de la courbe d'une commune. `hourAt` est l'instant UTC ;
+ * `isForecast` distingue réanalyse (heure passée, valeur observée par le
+ * modèle) et prévision (heure à venir). Le backend stocke ces heures dans
+ * `weather_hourly`, rafraîchies à chaque synchronisation.
+ */
+export interface WeatherHourPoint {
+  hourAt: string;
+  temperatureC: number | null;
+  humidityPercent: number | null;
+  precipitationMm: number | null;
+  rainMm: number | null;
+  windSpeedKmh: number | null;
+  windGustsKmh: number | null;
+  windDirectionDeg: number | null;
+  pressureHpa: number | null;
+  weatherCode: string | null;
+  isForecast: boolean;
+}
+
 export const WEATHER_VIEW_MODE_LABELS: Record<WeatherViewMode, string> = {
   OBSERVATION: "Observation",
   PREVISION: "Prévision",

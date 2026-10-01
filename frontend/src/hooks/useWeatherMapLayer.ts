@@ -23,6 +23,13 @@ export function useWeatherMapLayer({
   // par /weather/map-layer contient déjà toutes les métriques dans
   // `properties`. L'inclure ici forcerait un refetch de ~870 Ko à chaque
   // changement d'indicateur alors que la réponse est identique.
+  //
+  // Quand une HEURE est choisie (passée ou future), on bascule sur
+  // /weather/hourly-layer : la couche donne la valeur EXACTE de cette heure
+  // (réanalyse pour le passé, prévision pour l'avenir), stockée dans
+  // `weather_hourly` — alors que /weather/map-layer avec une date passée
+  // agrège toutes les observations du jour jusqu'à cette heure.
+  const usesHourlyLayer = hour != null;
   const query = useQuery({
     queryKey: [
       "weather",
@@ -31,12 +38,17 @@ export function useWeatherMapLayer({
       date,
       hour ?? "",
       districtId ?? "",
+      usesHourlyLayer ? "hourly" : "live",
     ],
     queryFn: async () => {
       const params: Record<string, string> = {};
       if (date) params.date = date;
       if (hour != null) params.hour = String(hour);
       if (districtId) params.districtId = districtId;
+      if (usesHourlyLayer) {
+        const collection = await weatherApi.hourlyLayer(params);
+        return { collection, meta: null };
+      }
       const res = await weatherApi.mapLayerDetailed(params);
       return { collection: res.data, meta: res.meta };
     },

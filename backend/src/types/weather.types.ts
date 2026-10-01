@@ -23,6 +23,28 @@ export interface WeatherCurrentBatchItem {
   latitude: number;
   longitude: number;
   current: WeatherCurrent;
+  /**
+   * Serie horaire demandee dans le MEME appel que `current` (aucun cout
+   * Open-Meteo supplementaire) : heures passees (analyse/reanalyse) et heures
+   * a venir (prevision). Absente si le fournisseur ne l'a pas fournie ou si
+   * la commune n'a aucune donnee.
+   */
+  hours?: WeatherHourPoint[];
+}
+
+/** Une heure de la serie : passee (analyse) ou a venir (prevision). */
+export interface WeatherHourPoint {
+  /** Horodatage ISO de l'heure couverte, en UTC. */
+  hourAt: string;
+  temperatureC: number | null;
+  humidityPercent: number | null;
+  precipitationMm: number | null;
+  rainMm: number | null;
+  windSpeedKmh: number | null;
+  windGustsKmh: number | null;
+  windDirectionDeg: number | null;
+  pressureHpa: number | null;
+  weatherCode: string | null;
 }
 
 export interface WeatherCurrent {

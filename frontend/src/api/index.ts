@@ -28,6 +28,7 @@ import type {
   WeatherObservation,
 } from "@/types";
 import type {
+  WeatherHourPoint,
   WeatherMapLayerMeta,
   WeatherMonitoring,
   WeatherRefreshResult,
@@ -228,6 +229,16 @@ export const weatherApi = {
     communeId: string,
     params?: Record<string, string | number | undefined>,
   ) => apiGetPage<WeatherObservation[]>(`/weather/communes/${communeId}/history`, { params }),
+  // Courbe horaire d'une commune : réanalyse (passé) + prévision mélangées,
+  // distinguées par `isForecast`. Lues dans weather_hourly, sans coût
+  // Open-Meteo à la consultation.
+  hourly: (
+    communeId: string,
+    params?: Record<string, string | undefined>,
+  ) => apiGet<WeatherHourPoint[]>(`/weather/communes/${communeId}/hourly`, { params }),
+  // Couche carte figée sur une heure exacte (passée ou future).
+  hourlyLayer: (params?: Record<string, string | undefined>) =>
+    apiGet<FeatureCollection>("/weather/hourly-layer", { params }),
   mapLayer: (params?: Record<string, string | undefined>) =>
     apiGet<FeatureCollection>("/weather/map-layer", { params }),
   mapLayerDetailed: async (

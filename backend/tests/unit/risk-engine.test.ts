@@ -63,7 +63,13 @@ describe('scoreRain', () => {
     expect(scoreRain(150, 120)).toBe(100);
   });
 
-  it('prend la pluie 24h si disponible en priorité', () => {
+  // Le repli `rainfall24hMm ?? precipitationMm` est intentionnel : une source
+  // qui ne renseigne que `precipitationMm` reste exploitable. Ce qui compte,
+  // c'est que la requête qui choisit la ligne (risks.repository.getRiskContexts)
+  // n'attribue jamais à `precipitationMm` une valeur décennale de la DGM.
+  // Ce contrat est vérifié par le test d'intégration
+  // "getRiskContexts n'attribue jamais à precipitation_mm un cumul décennal".
+  it('replie sur precipitationMm quand la pluie 24h est absente', () => {
     expect(scoreRain(null, 150)).toBe(100);
   });
 });

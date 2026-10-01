@@ -13,6 +13,7 @@ import {
   WeatherCurrentBatchItem,
   WeatherForecast,
   WeatherForecastDailyItem,
+  WeatherHourPoint,
   WeatherProvider,
   BatchCommuneInput,
 } from '../../src/types/weather.types';
@@ -24,6 +25,21 @@ const FIXED_STAMP = `${new Date().toISOString().slice(0, 10)}T09:00:00.000Z`;
 
 function distinctStamp(offsetMinutes: number): string {
   const d = new Date(Date.now() + offsetMinutes * 60000);
+  return d.toISOString();
+}
+
+/**
+ * Horodatage « à la minute 37 ». Les ingests réels tombent à l'heure pile
+ * (toutes les 6 h) : avec un stamp aligné sur l'heure, la base de
+ * développement contient déjà les lignes Open-Meteo du run courant, la
+ * déduplication les réutilise et le test lit des données réelles (gusts)
+ * au lieu de celles du mock.
+ */
+function offHourStamp(): string {
+  const d = new Date();
+  d.setSeconds(0, 0);
+  d.setMinutes(37);
+  if (d.getTime() > Date.now()) d.setHours(d.getHours() - 1);
   return d.toISOString();
 }
 /**
@@ -47,9 +63,10 @@ class SyncMockProvider implements WeatherProvider {
   forecastBatchCalls = 0;
   currentCalls = 0;
   forecastCalls = 0;
+  goodCurrentOverride: ((c: WeatherCurrent) => WeatherCurrent) | null = null;
 
   private goodCurrent(observedAt: string): WeatherCurrent {
-    return {
+    const base: WeatherCurrent = {
       observedAt,
       temperatureC: 28.5,
       humidityPercent: 82,
@@ -61,6 +78,7 @@ class SyncMockProvider implements WeatherProvider {
       pressureHpa: 1010,
       weatherCode: '61',
     };
+    return this.goodCurrentOverride ? this.goodCurrentOverride(base) : base;
   }
 
   private emptyCurrent(observedAt: string): WeatherCurrent {
@@ -86,6 +104,29 @@ class SyncMockProvider implements WeatherProvider {
       : this.goodCurrent(this.observedAt);
   }
 
+  private goodHours(observedAt: string): WeatherHourPoint[] {
+    const base = Date.parse(observedAt);
+    if (!Number.isFinite(base)) return [];
+    // Température dérivée de `goodCurrent` (et donc de `goodCurrentOverride`) :
+    // un test qui relance le run à la même heure doit voir la courbe rafraîchie.
+    const t0 = this.goodCurrent(observedAt).temperatureC ?? 0;
+    return Array.from({ length: 8 }, (_, i) => {
+      const hourAt = new Date(base - 3 * 3_600_000 + i * 3_600_000).toISOString();
+      return {
+        hourAt,
+        temperatureC: Number((t0 + i * 0.1).toFixed(1)),
+        humidityPercent: 82 - i,
+        precipitationMm: i % 3 === 0 ? 3 : 0,
+        rainMm: 0,
+        windSpeedKmh: 45 + i,
+        windGustsKmh: 65 + i,
+        windDirectionDeg: 90,
+        pressureHpa: 1010,
+        weatherCode: '61',
+      };
+    });
+  }
+
   async getCurrentBatch(communes: BatchCommuneInput[]): Promise<WeatherCurrentBatchItem[]> {
     this.currentBatchCalls += 1;
     if (this.currentError) throw this.currentError;
@@ -100,6 +141,7 @@ class SyncMockProvider implements WeatherProvider {
       current: this.missingData
         ? this.emptyCurrent(this.observedAt)
         : this.goodCurrent(this.observedAt),
+      hours: this.missingData ? [] : this.goodHours(this.observedAt),
     }));
   }
 
@@ -259,6 +301,9 @@ describe('Synchronisation météo - succès', () => {
     mock.currentBatchCalls = 0;
     mock.currentCalls = 0;
 
+    const mockStamp = offHourStamp();
+    mock.observedAt = mockStamp;
+
     const result = await weatherSyncService.trigger({
       scope: 'OBSERVATIONS',
       communeIds,
@@ -275,7 +320,7 @@ describe('Synchronisation météo - succès', () => {
               MAX(wind_gusts_kmh)::text AS gust
        FROM weather_observations
        WHERE commune_id = ANY($1::uuid[]) AND observed_at = $2`,
-      [communeIds, FIXED_STAMP],
+      [communeIds, mockStamp],
     );
     expect(rows.rows[0].n).toBe(String(communeIds.length));
     expect(Number(rows.rows[0].gust)).toBe(65);
@@ -285,6 +330,68 @@ describe('Synchronisation météo - succès', () => {
       [communeIds],
     );
     expect(parseInt(kinds.rows[0].n, 10)).toBeGreaterThanOrEqual(communeIds.length);
+  });
+
+  it('stocke la série horaire (réanalyse + prévision) dans weather_hourly, rafraîchie à la relance', async () => {
+    mock.currentError = null;
+    mock.respondIds = null;
+    mock.currentBatchCalls = 0;
+
+    const mockStamp = offHourStamp();
+    mock.observedAt = mockStamp;
+    // Fenêtre propre à ce test : les autres tests du fichier écrivent aussi
+    // dans weather_hourly (fenêtre 09:00Z du FIXED_STAMP), il faut exclure
+    // leurs heures du comptage.
+    const before = new Date(Date.parse(mockStamp) - 5 * 3_600_000).toISOString();
+    const after = new Date(Date.parse(mockStamp) + 5 * 3_600_000).toISOString();
+    // Fichier relancé plusieurs fois dans la même heure : `offHourStamp` renvoie
+    // la même minute 37 et la fenêtre garde les séries des runs précédents. On
+    // la nettoie pour compter uniquement ce que CE test écrit.
+    await db.query(`DELETE FROM weather_hourly WHERE hour_at >= $1 AND hour_at <= $2`, [
+      before,
+      after,
+    ]);
+
+    const result = await weatherSyncService.trigger({ scope: 'OBSERVATIONS', communeIds });
+    expect(result.runs[0].status).toBe('SUCCESS');
+
+    const rows = await db.query<{ n: string; forecast: string }>(
+      `SELECT COUNT(*)::text AS n,
+              COUNT(*) FILTER (WHERE is_forecast)::text AS forecast
+         FROM weather_hourly
+        WHERE commune_id = ANY($1::uuid[])
+          AND weather_source_id = (SELECT id FROM weather_sources WHERE provider_type = 'OPEN_METEO')
+          AND hour_at >= $2 AND hour_at <= $3`,
+      [communeIds, before, after],
+    );
+    const expected = communeIds.length * 8;
+    expect(rows.rows[0].n).toBe(String(expected));
+    // 3 h dans le passé restent réanalyse, 4 h à venir sont prévision.
+    expect(Number(rows.rows[0].forecast)).toBe(communeIds.length * 4);
+
+    // Une relance du run pour la même heure doit rafraîchir la température au
+    // lieu de la figer (DO UPDATE, contrairement à weather_forecasts).
+    const first = await db.query<{ v: string }>(
+      `SELECT temperature_c::float8::text AS v FROM weather_hourly
+        WHERE commune_id = $1 AND is_forecast AND hour_at >= $2 AND hour_at <= $3
+        ORDER BY hour_at ASC`,
+      [communeIds[0], before, after],
+    );
+    mock.observedAt = mockStamp;
+    mock.goodCurrentOverride = (c) => ({ ...c, temperatureC: 99 });
+    await weatherSyncService.trigger({ scope: 'OBSERVATIONS', communeIds });
+    const refreshed = await db.query<{ v: string }>(
+      `SELECT temperature_c::float8::text AS v FROM weather_hourly
+        WHERE commune_id = $1 AND is_forecast AND hour_at >= $2 AND hour_at <= $3
+        ORDER BY hour_at ASC`,
+      [communeIds[0], before, after],
+    );
+    mock.goodCurrentOverride = null;
+
+    // Même nombre de lignes (pas de duplicate) mais valeurs rafraîchies.
+    expect(refreshed.rows.length).toBe(first.rows.length);
+    expect(refreshed.rows[0].v).not.toBe(first.rows[0].v);
+    expect(Number(refreshed.rows[0].v)).toBeGreaterThan(95);
   });
 
   it('synchronise les prévisions quotidiennes en batch (PREVU)', async () => {

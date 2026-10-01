@@ -14,8 +14,8 @@
   --font-condensed: "Oswald", "Figtree", ui-sans-serif, system-ui, sans-serif;
 
   /* Bleu météo désaturé — plus calme à l’œil */
-  --color-brand: #03224c;
-  --color-brand-deep: #021a3f;
+  --color-brand: #3d7a9a;
+  --color-brand-deep: #2f5f78;
   --color-brand-soft: #eef3f6;
   /* Accent cyan de l'interface de connexion (balayage radar, données SIG). */
   --color-turquoise: #3ec9d6;
@@ -34,6 +34,21 @@
   --color-risk-modere: #c4a85a;
   --color-risk-eleve: #c4845a;
   --color-risk-extreme: #c46b6b;
+
+  /* --- Palette « SaaS analytics » du tableau de bord -------------------
+     Volontairement isolée de la palette de marque désaturée ci-dessus : le
+     dashboard garde son identité bleu vif quel que soit le thème clair /
+     sombre de l'application (cf. `.dash-scope` plus bas). */
+  --color-dash: #2f5bea;
+  --color-dash-light: #5b82f5;
+  --color-dash-pale: #eaefff;
+  --color-dash-canvas: #f3f6fc;
+  --color-dash-lime: #a3e635;
+  --color-dash-up: #16a34a;
+  --color-dash-down: #dc2626;
+  /* Titres presque noirs + libellés gris moyen. */
+  --color-dash-title: #0f172a;
+  --color-dash-body: #475569;
 }
 
 /* Bascule clair → sombre : on surcharge les mêmes jetons sémantiques, ce qui
@@ -42,11 +57,9 @@
    restent claires. */
 .dark {
   color-scheme: dark;
-  /* Même marine que le thème clair, éclairci pour rester lisible sur le fond
-     quasi noir : 4.9:1 pour le texte blanc posé dessus. */
-  --color-brand: #4a6fa8;
-  --color-brand-deep: #4f7399;
-  --color-brand-soft: rgba(74, 111, 168, 0.2);
+  --color-brand: #7fb0cd;
+  --color-brand-deep: #a8cadd;
+  --color-brand-soft: rgba(61, 122, 154, 0.2);
   --color-accent: #d9b75f;
   --color-ink: #f4f4f6;
   --color-muted: #8f93a3;
@@ -193,151 +206,14 @@ h3 {
 }
 
 /* ------------------------------------------------------------------
-   Tableau de bord — palette stricte à trois couleurs.
-
-   Noir (#000), blanc (#fff) et bleu marine (#03224c) uniquement.
-   Toutes les nuances sont derivées de ces trois teintes par opacite :
-   aucune autre teinte n'est introduite, ce qui garde une coherence
-   monochrome et evite de concurrencer les couleurs semantiques de
-   risque utilisees ailleurs dans l'application (carte, jauges meteo).
-
-   Repartition : la page et les cartes sont blanches. Comme elles se
-   partagent le meme fond, la separation est assuree par une bordure
-   bleu marine tres fine et une ombre douce — jamais par une couleur de
-   fond differente. Le bleu marine ne sert que pour le texte, les
-   icones, les jauges et le graphique.
-   ------------------------------------------------------------------ */
-.dash-surface {
-  --dash-navy: #03224c;
-  --dash-black: #000000;
-  --dash-white: #ffffff;
-
-  /* Rampe d'opacite : seules les valeurs employees par le CSS lui-meme sont
-     declarees ici. La rampe complete (utilisee par Recharts et les points de
-     donnee) vit dans `src/lib/dashboardTheme.ts`. */
-  --dash-navy-08: rgba(3, 34, 76, 0.08);
-  --dash-navy-14: rgba(3, 34, 76, 0.14);
-  --dash-navy-72: rgba(3, 34, 76, 0.72);
-  --dash-navy-80: rgba(3, 34, 76, 0.8);
-
-  /* Le plancher est fixé a 72 % pour rester au-dessus du ratio AA de
-     4.5:1 sur fond blanc (≈6.4:1). */
-  --dash-text: var(--dash-navy);
-  --dash-text-soft: var(--dash-navy-80);
-  --dash-text-muted: var(--dash-navy-72);
-  --dash-line: var(--dash-navy-14);
-
-  --dash-radius: 24px;
-  --dash-border: 1px solid var(--dash-navy-14);
-  --dash-shadow: 0 1px 2px rgba(3, 34, 76, 0.04), 0 10px 26px -16px rgba(3, 34, 76, 0.28);
-  --dash-shadow-hover: 0 2px 4px rgba(3, 34, 76, 0.06), 0 20px 40px -18px rgba(3, 34, 76, 0.36);
-
-  background: var(--dash-white);
-  color: var(--dash-text);
-  font-family: var(--font-sans);
-}
-
-.dash-surface .dash-card {
-  background: var(--dash-white);
-  color: var(--dash-text);
-  border: var(--dash-border);
-  border-radius: var(--dash-radius);
-  box-shadow: var(--dash-shadow);
-  transition:
-    box-shadow 0.28s ease,
-    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.dash-surface .dash-card-hover:hover {
-  box-shadow: var(--dash-shadow-hover);
-  transform: translateY(-2px);
-}
-
-.dash-surface .dash-hero {
-  background: var(--dash-white);
-  color: var(--dash-text);
-  border: var(--dash-border);
-  border-radius: var(--dash-radius);
-  box-shadow: var(--dash-shadow);
-}
-
-/* Chiffres cles : grande taille, graisse forte, interlettrage serre. */
-.dash-surface .dash-figure {
-  font-size: clamp(1.75rem, 1.2rem + 1.6vw, 2.5rem);
-  font-weight: 700;
-  line-height: 1.05;
-  letter-spacing: -0.03em;
-}
-
-.dash-surface .dash-label {
-  color: var(--dash-text-muted);
-  font-size: 0.75rem;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-}
-
-.dash-surface .dash-figure-inverse {
-  color: var(--dash-navy);
-}
-
-/* Anneau de jauge : trace progressif au montage. */
-.dash-ring-track,
-.dash-ring-value {
-  transition: stroke-dashoffset 1.1s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes dash-rise {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes dash-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-.dash-rise {
-  animation: dash-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.dash-fade {
-  animation: dash-fade 0.5s ease both;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .dash-rise,
-  .dash-fade {
-    animation: none !important;
-  }
-
-  .dash-surface .dash-card,
-  .dash-ring-track,
-  .dash-ring-value {
-    transition: none !important;
-  }
-}
-
-/* ------------------------------------------------------------------
    Chrome « soft UI » — sidebar et navbar partagent les mêmes variables.
    Le thème est piloté par l'attribut `data-theme` posé sur le conteneur,
    lui-même alimenté par le store global `themeStore` (donc identique à
    la classe `dark` de <html>).
    ------------------------------------------------------------------ */
 .soft-ui {
-  /* Bleu marine du tableau de bord : une seule teinte d'accent pour toute
-     l'application (sidebar, navbar, dashboard). */
-  --sb-accent: #03224c;
-  --sb-accent-soft: rgba(3, 34, 76, 0.1);
+  --sb-accent: #3d4ef5;
+  --sb-accent-soft: rgba(61, 78, 245, 0.1);
   --sb-text: #191a21;
   --sb-text-soft: #4c4f5e;
   --sb-muted: #8b8ea0;
@@ -357,21 +233,18 @@ h3 {
     inset 0 0 0 1px rgba(255, 255, 255, 0.75),
     0 0 0 1px rgba(23, 24, 35, 0.04),
     0 30px 70px -30px rgba(25, 26, 60, 0.35),
-    0 0 90px -34px rgba(3, 34, 76, 0.45);
+    0 0 90px -34px rgba(61, 78, 245, 0.45);
   --sb-shadow-collapsed:
     inset 0 0 0 1px rgba(255, 255, 255, 0.8),
     0 0 0 1px rgba(23, 24, 35, 0.05),
     0 24px 50px -24px rgba(25, 26, 60, 0.3),
-    0 0 70px -30px rgba(3, 34, 76, 0.5);
+    0 0 70px -30px rgba(61, 78, 245, 0.5);
   color: var(--sb-text);
 }
 
-/* En thème sombre, #03224c est trop proche du fond quasi noir de la colonne :
-   on utilise un éclaircit de la même teinte (teinte et saturation conservées)
-   pour rester lisible, avec un ratio de 4.9:1 pour le texte blanc. */
 .soft-ui[data-theme="dark"] {
-  --sb-accent: #4a6fa8;
-  --sb-accent-soft: rgba(74, 111, 168, 0.16);
+  --sb-accent: #4a5bff;
+  --sb-accent-soft: rgba(74, 91, 255, 0.16);
   --sb-text: #f4f4f6;
   --sb-text-soft: #c3c5d1;
   --sb-muted: #7c7f8f;
@@ -384,11 +257,11 @@ h3 {
   --sb-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.06),
     0 30px 70px -30px rgba(0, 0, 0, 0.9),
-    -26px 0 70px -40px rgba(74, 111, 168, 0.65);
+    -26px 0 70px -40px rgba(74, 91, 255, 0.65);
   --sb-shadow-collapsed:
     inset 0 0 0 1px rgba(255, 255, 255, 0.07),
     0 24px 50px -24px rgba(0, 0, 0, 0.9),
-    -18px 0 60px -36px rgba(74, 111, 168, 0.6);
+    -18px 0 60px -36px rgba(74, 91, 255, 0.6);
 }
 
 /* La colonne latérale repose sur la page quasi noire. */
@@ -405,14 +278,14 @@ h3 {
   pointer-events: none;
   background: radial-gradient(
     120% 60% at 100% 0%,
-    rgba(3, 34, 76, 0.16),
+    rgba(61, 78, 245, 0.16),
     transparent 62%
   );
   opacity: 0.9;
 }
 
 .sidebar[data-theme="dark"]::before {
-  background: radial-gradient(110% 55% at 100% 50%, rgba(74, 111, 168, 0.2), transparent 60%);
+  background: radial-gradient(110% 55% at 100% 50%, rgba(74, 91, 255, 0.2), transparent 60%);
 }
 
 /* Navbar : halo bleu plus discret que celui de la colonne, orienté à gauche
@@ -423,11 +296,11 @@ h3 {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: radial-gradient(70% 120% at 0% 0%, rgba(3, 34, 76, 0.1), transparent 60%);
+  background: radial-gradient(70% 120% at 0% 0%, rgba(61, 78, 245, 0.1), transparent 60%);
 }
 
 .navbar[data-theme="dark"]::before {
-  background: radial-gradient(70% 120% at 0% 0%, rgba(74, 111, 168, 0.16), transparent 60%);
+  background: radial-gradient(70% 120% at 0% 0%, rgba(74, 91, 255, 0.16), transparent 60%);
 }
 
 /* Menus déroulants (notifications, compte) : fondu + léger décalage. */
@@ -447,14 +320,107 @@ h3 {
   transform-origin: top right;
 }
 
+/* ------------------------------------------------------------------
+   Tableau de bord — palette claire et entrées en matière douces.
+   ------------------------------------------------------------------ */
+
+/* Le dashboard est un « surface » à part entière : on y force le fond
+   gris-bleu clair et des cartes blanches, y compris quand l'application
+   est en thème sombre, pour garder la lisibilité de la vue opérationnelle. */
+.dash-scope {
+  --color-surface: #ffffff;
+  --color-canvas: #f3f6fc;
+  --color-line: #e8edf7;
+  --color-ink: #0f172a;
+  --color-muted: #64748b;
+  color: var(--color-ink);
+  background-color: var(--color-canvas);
+}
+
+@keyframes dash-rise {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Le décalage d'animation suit l'ordre d apparition des cartes. */
+.dash-rise {
+  animation: dash-rise 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.dash-rise-1 { animation-delay: 0.04s; }
+.dash-rise-2 { animation-delay: 0.1s; }
+.dash-rise-3 { animation-delay: 0.16s; }
+.dash-rise-4 { animation-delay: 0.22s; }
+.dash-rise-5 { animation-delay: 0.28s; }
+.dash-rise-6 { animation-delay: 0.34s; }
+
+/* Carte blanche standard : rayon généreux, ombre très douce, élévation au survol. */
+.dash-card {
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 12px 32px -20px rgba(37, 71, 214, 0.28);
+  transition:
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 0.25s ease;
+}
+
+@media (hover: hover) {
+  .dash-card-hover:hover {
+    transform: translateY(-3px);
+    box-shadow:
+      0 2px 4px rgba(15, 23, 42, 0.05),
+      0 22px 44px -22px rgba(37, 71, 214, 0.4);
+  }
+}
+
+/* Panneau opérationnel gauche : dégradé bleu vif et halos clairs diagonaux. */
+.dash-panel-blue {
+  color: #ffffff;
+  background:
+    radial-gradient(ellipse 80% 50% at 88% 0%, rgba(255, 255, 255, 0.28), transparent 62%),
+    radial-gradient(ellipse 70% 55% at -10% 104%, rgba(20, 33, 110, 0.55), transparent 66%),
+    linear-gradient(158deg, #5b82f5 0%, #2f5bea 48%, #2140c4 100%);
+  box-shadow: 0 28px 60px -30px rgba(33, 64, 196, 0.7);
+}
+
+/* Barre de progression segmentée : remplissage animé au chargement. */
+@keyframes dash-fill-x {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+.dash-fill {
+  transform-origin: left center;
+  animation: dash-fill-x 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .login-rise,
   .login-fade,
   .login-sweep,
   .login-beacon,
   .madarisk-commune-pulse,
-  .navbar-menu {
+  .navbar-menu,
+  .dash-rise,
+  .dash-fill {
     animation: none !important;
+  }
+
+  .dash-card,
+  .dash-card-hover {
+    transition: none !important;
   }
 
   .soft-ui *,

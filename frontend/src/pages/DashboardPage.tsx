@@ -1,139 +1,66 @@
-import { useQuery } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
-import { RefreshCw } from 'lucide-react';
-import { dashboardApi, weatherApi } from '@/api';
-import { Spinner } from '@/components/ui/Spinner';
-import { DashCard, IconAction } from '@/components/dashboard/DashCard';
-import { DashNotice } from '@/components/dashboard/DashNotice';
-import { HeroPanel } from '@/components/dashboard/HeroPanel';
+import { Topbar } from '@/components/dashboard/Topbar';
+import { BluePanel } from '@/components/dashboard/BluePanel';
 import { KpiCard } from '@/components/dashboard/KpiCard';
+import { BarChartCard } from '@/components/dashboard/BarChartCard';
 import { StatGrid } from '@/components/dashboard/StatGrid';
-import { VolumeChart } from '@/components/dashboard/VolumeChart';
-import { WeatherCoverageCard } from '@/components/dashboard/WeatherCoverageCard';
-import { buildDashboardView } from '@/data/dashboardView';
-import { formatDate } from '@/lib/utils';
-import { useNow } from '@/hooks/useNow';
-import type { EventsTimelineEntry, RiskDistribution } from '@/types';
+import { PerformanceCard } from '@/components/dashboard/PerformanceCard';
+import { dashboardData } from '@/data/dashboardData';
 
 export function DashboardPage() {
-  const now = useNow();
-
-  const summaryQ = useQuery({
-    queryKey: ['dashboard', 'summary'],
-    queryFn: () => dashboardApi.summary(),
-  });
-  const timelineQ = useQuery({
-    queryKey: ['dashboard', 'timeline'],
-    queryFn: () => dashboardApi.eventsTimeline(),
-  });
-  const distQ = useQuery({
-    queryKey: ['dashboard', 'risk-distribution'],
-    queryFn: () => dashboardApi.riskDistribution(),
-  });
-  const monitoringQ = useQuery({
-    queryKey: ['weather', 'monitoring', 'dashboard'],
-    queryFn: () => weatherApi.monitoring(),
-    staleTime: 60_000,
-  });
-
-  const queries = [summaryQ, timelineQ, distQ, monitoringQ];
-  const failedCount = queries.filter((q) => q.isError).length;
-  const isRefreshing = queries.some((q) => q.isFetching);
-
-  const refreshAll = () => {
-    queries.forEach((q) => void q.refetch());
-  };
-
-  const view = buildDashboardView({
-    summary: summaryQ.data,
-    timeline: timelineQ.data as EventsTimelineEntry[] | undefined,
-    distribution: distQ.data as Partial<RiskDistribution> | undefined,
-    monitoring: monitoringQ.data,
-  });
-
-  if (summaryQ.isLoading) return <Spinner />;
-
-  const staleMinutes = view.lastUpdatedAt
-    ? Math.max(0, Math.round((now - new Date(view.lastUpdatedAt).getTime()) / 60_000))
-    : null;
-
-  const hasRiskData = view.risks.some((r) => r.count > 0);
+  const { brand, tabs, lastUpdateLabel, kpis, timeline, riskDistribution } = dashboardData;
 
   return (
-    <div className="dash-surface min-h-full rounded-[28px] p-4 sm:p-6">
-      {failedCount > 0 ? (
-        <DashNotice title="Chargement partiel" className="mb-5">
-          {failedCount} section(s) n&apos;ont pas pu être actualisées. Les valeurs affichées
-          peuvent être obsolètes.
-        </DashNotice>
-      ) : null}
+    // `.dash-scope` verrouille la palette claire du dashboard, y compris
+    // lorsque l'application est en thème sombre.
+    <div className="dash-scope -m-4 min-h-full px-4 py-6 sm:-m-6 sm:px-6 sm:py-8">
+      <div className="grid gap-5">
+        <Topbar brandName={brand.name} slogan={brand.slogan} tabs={tabs} />
 
-      {staleMinutes !== null && staleMinutes > 30 ? (
-        <DashNotice title="Données potentiellement périmées" severity="warning" className="mb-5">
-          Dernière actualisation il y a {staleMinutes} min — lancez un rafraîchissement si
-          nécessaire.
-        </DashNotice>
-      ) : null}
+        {/* Le panneau bleu passe au-dessus sur tablette et mobile : il est le
+            premier enfant de la grille, la colonne de droite suit. */}
+        <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <BluePanel />
 
-      <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <HeroPanel hero={view.hero} />
-
-        <div className="min-w-0 space-y-5">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div>
-              <h1 className="font-[Outfit] text-2xl font-bold tracking-tight text-(--dash-text) sm:text-3xl">
-                Vue d&apos;ensemble
-              </h1>
-              <p className="mt-1 text-sm text-(--dash-text-muted)">
-                Mise à jour {formatDate(view.lastUpdatedAt)}
-              </p>
+          <div className="grid gap-5">
+            <div className="dash-rise dash-rise-3 flex flex-wrap items-center justify-between gap-2 px-1">
+              <p className="text-sm text-dash-body">Synthèse opérationnelle en temps réel</p>
+              <p className="text-sm text-muted">{lastUpdateLabel}</p>
             </div>
-            <IconAction
-              label="Rafraîchir les données"
-              icon={<RefreshCw className={`size-4 ${isRefreshing ? 'animate-spin' : ''}`} />}
-              onClick={refreshAll}
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+              {kpis.map((kpi) => (
+                <KpiCard
+                  key={kpi.id}
+                  label={kpi.label}
+                  value={kpi.value}
+                  unit={kpi.unit}
+                  delta={kpi.delta}
+                  positiveIsGood={kpi.positiveIsGood}
+                  highlight={kpi.highlight}
+                  animationClassName="dash-rise-3"
+                />
+              ))}
+            </div>
+
+            <BarChartCard
+              title={timeline.title}
+              description={timeline.description}
+              data={timeline.items}
+              total={timeline.total}
+              totalUnit={timeline.totalUnit}
+              totalDelta={timeline.totalDelta}
+              positiveIsGood={timeline.positiveIsGood}
             />
-          </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 2xl:grid-cols-4">
-            {view.kpis.map((datum, index) => (
-              <KpiCard key={datum.id} datum={datum} index={index} />
-            ))}
-          </div>
-
-          <div className="grid gap-5 2xl:grid-cols-3">
-            <div className="2xl:col-span-2">
-              <VolumeChart
-                points={view.timeline}
-                total={view.timelineTotal}
-                title="Évolution des événements"
-                description="Volume quotidien sur les 30 derniers jours"
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.9fr)_minmax(0,1fr)]">
+              <StatGrid
+                title={riskDistribution.title}
+                description={riskDistribution.description}
+                items={riskDistribution.items}
               />
+              <PerformanceCard />
             </div>
-
-            <WeatherCoverageCard weather={view.weather} />
           </div>
-
-          <DashCard
-            title="Répartition des risques"
-            description="Nombre de communes par niveau de risque, sur le territoire national"
-            actions={
-              <Link
-                to="/risques"
-                className="text-sm font-semibold text-(--dash-navy) hover:underline"
-              >
-                Voir la carte →
-              </Link>
-            }
-          >
-            {hasRiskData ? (
-              <StatGrid items={view.risks} />
-            ) : (
-              <p className="py-6 text-center text-sm text-(--dash-text-muted)">
-                Aucune évaluation de risque disponible pour le moment.
-              </p>
-            )}
-          </DashCard>
         </div>
       </div>
     </div>

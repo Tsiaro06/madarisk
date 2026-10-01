@@ -105,6 +105,38 @@ export interface TargetCommune {
   latitude: number;
 }
 
+export interface WeatherHourlyInsertData {
+  communeId: string;
+  hourAt: string;
+  latitude: number;
+  longitude: number;
+  temperatureC: number | null;
+  humidityPercent: number | null;
+  precipitationMm: number | null;
+  rainMm: number | null;
+  windSpeedKmh: number | null;
+  windGustsKmh: number | null;
+  windDirectionDeg: number | null;
+  pressureHpa: number | null;
+  weatherCode: string | null;
+  /** `true` si l'heure est encore à venir (prévision et non analyse). */
+  isForecast: boolean;
+}
+
+export interface HourlyPointRow {
+  hourAt: string;
+  temperatureC: number | null;
+  humidityPercent: number | null;
+  precipitationMm: number | null;
+  rainMm: number | null;
+  windSpeedKmh: number | null;
+  windGustsKmh: number | null;
+  windDirectionDeg: number | null;
+  pressureHpa: number | null;
+  weatherCode: string | null;
+  isForecast: boolean;
+}
+
 export interface TargetCommunesQuery {
   communeIds?: string[];
   districtId?: string;
@@ -298,6 +330,88 @@ async function insertForecastBatch(
   return result.rowCount ?? 0;
 }
 
+/**
+ * Insertion de la série horaire d'un run (48 h par commune : hier, aujourd'hui,
+ * les jours à venir). Le DO UPDATE est volontaire — voir migration 019 : une
+ * heure de prévision doit être rafraîchie à chaque run, sinon la courbe
+ * resterait figée sur le premier modèle téléchargé.
+ */
+async function insertHourlyBatch(
+  rows: WeatherHourlyInsertData[],
+  sourceId: string,
+): Promise<number> {
+  const placeholders: string[] = [];
+  const values: unknown[] = [];
+  let idx = 1;
+
+  for (const r of rows) {
+    const n = idx;
+    placeholders.push(
+      `($${n}, $${n + 1}, $${n + 2}, $${n + 3}, $${n + 4}, $${n + 5}, $${n + 6}, $${n + 7}` +
+        `, $${n + 8}, $${n + 9}, $${n + 10}, $${n + 11}, $${n + 12}, $${n + 13}, $${n + 14}` +
+        `, ST_SetSRID(ST_MakePoint($${n + 4}::numeric, $${n + 3}::numeric), 4326))`,
+    );
+    values.push(
+      sourceId,
+      r.communeId,
+      r.hourAt,
+      r.latitude,
+      r.longitude,
+      r.temperatureC,
+      r.humidityPercent,
+      r.precipitationMm,
+      r.rainMm,
+      r.windSpeedKmh,
+      r.windGustsKmh,
+      r.windDirectionDeg,
+      r.pressureHpa,
+      r.weatherCode,
+      r.isForecast,
+    );
+    // 15 paramètres uniques par ligne ($n..$n+14) ; $n+3/$n+4 sont réutilisés
+    // dans ST_SetSRID et ne doivent PAS compter dans l'incrément (un saut dans
+    // la numérotation fait échouer la préparation de la requête multi-lignes).
+    idx += 15;
+  }
+
+  const result = await db.query(
+    `INSERT INTO weather_hourly
+       (weather_source_id, commune_id, hour_at, latitude, longitude,
+        temperature_c, humidity_percent, precipitation_mm, rain_mm,
+        wind_speed_kmh, wind_gusts_kmh, wind_direction_deg, pressure_hpa, weather_code,
+        is_forecast, geom)
+     VALUES ${placeholders.join(', ')}
+     ON CONFLICT (commune_id, weather_source_id, hour_at) DO UPDATE SET
+       latitude           = EXCLUDED.latitude,
+       longitude          = EXCLUDED.longitude,
+       temperature_c      = EXCLUDED.temperature_c,
+       humidity_percent   = EXCLUDED.humidity_percent,
+       precipitation_mm   = EXCLUDED.precipitation_mm,
+       rain_mm            = EXCLUDED.rain_mm,
+       wind_speed_kmh     = EXCLUDED.wind_speed_kmh,
+       wind_gusts_kmh     = EXCLUDED.wind_gusts_kmh,
+       wind_direction_deg = EXCLUDED.wind_direction_deg,
+       pressure_hpa       = EXCLUDED.pressure_hpa,
+       weather_code       = EXCLUDED.weather_code,
+       is_forecast        = EXCLUDED.is_forecast,
+       geom               = EXCLUDED.geom`,
+    values,
+  );
+  return result.rowCount ?? 0;
+}
+
+const HOURLY_COLUMNS = `hour_at AS "hourAt",
+  temperature_c::float8 AS "temperatureC",
+  humidity_percent::float8 AS "humidityPercent",
+  precipitation_mm::float8 AS "precipitationMm",
+  rain_mm::float8 AS "rainMm",
+  wind_speed_kmh::float8 AS "windSpeedKmh",
+  wind_gusts_kmh::float8 AS "windGustsKmh",
+  wind_direction_deg::float8 AS "windDirectionDeg",
+  pressure_hpa::float8 AS "pressureHpa",
+  weather_code AS "weatherCode",
+  is_forecast AS "isForecast"`;
+
 export const weatherRepository = {
   async verifyCommuneExists(communeId: string): Promise<boolean> {
     const result = await db.query<CountRow>(
@@ -309,6 +423,104 @@ export const weatherRepository = {
 
   async getSourceId(): Promise<string> {
     return getOrCreateSource('OPEN_METEO', 'Open-Meteo', 'https://api.open-meteo.com');
+  },
+
+  async insertHourly(rows: WeatherHourlyInsertData[], sourceId: string): Promise<number> {
+    if (rows.length === 0) return 0;
+
+    let inserted = 0;
+    for (const batch of chunk(rows, INSERT_CHUNK_ROWS)) {
+      inserted += await insertHourlyBatch(batch, sourceId);
+    }
+    return inserted;
+  },
+
+  /**
+   * Courbe horaire d'une commune. `hours` borne la fenêtre demandée ; sans
+   * borne, la requête resterait sur toute la table.
+   */
+  async hourlyForCommune(
+    communeId: string,
+    opts: { dateFrom?: string; dateTo?: string; sourceId: string },
+  ): Promise<HourlyPointRow[]> {
+    const result = await db.query<HourlyPointRow>(
+      `SELECT ${HOURLY_COLUMNS}
+         FROM weather_hourly h
+        WHERE h.commune_id = $1
+          AND h.weather_source_id = $2
+          AND ($3::timestamptz IS NULL OR h.hour_at >= $3::timestamptz)
+          AND ($4::timestamptz IS NULL OR h.hour_at <= $4::timestamptz)
+        ORDER BY h.hour_at ASC`,
+      [communeId, opts.sourceId, opts.dateFrom ?? null, opts.dateTo ?? null],
+    );
+    return result.rows;
+  },
+
+  /**
+   * Valeurs de toutes les communes pour une heure donnée : c'est ce qui colorie
+   * la carte quand l'utilisateur choisit 15h. Une LEFT JOIN sur communes pour
+   * garder les 1579 points même si une commune n'a rien pour cette heure, sinon
+   * la carte se viderait par类专业.
+   */
+  async hourlyMapLayer(
+    hourAt: string,
+    opts: { sourceId: string; districtId?: string; eventId?: string },
+  ): Promise<
+    (HourlyPointRow & {
+      communeId: string;
+      communeName: string;
+      districtId: string;
+      districtName: string;
+      longitude: number;
+      latitude: number;
+      observedAt: string | null;
+    })[]
+  > {
+    const result = await db.query<
+      HourlyPointRow & {
+        communeId: string;
+        communeName: string;
+        districtId: string;
+        districtName: string;
+        longitude: number;
+        latitude: number;
+        observedAt: string | null;
+      }
+    >(
+      `SELECT c.id AS "communeId",
+              c.name AS "communeName",
+              c.district_id AS "districtId",
+              d.name AS "districtName",
+              ST_X(c.centroid) AS "longitude",
+              ST_Y(c.centroid) AS "latitude",
+              ${HOURLY_COLUMNS}
+         FROM communes c
+         JOIN districts d ON d.id = c.district_id
+         LEFT JOIN weather_hourly h
+           ON h.commune_id = c.id
+          AND h.weather_source_id = $1
+          AND h.hour_at = $2::timestamptz
+        WHERE ($3::uuid IS NULL OR c.district_id = $3::uuid)
+        ORDER BY c.admin_code`,
+      [opts.sourceId, hourAt, opts.districtId ?? null],
+    );
+    return result.rows;
+  },
+
+  async hourlyCoverage(sourceId: string): Promise<{ communes: number; minHour: string | null; maxHour: string | null }> {
+    const result = await db.query<{ communes: string; minHour: string | null; maxHour: string | null }>(
+      `SELECT COUNT(DISTINCT commune_id)::text AS communes,
+              MIN(hour_at)::text AS "minHour",
+              MAX(hour_at)::text AS "maxHour"
+         FROM weather_hourly
+        WHERE weather_source_id = $1`,
+      [sourceId],
+    );
+    return {
+      communes: Number(result.rows[0]?.communes ?? '0'),
+      minHour: result.rows[0]?.minHour ?? null,
+      maxHour: result.rows[0]?.maxHour ?? null,
+    };
   },
 
   async getDgmSourceId(): Promise<string> {

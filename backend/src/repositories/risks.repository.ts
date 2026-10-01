@@ -336,13 +336,37 @@ export const risksRepository = {
          (SELECT a.radius_km::text FROM event_areas a WHERE a.event_id = $2 ORDER BY a.created_at DESC LIMIT 1) AS "areaRadiusKm"
        FROM communes c
        JOIN unnest($1::uuid[]) AS t(id) ON t.id = c.id
-       LEFT JOIN LATERAL (
-         SELECT rainfall_24h_mm, precipitation_mm, wind_speed_kmh
-         FROM weather_observations wo
-         WHERE wo.commune_id = c.id
-         ORDER BY wo.observed_at DESC
-         LIMIT 1
-       ) w ON true
+        LEFT JOIN LATERAL (
+          SELECT rainfall_24h_mm, precipitation_mm, wind_speed_kmh
+          FROM weather_observations wo
+          WHERE wo.commune_id = c.id
+          ORDER BY
+            -- Même garde-fou que weather.repository.ts (mapPoints) : sans tri
+            -- supplémentaire c'est la ligne la PLUS RÉCENTE qui gagne, or les
+            -- sources ne publient pas les mêmes indicateurs. La DGM ne diffuse
+            -- qu'un cumul décennal de pluie, horodaté à la FIN de la décade —
+            -- donc jusqu'à 9 jours dans le futur (lastCompletedDekadEnd rend le
+            -- 20 du mois dès le 11). Entre le 11 et le 20, elle écrasait
+            -- Open-Meteo pour les 1579 communes, et scoreRain lisait ce cumul
+            -- sur 10 jours (repli de scoreRain sur precipitationMm) comme s'il
+            -- s'agissait de pluie sur 24 h, pendant que scoreWind tombait sur
+            -- sa valeur neutre faute de vent. Les scores de risque du pays
+            -- entier étaient donc faux, et pouvaient déclencher de fausses
+            -- alertes EXTRÊME.
+            -- On retient donc, dans l'ordre :
+            --   1. les lignes « riches » (au moins un indicateur réel) ;
+            --   2. à égalité, la source d'observation horaire plutôt que la DGM ;
+            --   3. puis la plus récente.
+            (wo.temperature_c IS NOT NULL
+              OR wo.humidity_percent IS NOT NULL
+              OR wo.wind_speed_kmh IS NOT NULL
+              OR wo.pressure_hpa IS NOT NULL) DESC,
+            (wo.weather_source_id = (
+               SELECT id FROM weather_sources WHERE provider_type = 'DGM_MAPROOM' LIMIT 1
+             )) ASC,
+            wo.observed_at DESC
+          LIMIT 1
+        ) w ON true
        LEFT JOIN LATERAL (
          SELECT COALESCE(
            (SELECT ec.distance_to_track_km

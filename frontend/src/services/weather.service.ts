@@ -65,6 +65,16 @@ export function todayISO(): string {
   return toISODate(new Date());
 }
 
+/**
+ * Instant UTC correspondant à (date, heure) en heure de Madagascar (UTC+3).
+ * Le backend stocke `weather_hourly.hour_at` en UTC : une heure de prévision
+ * saisie dans le sélecteur doit être comparée à `hourAt`, pas à l'heure locale.
+ */
+export function toUtcHourAt(dateISO: string, hour: number): string {
+  const [y, m, d] = dateISO.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d, hour - 3)).toISOString();
+}
+
 export function addDaysToISO(dateISO: string, days: number): string {
   const [y, m, d] = dateISO.split("-").map(Number);
   const date = new Date(y, m - 1, d);

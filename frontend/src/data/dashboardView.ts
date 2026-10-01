@@ -146,7 +146,13 @@ export function buildDashboardView(input: {
 
   const obs = monitoring?.sync.observations;
   const fc = monitoring?.sync.forecasts;
+  // Même règle que sur la page météo : les observations de la carte viennent
+  // d'Open-Meteo. Prendre la première source active affichait le libellé DGM,
+  // simplement parce que « Météo Madagascar » trie avant « Open-Meteo ».
   const source =
+    monitoring?.sources.find(
+      (s: WeatherMonitoring['sources'][number]) => s.providerType === 'OPEN_METEO',
+    ) ??
     monitoring?.sources.find((s: WeatherMonitoring['sources'][number]) => s.isActive) ??
     monitoring?.sources[0];
 

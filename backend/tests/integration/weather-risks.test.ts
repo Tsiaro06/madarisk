@@ -3,6 +3,7 @@ import request from 'supertest';
 import app from '../../src/app';
 import { db } from '../../src/config/database';
 import { usersRepository } from '../../src/repositories/users.repository';
+import { risksRepository } from '../../src/repositories/risks.repository';
 import { password } from '../../src/utils/password';
 import { weatherService } from '../../src/services/weather.service';
 import { WeatherProvider } from '../../src/types/weather.types';
@@ -623,5 +624,93 @@ describe('Risques - recalcul sans événement et configurations', () => {
       .send({ name: `wx-config-renamed-${Date.now()}`, isActive: false });
     expect(updated.status).toBe(200);
     expect(updated.body.data.isActive).toBe(false);
+  });
+
+  /**
+   * Non-régression : la requête de contexte de risque ne doit jamais retenir une
+   * ligne DGM, même datée dans le futur.
+   *
+   * La DGM publie un cumul de pluie DÉCENAL horodaté à la fin de la décade, donc
+   * jusqu'à 9 jours dans le futur (du 11 au 20, `lastCompletedDekadEnd` renvoie
+   * le 20 du mois). Sans tri de source, cette ligne plus récente écrasait
+   * Open-Meteo pour les 1579 communes, et `scoreRain` lisait le cumul sur 10 jours
+   * via `rainfall24hMm ?? precipitationMm` comme une pluie sur 24 h.
+   *
+   * On reproduit exactement cette situation : une ligne Open-Meteo « riche » et
+   * ancienne, et une ligne DGM sans indicateur réel mais datée dans le futur.
+   */
+  it("getRiskContexts n'attribue jamais à precipitation_mm un cumul décennal", async () => {
+    const sourceId = await db.query<{ open_meteo: string; dgm: string }>(
+      `SELECT
+         (SELECT id FROM weather_sources WHERE provider_type = 'OPEN_METEO' LIMIT 1) AS open_meteo,
+         (SELECT id FROM weather_sources WHERE provider_type = 'DGM_MAPROOM' LIMIT 1) AS dgm`,
+    );
+    const sources = sourceId.rows[0];
+    expect(sources?.dgm, 'la source DGM doit exister pour ce test').toBeTruthy();
+    if (!sources?.dgm) return;
+
+    // Commune dédiée : toutes les communes ont déjà au moins une observation
+    // dans ce jeu de données. On crée donc une observation DGM temporairement
+    // « la plus récente » sur une commune existante, et on s'assure qu'elle est
+    // écartée par le tri (lignes riches > DGM > récence).
+    const target = await db.query<{ id: string; longitude: string; latitude: string }>(
+      `SELECT id,
+              ST_X(centroid)::text AS longitude,
+              ST_Y(centroid)::text AS latitude
+       FROM communes
+       ORDER BY admin_code
+       LIMIT 1`,
+    );
+    const commune = target.rows[0];
+    expect(commune).toBeTruthy();
+    if (!commune) return;
+    const isolatedId = commune.id;
+    const isoLat = Number(commune.latitude);
+    const isoLon = Number(commune.longitude);
+
+    // Une ligne DGM datée dans le futur, sans aucun indicateur réel : c'est
+    // exactement ce qu'écrit le job DGM entre le 11 et le 20 du mois.
+    const futureDekad = new Date(Date.now() + 9 * 24 * 3_600_000).toISOString();
+    await db.query(
+      `INSERT INTO weather_observations
+         (commune_id, weather_source_id, data_kind, observed_at,
+          latitude, longitude, geom, precipitation_mm, raw_data)
+       VALUES ($1, $2, 'OBSERVE', $3, $4::numeric, $5::numeric,
+               ST_SetSRID(ST_MakePoint($5::float8, $4::float8), 4326), 104.9, $6)`,
+      [
+        isolatedId,
+        sources.dgm,
+        futureDekad,
+        isoLat,
+        isoLon,
+        JSON.stringify({ provider: 'dgm-maproom' }),
+      ],
+    );
+
+    // Une ligne Open-Meteo « riche », datée de maintenant pour être plus récente
+    // que l'ingestion réelle du jour, mais de 9 jours avant la ligne DGM.
+    const openMeteoAt = new Date().toISOString();
+    await db.query(
+      `INSERT INTO weather_observations
+         (commune_id, weather_source_id, data_kind, observed_at,
+          latitude, longitude, geom,
+          temperature_c, humidity_percent, wind_speed_kmh, precipitation_mm, rainfall_24h_mm)
+       VALUES ($1, $2, 'OBSERVE', $3, $4::numeric, $5::numeric,
+               ST_SetSRID(ST_MakePoint($5::float8, $4::float8), 4326),
+               27.5, 80, 45, 2, 2)`,
+      [isolatedId, sources.open_meteo, openMeteoAt, isoLat, isoLon],
+    );
+
+    const contexts = await risksRepository.getRiskContexts({ communeIds: [isolatedId] });
+    const context = contexts.find((c) => c.communeId === isolatedId);
+
+    expect(context).toBeDefined();
+    // La ligne DGM est plus récente ET sans indicateur : elle doit être écartée.
+    expect(context?.precipitationMm).toBe(2);
+    expect(context?.rainfall24hMm).toBe(2);
+    expect(context?.windSpeedKmh).toBe(45);
+
+    // Nettoyage : cette commune n'appartient à aucun événement de la suite.
+    await db.query(`DELETE FROM weather_observations WHERE commune_id = $1`, [isolatedId]);
   });
 });

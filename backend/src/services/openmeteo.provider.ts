@@ -9,6 +9,7 @@ import {
   BatchCommuneInput,
   WeatherCurrentBatchItem,
   WeatherForecastDailyItem,
+  WeatherHourPoint,
 } from '../types/weather.types';
 import { AppError } from '../utils/app-error';
 
@@ -292,6 +293,103 @@ export class OpenMeteoProvider implements WeatherProvider {
     };
   }
 
+  /**
+   * Valeur de `daily` pour la date du jour, cherchee par date et non par
+   * index. L'appel observations demande `past_days`, donc `daily.time[0]`
+   * correspond a hier : lire le premier index donnerait le cumul d'hier au
+   * lieu du cumul du jour (et afficherait de la pluie dans le passe).
+   */
+  private dailyValueForToday(
+    resp: OpenMeteoResponse,
+    key: 'precipitation_sum',
+  ): number | null {
+    const daily = resp.daily;
+    if (!daily?.time) return null;
+    const idx = daily.time.indexOf(this.localDateIn(resp.timezone));
+    if (idx >= 0) return daily[key]?.[idx] ?? null;
+    return daily[key]?.[0] ?? null;
+  }
+
+  /** Date du jour (YYYY-MM-DD) dans le fuseau renvoye par le fournisseur. */
+  private localDateIn(timezone: string | undefined): string {
+    try {
+      return new Intl.DateTimeFormat('en-CA', {
+        timeZone: timezone || 'UTC',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).format(new Date());
+    } catch {
+      return new Date().toISOString().slice(0, 10);
+    }
+  }
+
+  /**
+   * Serie horaire (passe + prevision) au format du fournisseur, dont les
+   * horodatages sont en heure LOCALE de la commune et sans suffixe de fuseau
+   * (`2026-10-01T15:00`). Sans conversion, `new Date('2026-10-01T15:00')`
+   * serait lu comme UTC : Madagascar (+03) decalerait toute la courbe de trois
+   * heures, et l'heure affichee ne serait plus celle demandee.
+   */
+  private mapHourlySeries(resp: OpenMeteoResponse): WeatherHourPoint[] {
+    const hourly = resp.hourly;
+    if (!hourly?.time?.length) return [];
+
+    const offsetMinutes = this.timezoneOffsetMinutes(resp.timezone);
+    const hours: WeatherHourPoint[] = [];
+
+    hourly.time.forEach((local, i) => {
+      const hourMs = Date.parse(`${local}Z`) - offsetMinutes * 60_000;
+      if (!Number.isFinite(hourMs)) return;
+      hours.push({
+        hourAt: new Date(hourMs).toISOString(),
+        temperatureC: hourly.temperature_2m?.[i] ?? null,
+        humidityPercent: hourly.relative_humidity_2m?.[i] ?? null,
+        precipitationMm: hourly.precipitation?.[i] ?? null,
+        rainMm: hourly.rain?.[i] ?? null,
+        windSpeedKmh: hourly.wind_speed_10m?.[i] ?? null,
+        windGustsKmh: hourly.wind_gusts_10m?.[i] ?? null,
+        windDirectionDeg: hourly.wind_direction_10m?.[i] ?? null,
+        pressureHpa: hourly.surface_pressure?.[i] ?? null,
+        weatherCode:
+          hourly.weather_code?.[i] !== null && hourly.weather_code?.[i] !== undefined
+            ? String(hourly.weather_code[i])
+            : null,
+      });
+    });
+
+    return hours;
+  }
+
+  /** Decalage du fuseau en minutes (ex. 180 pour Africa/Nairobi, +03). */
+  private timezoneOffsetMinutes(timezone: string | undefined): number {
+    if (!timezone) return 0;
+    try {
+      const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: timezone,
+        hour12: false,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }).formatToParts(new Date());
+      const get = (t: string): number => Number(parts.find((p) => p.type === t)?.value ?? '0');
+      const asUtc = Date.UTC(
+        get('year'),
+        get('month') - 1,
+        get('day'),
+        get('hour') % 24,
+        get('minute'),
+        get('second'),
+      );
+      return Math.round((asUtc - Date.now()) / 60_000);
+    } catch {
+      return 0;
+    }
+  }
+
   async getCurrent(latitude: number, longitude: number): Promise<WeatherCurrent> {
     const data = await this.request<OpenMeteoResponse>({
       latitude,
@@ -329,9 +427,15 @@ export class OpenMeteoProvider implements WeatherProvider {
             latitude: lats.join(','),
             longitude: lons.join(','),
             current: CURRENT_VARIABLES,
+            hourly: HOURLY_VARIABLES,
             daily: 'precipitation_sum',
             timezone: 'auto',
             forecast_days: 2,
+            // 1 jour de reanalysis : c'est ce qui permet d'afficher une heure
+            // PASSEE (ex. la temp de 15h) et pas seulement l'heure courante et
+            // la prevision. `past_days` decale aussi `daily`, donc le cumul de
+            // pluie n'est plus en index 0 : il est lu par date plus bas.
+            past_days: env.OPEN_METEO_PAST_DAYS,
           },
           this.batchMaxRetries,
         );
@@ -341,12 +445,13 @@ export class OpenMeteoProvider implements WeatherProvider {
         responses.forEach((resp, idx) => {
           const commune = chunk[idx];
           if (!commune || !resp.current) return;
-          const rainfall24hMm = resp.daily?.precipitation_sum?.[0] ?? null;
+          const rainfall24hMm = this.dailyValueForToday(resp, 'precipitation_sum');
           results.push({
             communeId: commune.id,
             latitude: commune.latitude,
             longitude: commune.longitude,
             current: { ...this.mapCurrent(resp.current), rainfall24hMm },
+            hours: this.mapHourlySeries(resp),
           });
         });
         logger.debug(

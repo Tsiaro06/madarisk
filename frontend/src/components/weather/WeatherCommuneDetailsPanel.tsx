@@ -23,6 +23,7 @@ import {
   formatForecastTick,
   formatShortDate,
   getWeatherValue,
+  toUtcHourAt,
 } from "@/services/weather.service";
 import { formatDate } from "@/lib/utils";
 import {
@@ -81,6 +82,21 @@ export function WeatherCommuneDetailsPanel({
 }: WeatherCommuneDetailsPanelProps) {
   const isHistory = mode === "HISTORIQUE";
 
+  // Série horaire stockée (weather_hourly) : la seule source qui couvre à la
+  // fois les heures PASSÉES (réanalyse) et les prochaines (prévision). Elle
+  // remplace la courbe de prévisions live, qui ne commence qu'à « maintenant ».
+  const hourlyQ = useQuery({
+    queryKey: ["weather", "hourly", commune?.id],
+    queryFn: () => (commune ? weatherApi.hourly(commune.id) : null),
+    enabled: Boolean(commune),
+    staleTime: 60_000,
+  });
+
+  // Mémoïsé : les deux useMemo ci-dessous l'utilisent comme dépendance, sinon
+  // `hourlyQ.data ?? []` produirait un nouveau tableau à chaque rendu et
+  // invaliderait la courbe en boucle.
+  const hourlySeries = useMemo(() => hourlyQ.data ?? [], [hourlyQ.data]);
+
   const forecastQ = useQuery({
     queryKey: ["weather", "forecast", commune?.id],
     queryFn: () => (commune ? weatherApi.forecast(commune.id) : null),
@@ -113,26 +129,56 @@ export function WeatherCommuneDetailsPanel({
 
   const config = WEATHER_METRIC_CONFIGS[metric];
 
-  const chartData = isHistory
-    ? buildHistorySeries(historyQ.data?.data ?? [], metric)
-    : forecastQ.data
-      ? buildForecastSeries(forecastQ.data, metric)
-      : [];
+  // Un seul tracé mélange le passé et le futur : `observed` ne porte que les
+  // heures déjà écoulées (trait plein) et `forecast` que les heures à venir
+  // (pointillé). Recharts ne colorant pas chaque point d'une ligne unique,
+  // on projette les deux séries sur la même chronologie.
+  const hourlyChart = useMemo(() => {
+    const key = config.property;
+    return hourlySeries
+      .filter((p) => typeof p[key] === "number" && Number.isFinite(p[key]))
+      .map((p) => ({
+        time: p.hourAt,
+        observed: p.isForecast ? null : (p[key] as number),
+        forecast: p.isForecast ? (p[key] as number) : null,
+        value: p[key] as number,
+      }));
+  }, [hourlySeries, config.property]);
 
-  const selectedHourValue = useMemo(() => {
-    if (isHistory || hour == null || !forecastQ.data) return null;
-    const cfg = WEATHER_METRIC_CONFIGS[metric];
-    const values = forecastQ.data.hourly[cfg.forecastProperty] ?? [];
-    const targetPrefix = `${date}T${String(hour).padStart(2, "0")}:`;
-    const idx = forecastQ.data.hourly.time.findIndex((t) =>
-      t.startsWith(targetPrefix),
-    );
-    const value = idx >= 0 ? values[idx] : null;
-    return typeof value === "number" && Number.isFinite(value) ? value : null;
-  }, [date, forecastQ.data, hour, isHistory, metric]);
+  const chartData = hourlyChart.length > 0
+    ? hourlyChart
+    : isHistory
+      ? buildHistorySeries(historyQ.data?.data ?? [], metric)
+      : forecastQ.data
+        ? buildForecastSeries(forecastQ.data, metric)
+        : [];
+
+  // Valeur à l'heure sélectionnée, lue dans la série horaire : c'est elle qui
+  // rend les heures passées consultables (l'API de prévisions ne les contient
+  // pas). `hourAt` est en UTC, la saisie est en heure Madagascar.
+  const selectedHourPoint = useMemo(() => {
+    if (hour == null) return null;
+    const target = toUtcHourAt(date, hour);
+    return hourlySeries.find((p) => p.hourAt === target) ?? null;
+  }, [date, hour, hourlySeries]);
+
+  const selectedHourValue = selectedHourPoint
+    ? (selectedHourPoint[config.property] as number | null)
+    : isHistory || hour == null || !forecastQ.data
+      ? null
+      : (() => {
+          const cfg = WEATHER_METRIC_CONFIGS[metric];
+          const values = forecastQ.data.hourly[cfg.forecastProperty] ?? [];
+          const targetPrefix = `${date}T${String(hour).padStart(2, "0")}:`;
+          const idx = forecastQ.data.hourly.time.findIndex((t) =>
+            t.startsWith(targetPrefix),
+          );
+          const value = idx >= 0 ? values[idx] : null;
+          return typeof value === "number" && Number.isFinite(value) ? value : null;
+        })();
 
   const mainValue =
-    hour != null && !isHistory
+    hour != null
       ? (selectedHourValue ?? getWeatherValue(point, metric))
       : getWeatherValue(point, metric);
 
@@ -186,21 +232,27 @@ export function WeatherCommuneDetailsPanel({
         <>
           <Card className="!p-4">
             <p className="text-xs text-muted">
-              {isHistory
-                ? `${config.label} observé autour de cette date`
-                : hour != null
+              {selectedHourPoint
+                ? selectedHourPoint.isForecast
                   ? `${config.label} prévu à ${displayHour}`
-                  : `${config.label} sélectionné`}
+                  : `${config.label} observé à ${displayHour}`
+                : isHistory
+                  ? `${config.label} observé autour de cette date`
+                  : hour != null
+                    ? `${config.label} prévu à ${displayHour}`
+                    : `${config.label} sélectionné`}
             </p>
             <p className="font-display text-3xl text-ink">
               {formatWeatherValue(metric, mainValue)}
             </p>
             <p className="mt-1 text-xs text-muted">
-              {!isHistory && hour != null && selectedHourValue != null
-                ? `Prévision du ${displayDate} · ${displayHour}`
-                : point?.observedAt
-                  ? `Actualisé le ${formatDate(point.observedAt)}`
-                  : "Aucune donnée pour cette commune"}
+              {selectedHourPoint
+                ? `${selectedHourPoint.isForecast ? "Prévision" : "Analyse"} du ${displayDate} · ${displayHour}`
+                : !isHistory && hour != null && selectedHourValue != null
+                  ? `Prévision du ${displayDate} · ${displayHour}`
+                  : point?.observedAt
+                    ? `Actualisé le ${formatDate(point.observedAt)}`
+                    : "Aucune donnée pour cette commune"}
             </p>
             <div className="mt-2 space-y-1 border-t border-line pt-2 text-xs text-muted">
               <p>
@@ -241,18 +293,72 @@ export function WeatherCommuneDetailsPanel({
 
           <Card
             title={
-              isHistory
-                ? `Historique — ${config.label}`
-                : `Prévisions — ${config.label}`
+              hourlyChart.length > 0
+                ? `Météo par heure — ${config.label}`
+                : isHistory
+                  ? `Historique — ${config.label}`
+                  : `Prévisions — ${config.label}`
             }
             description={
-              isHistory
-                ? `Observations enregistrées autour du ${displayDate}, en ${config.unit}`
-                : `Horaires Open-Meteo, en ${config.unit}`
+              hourlyChart.length > 0
+                ? `Relevés horaires Open-Meteo, en ${config.unit}`
+                : isHistory
+                  ? `Observations enregistrées autour du ${displayDate}, en ${config.unit}`
+                  : `Horaires Open-Meteo, en ${config.unit}`
             }
             className="!p-4"
           >
-            {isHistory ? (
+            {hourlyChart.length > 0 ? (
+              <div className="h-40">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart
+                    data={hourlyChart}
+                    margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
+                    <XAxis
+                      dataKey="time"
+                      tickFormatter={formatForecastTick}
+                      tick={{ fontSize: 10 }}
+                      minTickGap={32}
+                    />
+                    <YAxis tick={{ fontSize: 10 }} width={52} />
+                    <Tooltip
+                      formatter={(value) => [
+                        `${String(value)} ${config.unit}`,
+                        config.label,
+                      ]}
+                      labelFormatter={formatForecastTick}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="observed"
+                      name={`${config.label} observé`}
+                      stroke="#03224c"
+                      strokeWidth={2}
+                      dot={false}
+                      connectNulls
+                      isAnimationActive={false}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="forecast"
+                      name={`${config.label} prévu`}
+                      stroke="#0d9488"
+                      strokeWidth={2}
+                      strokeDasharray="5 4"
+                      dot={false}
+                      connectNulls
+                      isAnimationActive={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+                <p className="mt-1 text-[11px] text-muted">
+                  Trait plein : heures écoulées (analyse du modèle). Pointillé
+                  vert : prévision.
+                </p>
+              </div>
+            ) : isHistory ? (
               historyQ.isLoading ? (
                 <Spinner label="Chargement de l'historique…" />
               ) : historyQ.isError ? (

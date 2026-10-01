@@ -53,6 +53,11 @@ const envSchema = z.object({
 
   OPEN_METEO_BASE_URL: z.string().default('https://api.open-meteo.com'),
   OPEN_METEO_TIMEOUT_MS: z.coerce.number().default(10000),
+  // Jours de reanalyse demandes dans le meme appel que les observations, pour
+  // alimenter la courbe horaire passee. 0 = uniquement l'heure courante et la
+  // prevision. Ne pas augmenter sans verifier le quota : Open-Meteo pondere le
+  // cout d'un appel par le nombre de jours x variables.
+  OPEN_METEO_PAST_DAYS: z.coerce.number().int().min(0).max(7).default(1),
 
   DGM_MAPROOM_BASE_URL: z.string().default('https://map.meteomadagascar.mg'),
   DGM_MAPROOM_TIMEOUT_MS: z.coerce.number().default(20000),

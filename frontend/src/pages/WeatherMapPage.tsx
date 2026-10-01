@@ -98,9 +98,15 @@ export function WeatherMapPage() {
 
   const mode = getWeatherViewMode(date, hour);
 
+  // La couche carte sert les observations `current` d'Open-Meteo (voir
+  // OpenMeteoProvider.getCurrentBatch), jamais le produit décennal DGM. Les
+  // deux sources sont actives en base et `weather_sources` est trié par nom :
+  // prendre la première source active revenait donc à afficher « Météo
+  // Madagascar — Maproom DGM » au-dessus de données Open-Meteo. On sélectionne
+  // donc explicitement par `providerType`.
   const sourceName =
+    monitoringQ.data?.sources.find((s) => s.providerType === "OPEN_METEO")?.name ??
     monitoringQ.data?.sources.find((s) => s.isActive)?.name ??
-    monitoringQ.data?.sources[0]?.name ??
     "Open-Meteo";
   const lastSyncAt = monitoringQ.data?.sync.observations.lastSuccessAt ?? null;
   const lastDataAt = weather.latestObservationAt ?? lastSyncAt;

@@ -2,3 +2,6 @@ database/backups/
 
 # Journal du service Windows (scripts/run-production.cmd)
 backend/logs/
+
+# Cache Vite cree a la racine (quand le build est lance depuis D:\MadaRisk)
+node_modules/
