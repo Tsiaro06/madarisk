@@ -75,6 +75,21 @@ export function toUtcHourAt(dateISO: string, hour: number): string {
   return new Date(Date.UTC(y, m - 1, d, hour - 3)).toISOString();
 }
 
+/**
+ * Vrai si l'heure de la série est encore à venir.
+ *
+ * `isForecast` est figé au moment de l'écriture de la série : un run de 6 h y
+ * classe en « prévision » toutes les heures de 6 h à 12 h, et rien ne les
+ * réécrit avant le run suivant (toutes les 6 h). Lu tel quel à 8 h, le drapeau
+ * dirait encore « prévision » pour des heures écoulées — le pointillé et le
+ * libellé « Prévision » seraient alors faux. On le confronte donc à
+ * l'horloge du navigateur, qui est la seule source à jour entre deux runs.
+ */
+export function isFutureHour(hourAt: string, nowMs: number = Date.now()): boolean {
+  const t = Date.parse(hourAt);
+  return Number.isFinite(t) ? t > nowMs : false;
+}
+
 export function addDaysToISO(dateISO: string, days: number): string {
   const [y, m, d] = dateISO.split("-").map(Number);
   const date = new Date(y, m - 1, d);

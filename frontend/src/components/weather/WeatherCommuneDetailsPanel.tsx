@@ -24,6 +24,7 @@ import {
   formatShortDate,
   getWeatherValue,
   toUtcHourAt,
+  isFutureHour,
 } from "@/services/weather.service";
 import { formatDate } from "@/lib/utils";
 import {
@@ -133,16 +134,24 @@ export function WeatherCommuneDetailsPanel({
   // heures déjà écoulées (trait plein) et `forecast` que les heures à venir
   // (pointillé). Recharts ne colorant pas chaque point d'une ligne unique,
   // on projette les deux séries sur la même chronologie.
+  //
+  // Le découpage passé/futur vient de `isFutureHour` (comparaison à
+  // l'horloge), pas de `isForecast` : ce drapeau est figé à l'écriture de la
+  // série, donc entre deux runs de 6 h il classe en « prévision » des heures
+  // qui sont déjà écoulées.
   const hourlyChart = useMemo(() => {
     const key = config.property;
     return hourlySeries
       .filter((p) => typeof p[key] === "number" && Number.isFinite(p[key]))
-      .map((p) => ({
-        time: p.hourAt,
-        observed: p.isForecast ? null : (p[key] as number),
-        forecast: p.isForecast ? (p[key] as number) : null,
-        value: p[key] as number,
-      }));
+      .map((p) => {
+        const future = isFutureHour(p.hourAt);
+        return {
+          time: p.hourAt,
+          observed: future ? null : (p[key] as number),
+          forecast: future ? (p[key] as number) : null,
+          value: p[key] as number,
+        };
+      });
   }, [hourlySeries, config.property]);
 
   const chartData = hourlyChart.length > 0
@@ -233,7 +242,7 @@ export function WeatherCommuneDetailsPanel({
           <Card className="!p-4">
             <p className="text-xs text-muted">
               {selectedHourPoint
-                ? selectedHourPoint.isForecast
+                ? isFutureHour(selectedHourPoint.hourAt)
                   ? `${config.label} prévu à ${displayHour}`
                   : `${config.label} observé à ${displayHour}`
                 : isHistory
@@ -247,7 +256,7 @@ export function WeatherCommuneDetailsPanel({
             </p>
             <p className="mt-1 text-xs text-muted">
               {selectedHourPoint
-                ? `${selectedHourPoint.isForecast ? "Prévision" : "Analyse"} du ${displayDate} · ${displayHour}`
+                ? `${isFutureHour(selectedHourPoint.hourAt) ? "Prévision" : "Analyse"} du ${displayDate} · ${displayHour}`
                 : !isHistory && hour != null && selectedHourValue != null
                   ? `Prévision du ${displayDate} · ${displayHour}`
                   : point?.observedAt
