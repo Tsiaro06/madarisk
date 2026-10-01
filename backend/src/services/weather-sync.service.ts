@@ -64,8 +64,9 @@ async function runPool<T>(
  * Fenêtre avant laquelle une observation est considérée encore à jour, et
  * donc inutile à retélécharger. Volontairement plus courte que le seuil de
  * péremption affiché par le monitoring (`WEATHER_OBSERVATION_STALE_MINUTES`)
- * pour conserver un rythme horaire, tout en rendant gratuit le cas courant
- * d'un run relancé alors que le précédent a déjà tout couvert.
+ * pour qu'un cycle de 6 h retélécharge bien toute la carte à chaque passage,
+ * tout en rendant gratuit le cas courant d'un run relancé alors que le précédent
+ * a déjà tout couvert.
  * `Math.min` garantit qu'un déploiement ayant durci son seuil de
  * péremption rafraîchit plus souvent, jamais moins.
  */

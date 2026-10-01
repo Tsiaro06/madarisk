@@ -398,7 +398,11 @@ export class OpenMeteoProvider implements WeatherProvider {
 
   async getForecastDailyBatch(communes: BatchCommuneInput[]): Promise<WeatherForecastDailyItem[]> {
     const BATCH_SIZE = 400;
-    const FORECAST_DAYS = 4;
+    // 3 jours et non 4 : Open-Meteo pondère le coût d'un appel au nombre de
+    // couples (jours x variables), donc chaque jour en plus renchérit le run
+    // national de ~25 %. À 1579 communes, c'est la différence entre rester sous
+    // le plafond quotidien de 10 000 appels et le dépasser.
+    const FORECAST_DAYS = 3;
 
     const chunks: BatchCommuneInput[][] = [];
     for (let i = 0; i < communes.length; i += BATCH_SIZE) {

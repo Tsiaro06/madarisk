@@ -78,21 +78,41 @@ const envSchema = z.object({
     .string()
     .transform((v) => v === 'true')
     .default('false'),
-  // Open-Meteo ne publie de nouvelles observations que toutes les heures : viser
-  // plus fin n'aurait aucun sens et alourdirait inutilement le fournisseur.
-  WEATHER_REFRESH_CRON: z.string().default('0 * * * *'),
-  WEATHER_OBSERVATION_CRON: z.string().default(process.env.WEATHER_REFRESH_CRON ?? '0 * * * *'),
-  // Volontairement décalé de 20 min après le cron d'observations. Les deux à la
-  // même minute, les lots partaient en parallèle et Open-Meteo — qui rationne
-  // par IP — refusait la requête (`too many concurrent requests`) : la moitié
-  // des communes finissait en 429 sur les deux runs. Le run d'observations
-  // pouvant durer 15 min quand il converge, l'écart doit dépasser cette durée.
-  WEATHER_FORECAST_CRON: z.string().default('20 */3 * * *'),
-  // Doit dépasser la période du cron d'observations (1 h) sans le trop, sinon le
-  // bandeau vire au rouge pendant le cycle normal. 150 min = deux runs
-  // consécutifs manqués avant de signaler la péremption.
-  WEATHER_OBSERVATION_STALE_MINUTES: z.coerce.number().default(150),
-  WEATHER_FORECAST_STALE_HOURS: z.coerce.number().default(6),
+  // Cadence dictée par le quota, pas par la météo.
+  //
+  // Open-Meteo ne compte pas les requêtes mais les COORDONNÉES : un run
+  // national sur 1579 communes coûte ~1580 appels. Le budget ci-dessous
+  // (4 runs d'observations + 1 run de prévisions, soit ~7900 appels/jour) laisse
+  // ~2100 appels de marge, juste ce qu'il faut pour une relance manuelle
+  // complète en cas de panne. À cadence horaire on consommait 57 000 appels,
+  // soit 5,7x le plafond gratuit de 10 000, et l'offre anonyme renvoyait
+  // 429 « hourly limit » dès le premier lot (constaté le 01/10 : run de 10h00,
+  // 0/1579).
+  //
+  // 6 h est un compromis assumé : Open-Meteo ne publie que des observations
+  // horaires, viser plus fin serait purement décoratif et alourdirait le
+  // fournisseur. En revanche la carte peut afficher jusqu'à 6 h d'ancienneté,
+  // et le bandeau de fraîcheur le dit explicitement.
+  WEATHER_REFRESH_CRON: z.string().default('0 */6 * * *'),
+  WEATHER_OBSERVATION_CRON: z.string().default(process.env.WEATHER_REFRESH_CRON ?? '0 */6 * * *'),
+  // Volontairement décalé de 20 min après le cron d'observations (12h00). Les
+  // deux à la même minute, les lots partaient en parallèle et Open-Meteo — qui
+  // rationne par IP — refusait la requête (`too many concurrent requests`). Le
+  // run d'observations pouvant durer 15 min quand il converge, l'écart doit
+  // dépasser cette durée.
+  //
+  // Un seul run quotidien : les prévisions ne changent pas d'une demi-heure à
+  // l'autre et un point de situation quotidien suffit pour la veille cyclone.
+  // C'est ce qui finance la marge nécessaire aux relances manuelles.
+  WEATHER_FORECAST_CRON: z.string().default('20 12 * * *'),
+  // Doit dépasser la période du cron d'observations (6 h) sans la trop, sinon le
+  // bandeau vire au rouge pendant le cycle normal. 480 min = 6 h de cycle plus
+  // 2 h de marge, donc un run complet peut être manqué avant que le bandeau ne
+  // signale la péremption. Retenir deux cycles entiers (720 min) le laisserait
+  // vert pendant 12 h sur une panne.
+  WEATHER_OBSERVATION_STALE_MINUTES: z.coerce.number().default(480),
+  // Idem côté prévisions : cycle de 24 h, seuil à 26 h.
+  WEATHER_FORECAST_STALE_HOURS: z.coerce.number().default(26),
   RISK_RECALCULATION_CRON: z.string().default('10 * * * *'),
 
   DETECTION_NORMAL_CYCLES_BEFORE_MONITORING: z.coerce.number().int().min(1).default(3),

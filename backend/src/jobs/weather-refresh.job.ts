@@ -54,12 +54,13 @@ export function staleWeatherScopes(input: {
  *
  * Le backend s'arrête facilement (veille machine, `tsx watch`, coupure) : les
  * observations restaient alors figées à la dernière exécution réussie et le
- * bandeau annonçait cette ancienneté — « 31 h » — pendant tout le cycle de 4 h
+ * bandeau annonçait cette ancienneté — « 31 h » — pendant tout le cycle de 6 h
  * qui suivait, alors qu'un simple relancement de la synchronisation suffisait.
  *
  * Les deux périmètres sont examinés : après une longue veille, les prévisions
- * (périodicité 3 h, seuil 6 h) sont tout aussi périmées que les observations,
- * et les laisser au cron suivant les maintenait en STALE pour des heures.
+ * (périodicité 24 h, seuil 26 h) sont tout aussi périmées que les observations
+ * (périodicité 6 h, seuil 8 h), et les laisser au cron suivant les maintenait en
+ * STALE pour des heures.
  */
 async function catchUpIfStale(trigger: 'démarrage' | 'veille'): Promise<void> {
   try {
