@@ -98,9 +98,46 @@ const DAILY_VARIABLES = [
 
 const FORECAST_CACHE_TTL_MS = 10 * 60 * 1000;
 
+/**
+ * Plafond d'entrées du cache de prévisions.
+ *
+ * `forecastCache` est indexé par coordonnées arrondies : il est naturellement
+ * borné par le nombre de communes. `batchForecastCache` est indexé par
+ * `date:heure` et gagne une entrée à chaque heure consultée sur la carte, sans
+ * jamais être purgé : sur un process qui tourne des mois (le service API démarre
+ * au boot et n'est jamais relancé), la Map accumule des milliers d'entrées de
+ * 1 579 points. Le plafond borne cette croissance, l'éviction expire d'abord ce
+ * qui ne sert plus.
+ *
+ * 288 entrées = 12 jours d'heures cartographiées, très au-delà de la fenêtre
+ * affichée (72 h) et des jours que la couche affiche encore.
+ */
+const MAX_FORECAST_CACHE_ENTRIES = 288;
+
 interface ForecastCacheEntry {
   expiresAt: number;
   data: WeatherForecast;
+}
+
+/**
+ * Évicte les entrées expirées puis, si le cache dépasse le plafond, les entrées
+ * qui expirent le plus tôt. La `Map` conserve l'ordre d'insertion, mais `set`
+ * sur une clé existante ne la déplace pas : on trie donc sur `expiresAt` plutôt
+ * que de compter sur l'ordre.
+ */
+export function pruneForecastCache(cache: Map<string, { expiresAt: number }>): void {
+  const now = Date.now();
+  for (const [key, entry] of cache) {
+    if (entry.expiresAt <= now) cache.delete(key);
+  }
+  if (cache.size <= MAX_FORECAST_CACHE_ENTRIES) return;
+
+  const byDeadline = [...cache.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+  const excess = cache.size - MAX_FORECAST_CACHE_ENTRIES;
+  for (let i = 0; i < excess; i += 1) {
+    const key = byDeadline[i]?.[0];
+    if (key !== undefined) cache.delete(key);
+  }
 }
 
 function toApiError(err: unknown): AppError {
@@ -644,6 +681,7 @@ export class OpenMeteoProvider implements WeatherProvider {
       expiresAt: Date.now() + FORECAST_CACHE_TTL_MS,
       data: forecast,
     });
+    pruneForecastCache(this.forecastCache);
 
     logger.debug({ latitude, longitude }, 'Prévisions météo mises en cache');
 
@@ -736,6 +774,7 @@ export class OpenMeteoProvider implements WeatherProvider {
       expiresAt: Date.now() + ttl,
       points: results,
     });
+    pruneForecastCache(this.batchForecastCache);
     logger.info(
       { communes: communes.length, points: results.length, pending: pending.length, cacheKey },
       'Batch forecast Open-Meteo mis en cache',

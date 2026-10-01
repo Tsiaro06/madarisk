@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { env } from '../../src/config/env';
+import { pruneForecastCache } from '../../src/services/openmeteo.provider';
 
 /**
  * Garde-fou du quota Open-Meteo.
@@ -96,5 +97,61 @@ describe('seuils de pÃ©remption : cohÃ©rents avec la pÃ©riode des crons', () => 
     expect(env.WEATHER_FORECAST_STALE_HOURS).toBeLessThan(
       2 * (periodMinutes(env.WEATHER_FORECAST_CRON) / 60),
     );
+  });
+});
+
+/**
+ * Bornage du cache de prévisions.
+ *
+ * Le cache de la couche cartographique est indexé par `date:heure` : chaque
+ * heure consultée y ajoute une entrée de 1 579 points, et rien ne les supprimait
+ * ensuite. Le service API démarre au boot et tourne des mois : sans éviction, la
+ * Map grossit indéfiniment en mémoire.
+ */
+describe('cache de prévisions : éviction des entrées inutiles', () => {
+  const MINUTE = 60_000;
+
+  it('supprime les entrées expirées', () => {
+    const cache = new Map([
+      ['perime', { expiresAt: Date.now() - MINUTE }],
+      ['vivant', { expiresAt: Date.now() + 10 * MINUTE }],
+    ]);
+
+    pruneForecastCache(cache);
+
+    expect(cache.has('perime')).toBe(false);
+    expect(cache.has('vivant')).toBe(true);
+  });
+
+  it('ne touche pas à un cache sain', () => {
+    const cache = new Map([
+      ['a', { expiresAt: Date.now() + MINUTE }],
+      ['b', { expiresAt: Date.now() + 2 * MINUTE }],
+    ]);
+
+    pruneForecastCache(cache);
+
+    expect(cache.size).toBe(2);
+  });
+
+  it('plafonne un cache saturé en sacrifiant les entrées les plus proches de l`expiration', () => {
+    // 400 entrées vivantes : le plafond doit les ramener à 288. On donne des
+    // échéances croissantes pour vérifier que l'éviction retire bien les plus
+    // tôt, pas les premières insérées.
+    const base = Date.now() + MINUTE;
+    const cache = new Map<string, { expiresAt: number }>();
+    for (let i = 0; i < 400; i += 1) {
+      cache.set(`h${i}`, { expiresAt: base + i * MINUTE });
+    }
+
+    pruneForecastCache(cache);
+
+    expect(cache.size).toBe(288);
+    // Les 112 premières (les plus proches de l'expiration) sont parties.
+    expect(cache.has('h0')).toBe(false);
+    expect(cache.has('h111')).toBe(false);
+    // Les plus lointaines sont restées.
+    expect(cache.has('h112')).toBe(true);
+    expect(cache.has('h399')).toBe(true);
   });
 });
