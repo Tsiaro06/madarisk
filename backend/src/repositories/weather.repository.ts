@@ -137,6 +137,14 @@ export interface HourlyPointRow {
   isForecast: boolean;
 }
 
+/**
+ * Point d'une couche cartographique agregee sur une journee entiere. Meme forme
+ * que `WeatherMapPoint` moins `observedAt` : l'instant d'observation d'un
+ * agregat journalier n'a pas de sens reel, il est pose par l'appelant a midi
+ * (convention du fournisseur) et non deduit de la premiere heure trouvee.
+ */
+export type DailyLayerPointRow = Omit<WeatherMapPoint, 'observedAt'>;
+
 export interface TargetCommunesQuery {
   communeIds?: string[];
   districtId?: string;
@@ -542,7 +550,7 @@ export const weatherRepository = {
    * Valeurs de toutes les communes pour une heure donnée : c'est ce qui colorie
    * la carte quand l'utilisateur choisit 15h. Une LEFT JOIN sur communes pour
    * garder les 1579 points même si une commune n'a rien pour cette heure, sinon
-   * la carte se viderait par类专业.
+   * la carte se viderait par zones.
    */
   async hourlyMapLayer(
     hourAt: string,
@@ -587,6 +595,85 @@ export const weatherRepository = {
       [opts.sourceId, hourAt, opts.districtId ?? null],
     );
     return result.rows;
+  },
+
+  /**
+   * Couche cartographique d'une JOURNEE entiere, agregee depuis `weather_hourly`.
+   *
+   * Sert le mode « journee » d'une date future sans appeler le fournisseur : la
+   * synthese horaire de ces dates est deja stockee par le run horaire. La
+   * semantique reproduit celle de `projectForecastPoints` (maximum pour la
+   * temperature et le vent, moyenne pour l'humidite et la pression, code median
+   * de la journee) afin que la couche ne change pas d'aspect selon sa source.
+   *
+   * La fenetre est bornee en UTC par l'appelant, qui connait le decalage
+   * Madagascar (+03) : ici on ne regroupe que par journee locale deja isolee.
+   */
+  async hourlyDailyMapLayer(
+    dateFromIso: string,
+    dateToIso: string,
+    opts: { sourceId: string; districtId?: string; minHours: number },
+  ): Promise<{ points: DailyLayerPointRow[]; hoursCovered: number }> {
+    const result = await db.query<DailyLayerPointRow>(
+      `SELECT c.id AS "communeId",
+              c.name AS "communeName",
+              c.district_id AS "districtId",
+              d.name AS "districtName",
+              ST_X(c.centroid) AS "longitude",
+              ST_Y(c.centroid) AS "latitude",
+              MAX(h.temperature_c)::float8 AS "temperatureC",
+              ROUND(AVG(h.humidity_percent)::numeric, 1)::float8 AS "humidityPercent",
+              SUM(h.precipitation_mm)::float8 AS "precipitationMm",
+              SUM(h.precipitation_mm)::float8 AS "rainfall24hMm",
+              MAX(h.wind_speed_kmh)::float8 AS "windSpeedKmh",
+              MAX(h.wind_gusts_kmh)::float8 AS "windGustsKmh",
+              -- Direction au moment du vent le plus fort : le vent donne la
+              -- direction la plus severe de la journee.
+              (ARRAY_AGG(h.wind_direction_deg
+                         ORDER BY h.wind_speed_kmh DESC NULLS LAST))[1]::float8
+                AS "windDirectionDeg",
+              ROUND(AVG(h.pressure_hpa)::numeric, 1)::float8 AS "pressureHpa",
+              -- Code médian de la journée. PERCENTILE_DISC renvoyant la valeur
+              -- de ORDER BY et non la colonne visée, on passe par un tableau
+              -- trié par heure, filtré sur les codes présents : la position
+              -- médiane est la même que celle retenue par le fournisseur.
+              (ARRAY_AGG(h.weather_code ORDER BY h.hour_at)
+                 FILTER (WHERE h.weather_code IS NOT NULL))[1 + COUNT(h.weather_code) / 2]
+                AS "weatherCode"
+         FROM communes c
+         JOIN districts d ON d.id = c.district_id
+         JOIN weather_hourly h
+           ON h.commune_id = c.id
+          AND h.weather_source_id = $1
+          AND h.hour_at >= $2::timestamptz
+          AND h.hour_at <  $3::timestamptz
+        WHERE ($4::uuid IS NULL OR c.district_id = $4::uuid)
+        GROUP BY c.id, c.name, c.district_id, d.name, c.centroid
+        -- Une commune dont la journée est trop lacunaire est simplement
+        -- absente de la couche : afficher son agrégat calculé sur deux heures
+        -- sous-estimerait le risque, ce qui est le pire défaut possible sur une
+        -- carte de crise.
+        HAVING COUNT(DISTINCT h.hour_at) >= $5
+        ORDER BY c.admin_code`,
+      [opts.sourceId, dateFromIso, dateToIso, opts.districtId ?? null, opts.minHours],
+    );
+
+    // La couverture se mesure sur la journee entiere, pas sur les communes
+    // filtrees : un district sans donnee ne doit pas faire conclure a tort que
+    // la journee est complete.
+    const covered = await db.query<{ hours_covered: string }>(
+      `SELECT COUNT(DISTINCT hour_at)::text AS hours_covered
+         FROM weather_hourly
+        WHERE weather_source_id = $1
+          AND hour_at >= $2::timestamptz
+          AND hour_at <  $3::timestamptz`,
+      [opts.sourceId, dateFromIso, dateToIso],
+    );
+
+    return {
+      points: result.rows,
+      hoursCovered: Number(covered.rows[0]?.hours_covered ?? '0'),
+    };
   },
 
   async hourlyCoverage(sourceId: string): Promise<{ communes: number; minHour: string | null; maxHour: string | null }> {

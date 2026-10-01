@@ -33,6 +33,18 @@ const MAX_HISTORY_PERIOD_DAYS = 90;
 const REFRESH_CONCURRENCY = 10;
 const REFRESH_REQUEST_DELAY_MS = 150;
 
+/**
+ * Nombre d'heures distinctes minimales pour qu'une journée future soit servie
+ * depuis `weather_hourly` plutôt que redemandée au fournisseur.
+ *
+ * Une journée complète en fait 24. En dessous, l'agrégat (max de température,
+ * somme de pluie) serait calculé sur une fraction de la journée et
+ * sous-estimerait le risque — c'est-à-dire afficherait une couche trop calme.
+ * 12 heures est le seuil qui garantit qu'une journée est majoritairement
+ * représentée tout en tolérant un run horaire tronqué.
+ */
+const MIN_HOURS_FOR_DAILY_LAYER = 12;
+
 function assertAdmin(actor: { role: UserRole }): void {
   if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
     throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent administrer les données météo');
@@ -261,6 +273,46 @@ export const weatherService = {
       const useForecast = isFuture || (query.date === todayStr && hourSelected);
 
       if (useForecast) {
+        // Mode « journée » d'une date future : la synthèse horaire de cette
+        // journée est déjà en base (le run horaire écrit jusqu'à J+2). La servir
+        // depuis `weather_hourly` coûte zéro appel fournisseur, alors que la
+        // couche cartographique vaut 1 579 COORDONNÉES Open-Meteo par requête —
+        // soit le quota gratuit journalier entier après quelques#nullable clics
+        // sur la carte. C'est la source des 429 du 01/10.
+        //
+        // On ne bascule sur le fournisseur que si la base ne couvre pas vraiment
+        // la journée (sync en retard, date hors horizon J+2, aucune donnée).
+        if (query.hour === undefined && query.date > todayStr) {
+          const dayStart = new Date(`${query.date}T00:00:00+03:00`);
+          const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+          const sourceId = await weatherRepository.getSourceId();
+          const daily = await weatherRepository.hourlyDailyMapLayer(
+            dayStart.toISOString(),
+            dayEnd.toISOString(),
+            { sourceId, districtId: query.districtId, minHours: MIN_HOURS_FOR_DAILY_LAYER },
+          );
+
+          if (
+            daily.points.length > 0 &&
+            daily.hoursCovered >= MIN_HOURS_FOR_DAILY_LAYER
+          ) {
+            return {
+              type: 'FeatureCollection',
+              features: daily.points.map((p) => ({
+                type: 'Feature',
+                id: p.communeId,
+                geometry: { type: 'Point', coordinates: [p.longitude, p.latitude] },
+                properties: { ...p, observedAt: `${query.date}T12:00` },
+              })),
+            };
+          }
+
+          logger.info(
+            { date: query.date, hoursCovered: daily.hoursCovered, points: daily.points.length },
+            'Couche quotidienne future : base incomplète, repli sur le fournisseur',
+          );
+        }
+
         const communes = await weatherRepository.allCommunesInfo();
         const forecastPoints = await openMeteoProvider.getForecastBatch(
           communes,
