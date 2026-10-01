@@ -447,6 +447,35 @@ const HOURLY_COLUMNS = `hour_at AS "hourAt",
   weather_code AS "weatherCode",
   is_forecast AS "isForecast"`;
 
+/** Nombre de lignes effacees par requete de purge (garde-fou anti-lock). */
+const HOURLY_PURGE_BATCH_ROWS = 20_000;
+
+/**
+ * Supprime un lot d'heures devenues trop anciennes.
+ *
+ * PostgreSQL n'accepte pas `LIMIT` sur un `DELETE` : on passe par `ctid` pour
+ * eviter de purger les ~100 000 lignes d'un coup, ce qui verrouillerait la
+ * table pendant toute la transaction. Le sous-select s'appuie sur
+ * `idx_weather_hourly_hour`.
+ *
+ * Le predicat ne porte que sur le passe : les heures a venir de la fenetre
+ * affichee (jusqu'a J+2) ne sont jamais concernees, meme si le dernier run
+ * est vieux et que la fenetre n'a pas ete reecrite depuis.
+ */
+async function purgeHourlyBatch(cutoffIso: string): Promise<number> {
+  const result = await db.query(
+    `DELETE FROM weather_hourly
+      WHERE ctid IN (
+        SELECT ctid FROM weather_hourly
+         WHERE hour_at < $1
+         ORDER BY hour_at
+         LIMIT $2
+      )`,
+    [cutoffIso, HOURLY_PURGE_BATCH_ROWS],
+  );
+  return result.rowCount ?? 0;
+}
+
 export const weatherRepository = {
   async verifyCommuneExists(communeId: string): Promise<boolean> {
     const result = await db.query<CountRow>(
@@ -468,6 +497,24 @@ export const weatherRepository = {
       inserted += await insertHourlyBatch(batch, sourceId);
     }
     return inserted;
+  },
+
+  /**
+   * Retention : supprime les heures anterieures a la limite, par lots, et
+   * renvoie le nombre de lignes effacees. Boucle jusqu'a vider la table des
+   * lignes trop anciennes, en s'arrêtant des qu'un lot ne rapporte plus rien.
+   *
+   * Sans appel concurrent a proteger : la purge ne touche que des heures hors de
+   * toute fenetre affichee, donc une ecriture de run qui chevauche le seuil ne
+   * peut pas perdre de donnee utile.
+   */
+  async purgeHourlyBefore(cutoffIso: string): Promise<number> {
+    let total = 0;
+    for (;;) {
+      const deleted = await purgeHourlyBatch(cutoffIso);
+      total += deleted;
+      if (deleted < HOURLY_PURGE_BATCH_ROWS) return total;
+    }
   },
 
   /**

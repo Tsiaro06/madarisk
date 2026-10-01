@@ -3,6 +3,8 @@ import request from 'supertest';
 import app from '../../src/app';
 import { db } from '../../src/config/database';
 import { usersRepository } from '../../src/repositories/users.repository';
+import { weatherRepository } from '../../src/repositories/weather.repository';
+import { hourlyRetentionCutoff } from '../../src/jobs/weather-hourly-purge.job';
 import { password } from '../../src/utils/password';
 import { AppError } from '../../src/utils/app-error';
 import { weatherService } from '../../src/services/weather.service';
@@ -481,6 +483,68 @@ describe('Synchronisation météo - succès', () => {
     expect(new Date(second.rows[0].generated).getTime()).toBeGreaterThanOrEqual(
       new Date(first.rows[0].generated).getTime(),
     );
+  });
+
+  /**
+   * Rétention de `weather_hourly`.
+   *
+   * Chaque run réécrit une fenêtre glissante de 72 h en DO UPDATE : les heures
+   * qui en sortent ne sont ni réécrites ni supprimées, d'où ~9 500 lignes
+   * orphelines par run (~38 000 par jour). La purge doit supprimer ces orphelins
+   * tout en laissant intactes les heures de la fenêtre affichée.
+   *
+   * On travaille sur une seule commune, avec des heuresInjectées directement en
+   * base : les données réelles de la commune sont restaurées par l'après
+   * global (snapshotWeather / restoreWeather).
+   */
+  it('purge les heures hors rétention et conserve la fenêtre affichée', async () => {
+    const communeId = communeIds[0];
+    const iso = (ms: number) => new Date(ms).toISOString();
+    const DAY = 24 * 3_600_000;
+    const now = Date.now();
+
+    // Une heure « rassise » (hors rétention), une heure de la fenêtre affichée
+    // (24 h de passé), une heure future (J+2).
+    const staleHour = iso(now - 40 * DAY);
+    const pastHour = iso(now - 6 * 3_600_000);
+    const futureHour = iso(now + 2 * DAY);
+    const sourceId = await weatherRepository.getSourceId();
+
+    await db.query(
+      `INSERT INTO weather_hourly
+         (commune_id, weather_source_id, hour_at, latitude, longitude,
+          temperature_c, is_forecast, geom)
+       VALUES ($1, $2, $3, 0, 0, 1, false, ST_SetSRID(ST_MakePoint(0, 0), 4326)),
+              ($1, $2, $4, 0, 0, 1, false, ST_SetSRID(ST_MakePoint(0, 0), 4326)),
+              ($1, $2, $5, 0, 0, 1, true,  ST_SetSRID(ST_MakePoint(0, 0), 4326))
+       ON CONFLICT (commune_id, weather_source_id, hour_at) DO UPDATE
+         SET temperature_c = EXCLUDED.temperature_c, is_forecast = EXCLUDED.is_forecast`,
+      [communeId, sourceId, staleHour, pastHour, futureHour],
+    );
+
+    // Rétention de 7 jours : l'heure « rassise » doit partir, les deux autres
+    // doivent rester.
+    const cutoff = hourlyRetentionCutoff(now, 7);
+    const deleted = await weatherRepository.purgeHourlyBefore(cutoff);
+
+    // Comptage par heure : `hour_at::text` dépend du fuseau de session, on
+    // compare donc les effectifs et non des chaînes d'horodatage.
+    const kept = await db.query<{ stale: string; past: string; future: string }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE hour_at = $2)::text AS stale,
+         COUNT(*) FILTER (WHERE hour_at = $3)::text AS past,
+         COUNT(*) FILTER (WHERE hour_at = $4)::text AS future
+       FROM weather_hourly
+       WHERE commune_id = $1`,
+      [communeId, staleHour, pastHour, futureHour],
+    );
+
+    expect(deleted).toBeGreaterThan(0);
+    expect(Number(kept.rows[0].stale)).toBe(0);
+    expect(Number(kept.rows[0].past)).toBe(1);
+    // La fenêtre affichée va jusqu'à J+2 : une heure future n'est jamais purgée,
+    // même si le dernier run est vieux.
+    expect(Number(kept.rows[0].future)).toBe(1);
   });
 });
 

@@ -118,6 +118,20 @@ const envSchema = z.object({
   WEATHER_OBSERVATION_STALE_MINUTES: z.coerce.number().default(480),
   // Idem côté prévisions : cycle de 24 h, seuil à 26 h.
   WEATHER_FORECAST_STALE_HOURS: z.coerce.number().default(26),
+
+  // Rétention de `weather_hourly`. Chaque run réécrit une fenêtre glissante
+  // (hier en réanalyse, J+2 en prévision) en DO UPDATE, mais les heures qui
+  // sortent de la fenêtre ne sont plus réécrites : sans purge elles restent
+  // définitivement, soit ~9 500 lignes orphelines par run et ~38 000 par jour
+  // (~500 Mo/mois pour 1 579 communes). Sept jours couvrent largement la
+  // fenêtre affichée (24 h de passé + 48 h de prévision) et laissent de la
+  // marge pour comparer des journées.
+  WEATHER_HOURLY_RETENTION_DAYS: z.coerce.number().int().min(2).default(7),
+  // Purge quotidienne, volontairement décalée des crons météo (observations à
+  // 6 h, prévisions à 12 h 20) et du recalcul de risque (chaque heure) : la
+  // suppression porte sur des lignes déjà sorties de toute fenêtre affichée.
+  WEATHER_HOURLY_PURGE_CRON: z.string().default('40 3 * * *'),
+
   RISK_RECALCULATION_CRON: z.string().default('10 * * * *'),
 
   DETECTION_NORMAL_CYCLES_BEFORE_MONITORING: z.coerce.number().int().min(1).default(3),

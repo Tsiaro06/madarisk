@@ -3,6 +3,7 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import { db } from './config/database';
 import { startWeatherSyncJobs } from './jobs/weather-refresh.job';
+import { startWeatherHourlyPurgeJob } from './jobs/weather-hourly-purge.job';
 import { startRiskRecalculationJob } from './jobs/risk-recalculation.job';
 import { startDgmMaproomIngestJob } from './jobs/dgm-maproom-ingest.job';
 
@@ -43,6 +44,7 @@ async function main(): Promise<void> {
   } else {
     // Les jobs planifiés restent strictement désactivés en mode démonstration.
     startWeatherSyncJobs();
+    startWeatherHourlyPurgeJob();
     startRiskRecalculationJob();
     startDgmMaproomIngestJob();
   }

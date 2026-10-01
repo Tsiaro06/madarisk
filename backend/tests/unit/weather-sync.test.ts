@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { weatherSyncTriggerSchema } from '../../src/validators/weather.validator';
 import { dedupeByExisting } from '../../src/services/weather-sync.service';
 import { staleWeatherScopes } from '../../src/jobs/weather-refresh.job';
+import { hourlyRetentionCutoff } from '../../src/jobs/weather-hourly-purge.job';
 
 describe('weather-sync : déduplication (helper pur)', () => {
   it('garde les lignes nouvelles et compte les doublons existants', () => {
@@ -255,5 +256,30 @@ describe('weather-sync : périmètres périmés', () => {
     expect(stale(60, 1)).toEqual([]);
     expect(stale(151, 1)).toEqual(['OBSERVATIONS']);
     expect(stale(5, 6.1)).toEqual(['FORECASTS']);
+  });
+});
+
+/**
+ * Limite de rétention de `weather_hourly`.
+ *
+ * Chaque run réécrit une fenêtre glissante de 72 h, donc les heures qui en
+ * sortent deviennent orphelines : sans purge, ~9 500 lignes par run, ~38 000
+ * par jour. La limite doit rester nettement en deca de ce que la purge
+ * effacerait par erreur.
+ */
+describe('weather-sync : rétention de weather_hourly', () => {
+  const NOW = Date.parse('2026-10-08T03:40:00Z');
+
+  it('retire autant de jours que configuré', () => {
+    expect(hourlyRetentionCutoff(NOW, 7)).toBe('2026-10-01T03:40:00.000Z');
+    expect(hourlyRetentionCutoff(NOW, 2)).toBe('2026-10-06T03:40:00.000Z');
+  });
+
+  it('laisse la fenêtre affichée intacte', () => {
+    // La fenêtre affichée va de 24 h dans le passé à 48 h dans le futur. Avec
+    // 7 jours de rétention, aucune de ces heures n'est candidates.
+    const cutoff = Date.parse(hourlyRetentionCutoff(NOW, 7));
+    expect(cutoff).toBeLessThan(NOW - 24 * 3_600_000);
+    expect(NOW + 48 * 3_600_000).toBeGreaterThan(cutoff);
   });
 });
