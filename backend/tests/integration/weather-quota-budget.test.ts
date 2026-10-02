@@ -84,6 +84,25 @@ describe('budget quotidien Open-Meteo', () => {
     expect(snapshot.consumedCalls).toBe(979);
   });
 
+  it('ne laisse pas deux runs parallèles dépasser le budget', async () => {
+    // Le contrôle du plafond et l'incrément doivent être la MEME instruction.
+    // Séparés (lire, puis écrire), deux réservations concurrentes lisent la
+    // même valeur, passent toutes deux le contrôle, et le total dépasse : c'est
+    // précisément le plafond gratuit qu'on cherche à ne jamais approcher.
+    const snapshot = await getQuotaSnapshot();
+    await reserveQuota(snapshot.budgetCalls - 500);
+
+    const results = await Promise.allSettled([reserveQuota(400), reserveQuota(400)]);
+
+    const accepted = results.filter((r) => r.status === 'fulfilled').length;
+    expect(accepted).toBe(1);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+
+    const after = await getQuotaSnapshot();
+    expect(after.consumedCalls).toBe(snapshot.budgetCalls - 100);
+    expect(after.remainingCalls).toBe(100);
+  });
+
   it('refuse un lot qui ferait déborder le budget', async () => {
     // On amène le compteur juste sous le plafond : le lot national des 1579
     // communes ne peut plus passer.

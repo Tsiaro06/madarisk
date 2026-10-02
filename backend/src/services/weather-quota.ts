@@ -129,31 +129,32 @@ export async function reserveQuota(locations: number): Promise<number> {
   const cost = quotaCostOfBatch(locations);
   if (cost <= 0) return 0;
 
-  const current = await weatherRepository.getProviderQuota(OPEN_METEO_PROVIDER);
   const budget = env.OPEN_METEO_DAILY_BUDGET;
+  // Contrôle et incrément en UNE instruction : deux runs qui se chevauchent ne
+  // peuvent pas lire la même valeur et franchir le plafond à deux.
+  const charged = await weatherRepository.chargeProviderQuota(OPEN_METEO_PROVIDER, cost, budget);
 
-  if (current.consumed + cost > budget) {
+  if (!charged.charged) {
     const resetAt = nextDailyReset();
     logger.warn(
       {
         provider: OPEN_METEO_PROVIDER,
-        consumed: current.consumed,
+        consumed: charged.consumed,
         requested: cost,
         budget,
       },
       'Open-Meteo : budget quotidien epuise, lot refuse avant envoi',
     );
     throw AppError.tooManyRequests(
-      `Budget quotidien Open-Meteo atteint (${Math.round(current.consumed)}/${budget} appels). ` +
+      `Budget quotidien Open-Meteo atteint (${Math.round(charged.consumed)}/${budget} appels). ` +
         `Ce lot de ${locations} communes est refusé pour ne pas dépasser le plafond gratuit : ` +
         `les données météo resteront celles du dernier run. Nouvelle tentative après le reset de 00:00 UTC (${resetAt.toISOString()}).`,
       dailyResetRetryAfter(),
     );
   }
 
-  const updated = await weatherRepository.addProviderQuota(OPEN_METEO_PROVIDER, cost);
   logger.debug(
-    { consumed: updated.consumed, cost, budget },
+    { consumed: charged.consumed, cost, budget },
     'Open-Meteo : cout commande sur le budget quotidien',
   );
   return cost;

@@ -522,24 +522,50 @@ async function readProviderQuota(provider: string): Promise<{ day: string; consu
   };
 }
 
-/** Ajoute un cout commande au compteur du jour, en un aller-retour seulement. */
-async function addProviderQuota(
+/**
+ * Commande un coût au compteur du jour, en UNE seule instruction.
+ *
+ * Le contrôle du plafond et l'incrément sont faits ensemble, sinon deux runs
+ * qui se chevauchent lisent la même valeur, passent tous les deux le contrôle,
+ * et le total dépasse le budget. `INSERT ... ON CONFLICT DO UPDATE` prend le
+ * verrou de la ligne pendant l'opération : le second appel attend, puis voit la
+ * somme déjà à jour.
+ *
+ * Le rollover est traité dans la même instruction : sur un nouveau jour, le
+ * compteur repart du coût commandé au lieu d'accumuler la veille.
+ *
+ * @param budget plafond autorisé ; au-delà, rien n'est incrémenté.
+ * @returns `charged: false` si le lot ferait déborder le budget.
+ */
+async function chargeProviderQuota(
   provider: string,
   calls: number,
-): Promise<{ day: string; consumed: number }> {
-  await readProviderQuota(provider);
+  budget: number,
+): Promise<{ day: string; consumed: number; charged: boolean }> {
   const result = await db.query<{ quota_day: string; consumed_calls: string }>(
-    `UPDATE weather_provider_quota
-        SET consumed_calls = consumed_calls + $2,
+    `INSERT INTO weather_provider_quota AS q (provider, quota_day, consumed_calls)
+     VALUES ($1, (now() AT TIME ZONE 'UTC')::date, $2)
+     ON CONFLICT (provider) DO UPDATE
+        SET consumed_calls = CASE
+              WHEN q.quota_day = (now() AT TIME ZONE 'UTC')::date THEN q.consumed_calls + $2
+              ELSE $2
+            END,
+            quota_day = (now() AT TIME ZONE 'UTC')::date,
             updated_at = now()
-      WHERE provider = $1
-      RETURNING quota_day, consumed_calls`,
-    [provider, calls],
+      WHERE CASE
+              WHEN q.quota_day = (now() AT TIME ZONE 'UTC')::date THEN q.consumed_calls + $2
+              ELSE $2
+            END <= $3
+     RETURNING quota_day::text AS quota_day, consumed_calls`,
+    [provider, calls, budget],
   );
-  return {
-    day: result.rows[0]?.quota_day ?? new Date().toISOString().slice(0, 10),
-    consumed: Number(result.rows[0]?.consumed_calls ?? 0),
-  };
+  const row = result.rows[0];
+  if (!row) {
+    // Aucune ligne retournee = le garde-fou du WHERE a refuse l'increment.
+    const current = await readProviderQuota(provider);
+    return { day: current.day, consumed: current.consumed, charged: false };
+  }
+  return { day: row.quota_day, consumed: Number(row.consumed_calls), charged: true };
 }
 
 export const weatherRepository = {
@@ -555,11 +581,16 @@ export const weatherRepository = {
     return readProviderQuota(provider);
   },
 
-  async addProviderQuota(
+  /**
+   * Commande un coût au budget du jour. Renommé `charge...` et non `add...`
+   * parce que l'appel peut être REFUSÉ : le nom doit le laisser deviner.
+   */
+  async chargeProviderQuota(
     provider: string,
     calls: number,
-  ): Promise<{ day: string; consumed: number }> {
-    return addProviderQuota(provider, calls);
+    budget: number,
+  ): Promise<{ day: string; consumed: number; charged: boolean }> {
+    return chargeProviderQuota(provider, calls, budget);
   },
 
   async getSourceId(): Promise<string> {
