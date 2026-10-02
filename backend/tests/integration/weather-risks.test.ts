@@ -7,7 +7,12 @@ import { risksRepository } from '../../src/repositories/risks.repository';
 import { password } from '../../src/utils/password';
 import { weatherService } from '../../src/services/weather.service';
 import { WeatherProvider } from '../../src/types/weather.types';
-import { snapshotWeather, restoreWeather, type WeatherSnapshot } from '../helpers/weather-snapshot';
+import {
+  snapshotWeather,
+  restoreWeather,
+  withRestoredWeather,
+  type WeatherSnapshot,
+} from '../helpers/weather-snapshot';
 
 let admin: { id: string; token: string };
 let superAdmin: { id: string; token: string };
@@ -659,6 +664,14 @@ describe('Risques - recalcul sans événement et configurations', () => {
     // dans ce jeu de données. On crée donc une observation DGM temporairement
     // « la plus récente » sur une commune existante, et on s'assure qu'elle est
     // écartée par le tri (lignes riches > DGM > récence).
+    //
+    // `ORDER BY admin_code LIMIT 1` tombe sur une vraie commune (Faratsiho), pas
+    // sur une ligne de test : le nettoyage passe donc par le helper de
+    // sauvegarde/restauration. Un `DELETE FROM weather_observations WHERE
+    // commune_id = $1` paraîtrait correct -- cette commune n'est pas impliquée
+    // dans les assertions -- mais il effacerait aussi sa vraie observation, et
+    // cette commune n'en a qu'une. La commune disparaissait alors de la carte
+    // jusqu'au prochain run, pour une raison sans rapport avec le test.
     const target = await db.query<{ id: string; longitude: string; latitude: string }>(
       `SELECT id,
               ST_X(centroid)::text AS longitude,
@@ -674,49 +687,48 @@ describe('Risques - recalcul sans événement et configurations', () => {
     const isoLat = Number(commune.latitude);
     const isoLon = Number(commune.longitude);
 
-    // Une ligne DGM datée dans le futur, sans aucun indicateur réel : c'est
-    // exactement ce qu'écrit le job DGM entre le 11 et le 20 du mois.
-    const futureDekad = new Date(Date.now() + 9 * 24 * 3_600_000).toISOString();
-    await db.query(
-      `INSERT INTO weather_observations
-         (commune_id, weather_source_id, data_kind, observed_at,
-          latitude, longitude, geom, precipitation_mm, raw_data)
-       VALUES ($1, $2, 'OBSERVE', $3, $4::numeric, $5::numeric,
-               ST_SetSRID(ST_MakePoint($5::float8, $4::float8), 4326), 104.9, $6)`,
-      [
-        isolatedId,
-        sources.dgm,
-        futureDekad,
-        isoLat,
-        isoLon,
-        JSON.stringify({ provider: 'dgm-maproom' }),
-      ],
-    );
+    await withRestoredWeather([isolatedId], async () => {
+      // Une ligne DGM datée dans le futur, sans aucun indicateur réel : c'est
+      // exactement ce qu'écrit le job DGM entre le 11 et le 20 du mois.
+      const futureDekad = new Date(Date.now() + 9 * 24 * 3_600_000).toISOString();
+      await db.query(
+        `INSERT INTO weather_observations
+           (commune_id, weather_source_id, data_kind, observed_at,
+            latitude, longitude, geom, precipitation_mm, raw_data)
+         VALUES ($1, $2, 'OBSERVE', $3, $4::numeric, $5::numeric,
+                 ST_SetSRID(ST_MakePoint($5::float8, $4::float8), 4326), 104.9, $6)`,
+        [
+          isolatedId,
+          sources.dgm,
+          futureDekad,
+          isoLat,
+          isoLon,
+          JSON.stringify({ provider: 'dgm-maproom' }),
+        ],
+      );
 
-    // Une ligne Open-Meteo « riche », datée de maintenant pour être plus récente
-    // que l'ingestion réelle du jour, mais de 9 jours avant la ligne DGM.
-    const openMeteoAt = new Date().toISOString();
-    await db.query(
-      `INSERT INTO weather_observations
-         (commune_id, weather_source_id, data_kind, observed_at,
-          latitude, longitude, geom,
-          temperature_c, humidity_percent, wind_speed_kmh, precipitation_mm, rainfall_24h_mm)
-       VALUES ($1, $2, 'OBSERVE', $3, $4::numeric, $5::numeric,
-               ST_SetSRID(ST_MakePoint($5::float8, $4::float8), 4326),
-               27.5, 80, 45, 2, 2)`,
-      [isolatedId, sources.open_meteo, openMeteoAt, isoLat, isoLon],
-    );
+      // Une ligne Open-Meteo « riche », datée de maintenant pour être plus récente
+      // que l'ingestion réelle du jour, mais de 9 jours avant la ligne DGM.
+      const openMeteoAt = new Date().toISOString();
+      await db.query(
+        `INSERT INTO weather_observations
+           (commune_id, weather_source_id, data_kind, observed_at,
+            latitude, longitude, geom,
+            temperature_c, humidity_percent, wind_speed_kmh, precipitation_mm, rainfall_24h_mm)
+         VALUES ($1, $2, 'OBSERVE', $3, $4::numeric, $5::numeric,
+                 ST_SetSRID(ST_MakePoint($5::float8, $4::float8), 4326),
+                 27.5, 80, 45, 2, 2)`,
+        [isolatedId, sources.open_meteo, openMeteoAt, isoLat, isoLon],
+      );
 
-    const contexts = await risksRepository.getRiskContexts({ communeIds: [isolatedId] });
-    const context = contexts.find((c) => c.communeId === isolatedId);
+      const contexts = await risksRepository.getRiskContexts({ communeIds: [isolatedId] });
+      const context = contexts.find((c) => c.communeId === isolatedId);
 
-    expect(context).toBeDefined();
-    // La ligne DGM est plus récente ET sans indicateur : elle doit être écartée.
-    expect(context?.precipitationMm).toBe(2);
-    expect(context?.rainfall24hMm).toBe(2);
-    expect(context?.windSpeedKmh).toBe(45);
-
-    // Nettoyage : cette commune n'appartient à aucun événement de la suite.
-    await db.query(`DELETE FROM weather_observations WHERE commune_id = $1`, [isolatedId]);
+      expect(context).toBeDefined();
+      // La ligne DGM est plus récente ET sans indicateur : elle doit être écartée.
+      expect(context?.precipitationMm).toBe(2);
+      expect(context?.rainfall24hMm).toBe(2);
+      expect(context?.windSpeedKmh).toBe(45);
+    });
   });
 });
