@@ -37,8 +37,10 @@ async function saveQuota(): Promise<void> {
 }
 
 async function restoreQuota(): Promise<void> {
+  // Inconditionnel, y compris pour 0 : la suppression puis upsert garantit un
+  // compteur identique à l'entrée, sans laisser la consommation des tests.
   await resetQuota();
-  if (savedConsumed !== null && savedConsumed > 0) {
+  if (savedConsumed !== null) {
     await db.query(
       `INSERT INTO weather_provider_quota (provider, quota_day, consumed_calls)
        VALUES ($1, (now() AT TIME ZONE 'UTC')::date, $2)

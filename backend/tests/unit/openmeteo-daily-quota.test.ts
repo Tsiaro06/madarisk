@@ -60,14 +60,15 @@ describe('plafond journalier : le premier 429 doit être actionnable', () => {
   });
 
   afterAll(async () => {
-    if (savedConsumed > 0) {
-      await db.query(
-        `INSERT INTO weather_provider_quota (provider, quota_day, consumed_calls)
-         VALUES ($1, (now() AT TIME ZONE 'UTC')::date, $2)
-         ON CONFLICT (provider) DO UPDATE SET consumed_calls = EXCLUDED.consumed_calls`,
-        [OPEN_METEO_PROVIDER, savedConsumed],
-      );
-    }
+    // Restauration inconditionnelle : si la valeur d'origine vaut 0, un `if`
+    // autour de l'upsert laisserait la consommation des tests en base (800
+    // appels fantômes), et le service croirait avoir consommé son budget.
+    await db.query(
+      `INSERT INTO weather_provider_quota (provider, quota_day, consumed_calls)
+       VALUES ($1, (now() AT TIME ZONE 'UTC')::date, $2)
+       ON CONFLICT (provider) DO UPDATE SET consumed_calls = EXCLUDED.consumed_calls`,
+      [OPEN_METEO_PROVIDER, savedConsumed],
+    );
     await db.pool.end();
   });
 
