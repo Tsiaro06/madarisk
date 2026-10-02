@@ -19,6 +19,7 @@
     "db:migrate": "tsx database/scripts/migrate.ts",
     "db:seed": "tsx database/scripts/seed.ts",
     "db:check": "tsx database/scripts/check-database.ts",
+    "db:import-population": "tsx database/scripts/import-commune-population.ts",
     "demo:dev": "tsx watch database/scripts/demo/dev-demo.ts",
     "db:demo:create": "tsx database/scripts/demo/create-demo-db.ts",
     "db:demo:migrate": "tsx database/scripts/demo/migrate-demo.ts",
