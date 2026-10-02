@@ -264,7 +264,7 @@ interface PdfData {
   dateTo: Date | null;
   event: Record<string, unknown> | null;
   exposedCommunes: Record<string, unknown>[];
-  exposedPopulation: number;
+  exposedPopulation: number | null;
   riskDistribution: Record<string, number>;
   priorityCommunes: Record<string, unknown>[];
   activeAlerts: number;
@@ -322,7 +322,15 @@ async function buildPdf(data: PdfData): Promise<Buffer> {
   document.fillColor('#1f2937').font('Helvetica-Bold').fontSize(12).text('Chiffres clés');
   const keyNames: Array<{ label: string; value: string }> = [
     { label: 'Total communes exposées', value: numberFormat.format(data.exposedCommunes.length) },
-    { label: 'Population exposée', value: numberFormat.format(data.exposedPopulation) },
+    {
+      label: 'Population exposée',
+      // numberFormat.format(null) rendrait « 0 » : on écrit l'absence de donnée
+      // plutôt que de laisser un rapport officiel affirmer zero habitant.
+      value:
+        data.exposedPopulation === null
+          ? 'non renseignée'
+          : numberFormat.format(data.exposedPopulation),
+    },
     { label: 'Alertes publiques actives', value: numberFormat.format(data.activeAlerts) },
   ];
   for (const key of keyNames) {

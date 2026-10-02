@@ -1,6 +1,18 @@
 import { db } from '../config/database';
 import { PaginatedResult } from '../types/territory.types';
 
+/**
+ * Convertit un total PostgreSQL en nombre, en conservant NULL.
+ *
+ * Utilisee pour les sommes de population : SUM() sur des valeurs toutes nulles
+ * renvoie NULL, ce qui signifie « donnee inconnue ». Remplacer par 0
+ * afficherait une absence d'information comme un resultat chiffre.
+ * Les COUNT(), eux, ne renvoient jamais NULL et gardent leur defaut a 0.
+ */
+function toNullableInt(value: string | null | undefined): number | null {
+  return value === null || value === undefined ? null : parseInt(value, 10);
+}
+
 export type ReportFormat = 'PDF' | 'CSV' | 'XLSX' | 'GEOJSON' | 'PNG';
 
 export interface Report {
@@ -477,7 +489,7 @@ export const reportsRepository = {
     alerts: { total: number; published: number; active: number };
     riskDistribution: Record<string, number>;
     communesAssessed: number;
-    exposure: { communes: number; population: number };
+    exposure: { communes: number; population: number | null };
     pendingMatchings: number;
     priorityCommunes: Record<string, unknown>[];
     latestAlerts: Record<string, unknown>[];
@@ -534,10 +546,12 @@ export const reportsRepository = {
       params,
     );
 
-    const exposureResult = await db.query<{ communes: string; population: string }>(
+    const exposureResult = await db.query<{ communes: string; population: string | null }>(
+      // Pas de COALESCE : une somme de valeurs toutes nulles vaut NULL, ce qui
+      // veut dire « population inconnue » et non « zero habitant exposé ».
       `SELECT
          COUNT(*)::text AS communes,
-         COALESCE(SUM(exposed_population), 0)::text AS population
+         SUM(exposed_population)::text AS population
        FROM exposed_communes
        WHERE created_at BETWEEN $1::timestamptz AND $2::timestamptz`,
       params,
@@ -599,7 +613,7 @@ export const reportsRepository = {
       communesAssessed: parseInt(assessedResult.rows[0]?.count ?? '0', 10),
       exposure: {
         communes: parseInt(exposureResult.rows[0]?.communes ?? '0', 10),
-        population: parseInt(exposureResult.rows[0]?.population ?? '0', 10),
+        population: toNullableInt(exposureResult.rows[0]?.population),
       },
       pendingMatchings: parseInt(pendingResult.rows[0]?.count ?? '0', 10),
       priorityCommunes: priorityResult.rows,
@@ -613,8 +627,8 @@ export const reportsRepository = {
   ): Promise<{
     event: Record<string, unknown> | null;
     areas: { type: 'FeatureCollection'; features: Array<Record<string, unknown>> };
-    exposedCommunes: Record<string, unknown>[];
-    exposedPopulation: number;
+      exposedCommunes: Record<string, unknown>[];
+      exposedPopulation: number | null;
     riskDistribution: Record<string, number>;
     riskCount: number;
     weather: {
@@ -684,8 +698,8 @@ export const reportsRepository = {
       [eventId],
     );
 
-    const populationResult = await db.query<{ population: string }>(
-      `SELECT COALESCE(SUM(exposed_population), 0)::text AS population
+    const populationResult = await db.query<{ population: string | null }>(
+      `SELECT SUM(exposed_population)::text AS population
        FROM exposed_communes
        WHERE event_id = $1`,
       [eventId],
@@ -770,7 +784,7 @@ export const reportsRepository = {
         features: areasResult.rows.map((r) => r.feature),
       },
       exposedCommunes: exposedResult.rows,
-      exposedPopulation: parseInt(populationResult.rows[0]?.population ?? '0', 10),
+      exposedPopulation: toNullableInt(populationResult.rows[0]?.population),
       riskDistribution,
       riskCount: parseInt(riskCountResult.rows[0]?.count ?? '0', 10),
       weather: {

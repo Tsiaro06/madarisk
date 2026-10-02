@@ -4936,10 +4936,20 @@ components:
       type: object
       properties:
         activeEvents: { type: integer }
+        forecastEvents: { type: integer }
         activeAlerts: { type: integer }
-        highRiskCommunesCount: { type: integer }
-        populationAtRisk: { type: integer }
-        generatedAt: { type: string, format: date-time }
+        totalDistricts: { type: integer }
+        totalCommunes: { type: integer }
+        extremeRiskCommunes: { type: integer }
+        highRiskCommunes: { type: integer }
+        exposedPopulation:
+          type: integer
+          nullable: true
+          description: >-
+            Population residing in the exposed communes. Null when the commune
+            population data is unknown, which is not the same as an exposed
+            population of zero.
+        lastUpdatedAt: { type: string, format: date-time, nullable: true }
     DashboardReport:
       type: object
       description: Agrégation complète du tableau de bord

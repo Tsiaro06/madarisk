@@ -293,7 +293,11 @@ describe('Reports - rapport événement', () => {
     expect(data.event.name).toBe('Cyclone test report');
     expect(data.areas.type).toBe('FeatureCollection');
     expect(Array.isArray(data.exposedCommunes)).toBe(true);
-    expect(typeof data.exposedPopulation).toBe('number');
+    // null quand la population des communes n'est pas connue : ce n'est pas
+    // la même chose qu'une population exposée de 0.
+    expect(
+      data.exposedPopulation === null || typeof data.exposedPopulation === 'number',
+    ).toBe(true);
     expect(typeof data.riskDistribution).toBe('object');
     expect(data.weather).toHaveProperty('available');
     expect(Array.isArray(data.alerts)).toBe(true);

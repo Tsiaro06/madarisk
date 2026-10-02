@@ -195,7 +195,7 @@ export interface EventBilan {
     riskScore: string | null;
     riskLevel: RiskLevel | null;
   }>;
-  exposedPopulation: number;
+  exposedPopulation: number | null;
   riskDistribution: Record<string, number>;
   riskCount: number;
   weather: {
