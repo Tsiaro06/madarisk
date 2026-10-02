@@ -98,10 +98,48 @@ export interface WeatherRefreshStart {
   background: boolean;
 }
 
-export interface WeatherSyncStatusSnapshot {
+/**
+ * Dernière exécution de synchronisation, telle que rapportée par le backend.
+ * `errorsCount` et `errorMessage` sont ce qui distingue un échec discret d'un
+ * simple retard : sans eux, un run `PARTIAL` passe pour un succès.
+ */
+export interface WeatherSyncRun {
+  runId: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  status: 'RUNNING' | 'SUCCESS' | 'FAILED' | 'PARTIAL' | null;
+  scope: string;
+  source: string;
+  recordsProcessed: number;
+  communesProcessed: number;
+  errorsCount: number;
+  errorMessage: string | null;
+}
+
+/**
+ * Observations : la fraîcheur est exprimée en minutes parce que la carte
+ * affiche un retard court (« 12 min »). Le backend ne renvoie ici ni
+ * `lagHours` ni `maxForecastDay` -- ce sont des propriétés des prévisions, et
+ * les déclarer ici en `number | null` ferait passer une valeur absente pour un
+ * zéro exploitable.
+ */
+export interface WeatherObservationStatus {
+  lastRun: WeatherSyncRun | null;
   lastSuccessAt: string | null;
   lastDataAt: string | null;
   lagMinutes: number | null;
+  status: 'FRESH' | 'STALE' | 'NEVER';
+  communesData: number;
+}
+
+/**
+ * Prévisions : la granularité est l'heure, et le run porte la date couverte.
+ */
+export interface WeatherForecastStatus {
+  lastRun: WeatherSyncRun | null;
+  lastSuccessAt: string | null;
+  lastDataAt: string | null;
+  lagHours: number | null;
   status: 'FRESH' | 'STALE' | 'NEVER';
   communesData: number;
   maxForecastDay: string | null;
@@ -129,8 +167,8 @@ export interface WeatherMonitoring {
   /** Budget quotidien Open-Meteo : la cause d'échec la plus invisible. */
   quota: WeatherQuota;
   sync: {
-    observations: WeatherSyncStatusSnapshot;
-    forecasts: WeatherSyncStatusSnapshot;
+    observations: WeatherObservationStatus;
+    forecasts: WeatherForecastStatus;
   };
 }
 
