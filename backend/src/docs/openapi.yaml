@@ -4578,6 +4578,8 @@ components:
               isActive: { type: boolean }
               refreshIntervalMinutes: { type: integer }
               keyConfigured: { type: boolean }
+        quota:
+          $ref: '#/components/schemas/WeatherQuota'
         sync:
           type: object
           properties:
@@ -4585,6 +4587,20 @@ components:
               $ref: '#/components/schemas/WeatherSyncStatusSnapshot'
             forecasts:
               $ref: '#/components/schemas/WeatherSyncStatusSnapshot'
+    WeatherQuota:
+      type: object
+      description: >-
+        Budget quotidien Open-Meteo. Le plafond gratuit de 10 000 appels est
+        dur : le dépasser coupe toute la météo jusqu'au reset de 00:00 UTC.
+        `budgetCalls` est le plafond auto-imposé par l'API, qui refuse un lot
+        avant envoi avec un 429 porteur de `Retry-After` plutôt que de laisser
+        le fournisseur déborder.
+      properties:
+        day: { type: string, description: Jour UTC au format YYYY-MM-DD }
+        consumedCalls: { type: integer, description: Appels déjà réservés depuis 00:00 UTC }
+        budgetCalls: { type: integer, description: Plafond auto-imposé par l'API }
+        remainingCalls: { type: integer, description: Appels encore disponibles aujourd'hui }
+        resetsAt: { type: string, format: date-time, description: Reset du compteur chez Open-Meteo }
     WeatherRefreshResult:
       type: object
       description: Bilan chiffré d'un rafraîchissement terminé

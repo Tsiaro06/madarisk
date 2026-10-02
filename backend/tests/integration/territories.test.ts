@@ -181,7 +181,12 @@ describe('Territoires - map GeoJSON', () => {
     expect(validGeoJson(feature.geometry)).toBe(true);
     expect(feature.properties.districtId).toBe(districtId);
     expect(typeof feature.properties.totalCommunes).toBe('number');
-  });
+    // Timeout large car ST_AsGeoJSON agrege la geometrie de toutes les communes :
+    // ce test tourne autour de 4 s a lui seul, contre 5 s par defaut, donc il
+    // echouait par intermittence des que la machine fait autre chose en meme
+    // temps (suite complete, API qui synchronise). Un timeout au-dessus du
+    // defaut est correct ici : on ne teste pas la vitesse, mais la geometrie.
+  }, 30_000);
 
   it('retourne une FeatureCollection de communes valide', async () => {
     const res = await request(app)

@@ -107,6 +107,15 @@ export interface WeatherSyncStatusSnapshot {
   maxForecastDay: string | null;
 }
 
+export interface WeatherQuota {
+  /** Jour UTC au format `YYYY-MM-DD`. */
+  day: string;
+  consumedCalls: number;
+  budgetCalls: number;
+  remainingCalls: number;
+  resetsAt: string;
+}
+
 export interface WeatherMonitoring {
   generatedAt: string;
   sources: Array<{
@@ -117,6 +126,8 @@ export interface WeatherMonitoring {
     refreshIntervalMinutes: number;
     keyConfigured: boolean;
   }>;
+  /** Budget quotidien Open-Meteo : la cause d'échec la plus invisible. */
+  quota: WeatherQuota;
   sync: {
     observations: WeatherSyncStatusSnapshot;
     forecasts: WeatherSyncStatusSnapshot;

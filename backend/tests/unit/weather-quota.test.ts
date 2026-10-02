@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { env } from '../../src/config/env';
 import { pruneForecastCache } from '../../src/services/openmeteo.provider';
+import {
+  classifyRateLimit,
+  dailyResetRetryAfter,
+  nextDailyReset,
+  quotaCostOfBatch,
+} from '../../src/services/weather-quota';
 
 /**
  * Garde-fou du quota Open-Meteo.
@@ -62,13 +68,79 @@ describe('quota Open-Meteo : le budget de la cadence tient', () => {
     expect(TARGET_COMMUNES).toBeLessThan(FREE_HOURLY_LIMIT);
   });
 
-  it('garde la place pour une relance manuelle d urgence', () => {
+  it('garde la place pour une relance manuelle d‚Äôurgence', () => {
     // Une panne de fournisseur se rattrape √† la main, ou apr√®s une veille. Si le
     // budget journalier est d√©j√† consomm√© √† 95 %, cette relance fait reborder le
     // quota et on perd les observations ET la relance.
     const runs = dailyRuns(env.WEATHER_OBSERVATION_CRON) + dailyRuns(env.WEATHER_FORECAST_CRON);
     const dailyCost = runs * TARGET_COMMUNES;
     expect(dailyCost + TARGET_COMMUNES).toBeLessThanOrEqual(FREE_DAILY_LIMIT);
+  });
+
+  it('tient sous le plafond que l‚ÄôAPI s‚Äôauto-impose', () => {
+    // Le plafond utile n‚Äôest pas celui du fournisseur mais celui d‚Äô`env` : c‚Äôest
+    // lui qui d√©clenche le refus des runs, donc c‚Äôest lui qui doit tenir.
+    const runs = dailyRuns(env.WEATHER_OBSERVATION_CRON) + dailyRuns(env.WEATHER_FORECAST_CRON);
+    expect(runs * TARGET_COMMUNES).toBeLessThanOrEqual(env.OPEN_METEO_DAILY_BUDGET);
+  });
+
+  it('garde une marge sous l‚Äôoffre gratuite', () => {
+    // Sans marge on tomberait exactement au mur, et la moindre relance manuelle
+    // ferait d√©border le quota pour le reste de la journ√©e.
+    expect(env.OPEN_METEO_DAILY_BUDGET).toBeLessThan(FREE_DAILY_LIMIT);
+  });
+
+  it('facture un lot au nombre de communes', () => {
+    expect(quotaCostOfBatch(TARGET_COMMUNES)).toBe(TARGET_COMMUNES);
+    expect(quotaCostOfBatch(400)).toBe(400);
+    expect(quotaCostOfBatch(0)).toBe(0);
+  });
+});
+
+/**
+ * Classification des plafonds d‚ÄôOpen-Meteo.
+ *
+ * Le 01/10, un 429 ¬´ daily api request limit exceeded ¬ª √©tait trait√© comme une
+ * rafale : le run relan√ßait jusqu‚Äô√† 5 passes de lots, soit environ 7 900
+ * coordonn√©es refactur√©es, pour un r√©sultat identique. Ces tests verrouillent
+ * la distinction qui rend ce cas impossible √† r√©introduire.
+ */
+describe('plafonds Open-Meteo : ne pas confondre journalier et rafale', () => {
+  it('reconna√Æt le plafond journalier', () => {
+    expect(classifyRateLimit('daily api request limit exceeded. please try again tomorrow.')).toBe(
+      'daily',
+    );
+  });
+
+  it('reconna√Æt le plafond horaire', () => {
+    expect(
+      classifyRateLimit('hourly api request limit exceeded. please try again in one hour.'),
+    ).toBe('hourly');
+  });
+
+  it('reconna√Æt la rafale', () => {
+    expect(
+      classifyRateLimit('minutely api request limit exceeded. please try again in one minute.'),
+    ).toBe('minutely');
+  });
+
+  it('laisse un motif inconnu √† la politique de retry existante', () => {
+    expect(classifyRateLimit('internal server error')).toBeNull();
+    expect(classifyRateLimit('')).toBeNull();
+  });
+
+  it('programme le reset √† 00:00 UTC', () => {
+    // Le compteur d‚ÄôOpen-Meteo se rebat √† 00:00 UTC, soit 03:00 heure
+    // Madagascar : c‚Äôest l‚Äôheure annonc√©e √† l‚Äôutilisateur quand le quota est mort.
+    expect(nextDailyReset(new Date('2026-10-02T21:30:00Z')).toISOString()).toBe(
+      '2026-10-03T00:01:00.000Z',
+    );
+  });
+
+  it('annonce un Retry-After plausible', () => {
+    const retryAfter = dailyResetRetryAfter(new Date('2026-10-02T21:30:00Z'));
+    expect(retryAfter).toBeGreaterThan(60);
+    expect(retryAfter).toBeLessThanOrEqual(24 * 3600);
   });
 });
 
@@ -101,17 +173,17 @@ describe('seuils de p√©remption : coh√©rents avec la p√©riode des crons', () => 
 });
 
 /**
- * Bornage du cache de prÈvisions.
+ * Bornage du cache de pr√©visions.
  *
- * Le cache de la couche cartographique est indexÈ par `date:heure` : chaque
- * heure consultÈe y ajoute une entrÈe de 1 579 points, et rien ne les supprimait
- * ensuite. Le service API dÈmarre au boot et tourne des mois : sans Èviction, la
- * Map grossit indÈfiniment en mÈmoire.
+ * Le cache de la couche cartographique est index√© par `date:heure` : chaque
+ * heure consult√©e y ajoute une entr√©e de 1 579 points, et rien ne les supprimait
+ * ensuite. Le service API d√©marre au boot et tourne des mois : sans √©viction, la
+ * Map grossit ind√©finiment en m√©moire.
  */
-describe('cache de prÈvisions : Èviction des entrÈes inutiles', () => {
+describe('cache de pr√©visions : √©viction des entr√©es inutiles', () => {
   const MINUTE = 60_000;
 
-  it('supprime les entrÈes expirÈes', () => {
+  it('supprime les entr√©es expir√©es', () => {
     const cache = new Map([
       ['perime', { expiresAt: Date.now() - MINUTE }],
       ['vivant', { expiresAt: Date.now() + 10 * MINUTE }],
@@ -123,7 +195,7 @@ describe('cache de prÈvisions : Èviction des entrÈes inutiles', () => {
     expect(cache.has('vivant')).toBe(true);
   });
 
-  it('ne touche pas ‡ un cache sain', () => {
+  it('ne touche pas √† un cache sain', () => {
     const cache = new Map([
       ['a', { expiresAt: Date.now() + MINUTE }],
       ['b', { expiresAt: Date.now() + 2 * MINUTE }],
@@ -134,10 +206,10 @@ describe('cache de prÈvisions : Èviction des entrÈes inutiles', () => {
     expect(cache.size).toBe(2);
   });
 
-  it('plafonne un cache saturÈ en sacrifiant les entrÈes les plus proches de l`expiration', () => {
-    // 400 entrÈes vivantes : le plafond doit les ramener ‡ 288. On donne des
-    // ÈchÈances croissantes pour vÈrifier que l'Èviction retire bien les plus
-    // tÙt, pas les premiËres insÈrÈes.
+  it('plafonne un cache satur√© en sacrifiant les entr√©es les plus proches de l expiration', () => {
+    // 400 entr√©es vivantes : le plafond doit les ramener √† 288. On donne des
+    // chances croissantes pour v√©rifier que l'√©viction retire bien les plus
+    // t√¥t, pas les premi√®res ins√©r√©es.
     const base = Date.now() + MINUTE;
     const cache = new Map<string, { expiresAt: number }>();
     for (let i = 0; i < 400; i += 1) {
@@ -147,10 +219,10 @@ describe('cache de prÈvisions : Èviction des entrÈes inutiles', () => {
     pruneForecastCache(cache);
 
     expect(cache.size).toBe(288);
-    // Les 112 premiËres (les plus proches de l'expiration) sont parties.
+    // Les 112 premi√®res (les plus proches de l'expiration) sont parties.
     expect(cache.has('h0')).toBe(false);
     expect(cache.has('h111')).toBe(false);
-    // Les plus lointaines sont restÈes.
+    // Les plus lointaines sont rest√©es.
     expect(cache.has('h112')).toBe(true);
     expect(cache.has('h399')).toBe(true);
   });

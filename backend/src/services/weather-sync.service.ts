@@ -6,6 +6,7 @@ import { weatherRepository } from '../repositories/weather.repository';
 import type { WeatherInsertData, WeatherHourlyInsertData } from '../repositories/weather.repository';
 import { weatherSyncRepository } from '../repositories/weather-sync.repository';
 import { getWeatherProvider } from './weather-provider';
+import { getQuotaSnapshot } from './weather-quota';
 import { AutomationRunStatus } from '../types/automation.types';
 import { hazardDetectionService } from './hazard-detection.service';
 import { exposureService } from './exposure.service';
@@ -690,6 +691,7 @@ export const weatherSyncService = {
         refreshIntervalMinutes: s.refreshIntervalMinutes,
         keyConfigured: false,
       })),
+      quota: await getQuotaSnapshot(),
       sync: {
         observations: {
           lastRun: obsLastRun,

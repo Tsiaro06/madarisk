@@ -59,6 +59,14 @@ const envSchema = z.object({
   // cout d'un appel par le nombre de jours x variables.
   OPEN_METEO_PAST_DAYS: z.coerce.number().int().min(0).max(7).default(1),
 
+  // Plafond d'appels Open-Meteo que l'API s'autorise par jour UTC.
+  //
+  // L'offre gratuite est un plafond DUR de 10 000 appels, et une cle API ne
+  // l'augmente pas : le depassement se paie en 429 jusqu'au reset de 00:00 UTC,
+  // c'est-a-dire jusqu'a la perte de toutes les donnees meteo de la journee. Une
+  // marge de 1000 sur 10 000 laisse la place a une relance manuelle d'urgence.
+  OPEN_METEO_DAILY_BUDGET: z.coerce.number().int().min(1000).max(10000).default(9000),
+
   DGM_MAPROOM_BASE_URL: z.string().default('https://map.meteomadagascar.mg'),
   DGM_MAPROOM_TIMEOUT_MS: z.coerce.number().default(20000),
   DGM_MAPROOM_INGEST_CRON: z.string().default('0 6 * * *'),

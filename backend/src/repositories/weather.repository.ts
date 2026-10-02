@@ -484,6 +484,64 @@ async function purgeHourlyBatch(cutoffIso: string): Promise<number> {
   return result.rowCount ?? 0;
 }
 
+/**
+ * Consommation approchee du quota Open-Meteo pour le jour UTC courant.
+ *
+ * L'UPSERT rebat le compteur si le jour a change : inutile de purger les lignes
+ * des jours precedents, `quota_day` suffit a les neutraliser.
+ */
+async function readProviderQuota(provider: string): Promise<{ day: string; consumed: number }> {
+  const result = await db.query<{ quota_day: string; consumed_calls: string }>(
+    `INSERT INTO weather_provider_quota (provider, quota_day, consumed_calls)
+     VALUES ($1, (now() AT TIME ZONE 'UTC')::date, 0)
+     ON CONFLICT (provider) DO UPDATE
+       SET quota_day = (now() AT TIME ZONE 'UTC')::date,
+           -- Remise a zero obligatoire : sans cela, la consommation de la veille
+           -- serait reportee sur le nouveau jour et l'API se refuserait des runs
+           -- alors que le compteur du fournisseur, lui, est reparti de zero.
+           consumed_calls = 0,
+           updated_at = now()
+     WHERE weather_provider_quota.quota_day <> (now() AT TIME ZONE 'UTC')::date
+     RETURNING quota_day::text AS quota_day, consumed_calls`,
+    [provider],
+  );
+  // Aucun ligne retournee = la ligne existe deja pour le jour courant : on relit.
+  if (result.rows[0]) {
+    return { day: result.rows[0].quota_day, consumed: Number(result.rows[0].consumed_calls) };
+  }
+  const current = await db.query<{ quota_day: string; consumed_calls: string }>(
+    // `::text` indispensable : pg transforme une colonne DATE en Date JS au
+    // minuit LOCAL, et la re-serialisation en ISO reculerait le jour d'un
+    // decalage (le 02/03/UTC ressortait en 01/03 a 21:00Z).
+    `SELECT quota_day::text AS quota_day, consumed_calls FROM weather_provider_quota WHERE provider = $1`,
+    [provider],
+  );
+  return {
+    day: current.rows[0]?.quota_day ?? new Date().toISOString().slice(0, 10),
+    consumed: Number(current.rows[0]?.consumed_calls ?? 0),
+  };
+}
+
+/** Ajoute un cout commande au compteur du jour, en un aller-retour seulement. */
+async function addProviderQuota(
+  provider: string,
+  calls: number,
+): Promise<{ day: string; consumed: number }> {
+  await readProviderQuota(provider);
+  const result = await db.query<{ quota_day: string; consumed_calls: string }>(
+    `UPDATE weather_provider_quota
+        SET consumed_calls = consumed_calls + $2,
+            updated_at = now()
+      WHERE provider = $1
+      RETURNING quota_day, consumed_calls`,
+    [provider, calls],
+  );
+  return {
+    day: result.rows[0]?.quota_day ?? new Date().toISOString().slice(0, 10),
+    consumed: Number(result.rows[0]?.consumed_calls ?? 0),
+  };
+}
+
 export const weatherRepository = {
   async verifyCommuneExists(communeId: string): Promise<boolean> {
     const result = await db.query<CountRow>(
@@ -491,6 +549,17 @@ export const weatherRepository = {
       [communeId],
     );
     return parseCount(result.rows[0]) > 0;
+  },
+
+  async getProviderQuota(provider: string): Promise<{ day: string; consumed: number }> {
+    return readProviderQuota(provider);
+  },
+
+  async addProviderQuota(
+    provider: string,
+    calls: number,
+  ): Promise<{ day: string; consumed: number }> {
+    return addProviderQuota(provider, calls);
   },
 
   async getSourceId(): Promise<string> {

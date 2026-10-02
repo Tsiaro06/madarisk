@@ -199,6 +199,19 @@ export interface WeatherSyncRunInfo {
   errorMessage: string | null;
 }
 
+export interface WeatherQuotaInfo {
+  /** Jour UTC au format `YYYY-MM-DD`. */
+  day: string;
+  /** Appels déjà réservés depuis 00:00 UTC. */
+  consumedCalls: number;
+  /** Plafond auto-imposé, sous les 10 000 de l'offre gratuite. */
+  budgetCalls: number;
+  /** Ce qu'il reste avant que l'API refuse de partir. */
+  remainingCalls: number;
+  /** Reset du compteur chez Open-Meteo. */
+  resetsAt: string;
+}
+
 export interface WeatherMonitoringInfo {
   generatedAt: string;
   sources: {
@@ -209,6 +222,8 @@ export interface WeatherMonitoringInfo {
     refreshIntervalMinutes: number;
     keyConfigured: boolean;
   }[];
+  /** Budget quotidien du fournisseur : la cause d'échec la plus invisible. */
+  quota: WeatherQuotaInfo;
   sync: {
     observations: {
       lastRun: WeatherSyncRunInfo | null;

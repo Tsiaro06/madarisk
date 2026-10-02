@@ -12,6 +12,14 @@ import {
   WeatherHourPoint,
 } from '../types/weather.types';
 import { AppError } from '../utils/app-error';
+import {
+  classifyRateLimit,
+  dailyResetRetryAfter,
+  nextDailyReset,
+  rateLimitMessage,
+  reserveQuota,
+  type RateLimitKind,
+} from './weather-quota';
 
 interface OpenMeteoCurrentResponse {
   temperature_2m: number | null;
@@ -204,6 +212,8 @@ export class OpenMeteoProvider implements WeatherProvider {
   private readonly maxRetries = 2;
   private readonly batchMaxRetries = 3;
   private rateLimitedUntil = 0;
+  /** Nature du plafond ayant fermé le circuit, pour adapter le message. */
+  private rateLimitKind: RateLimitKind | null = null;
   private readonly forecastCache = new Map<string, ForecastCacheEntry>();
   private readonly batchForecastCache = new Map<
     string,
@@ -228,6 +238,22 @@ export class OpenMeteoProvider implements WeatherProvider {
    * rien : chaque sous-périmètre est déjà traité en série en interne.
    */
   private queue: Promise<unknown> = Promise.resolve();
+
+  /**
+   * Interrompt un batch quand le quota journalier est épuisé.
+   *
+   * Sans cette garde, un batch qui a reçu un 429 journalier enchaîne jusqu'à 5
+   * passes de lots : chaque passe attend, échoue, et le run se termine sur un
+   * décompte de 1579 communes en échec. Relancer ne peut pas aboutir avant le
+   * reset, on rend donc une erreur unique, datée, que le frontend sait exploiter.
+   */
+  private abortIfDailyQuotaExhausted(): void {
+    if (this.rateLimitKind !== 'daily' || Date.now() >= this.rateLimitedUntil) return;
+    throw AppError.tooManyRequests(
+      rateLimitMessage('daily', new Date(this.rateLimitedUntil)),
+      dailyResetRetryAfter(),
+    );
+  }
 
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
     // `then(task, task)` : un appel précédent en échec ne doit pas bloquer la
@@ -261,12 +287,14 @@ export class OpenMeteoProvider implements WeatherProvider {
 
   private async requestNow<T>(params: Record<string, unknown>, retries: number): Promise<T> {
     if (Date.now() < this.rateLimitedUntil) {
+      const resetAt = new Date(this.rateLimitedUntil);
       logger.warn(
-        { until: new Date(this.rateLimitedUntil).toISOString() },
+        { until: resetAt.toISOString(), kind: this.rateLimitKind },
         'Open-Meteo : circuit couvert activé, requête court-circuitée',
       );
       throw AppError.tooManyRequests(
-        'Limite de requêtes Open-Meteo atteinte. Réessayez dans environ une heure.',
+        rateLimitMessage(this.rateLimitKind ?? 'hourly', resetAt),
+        this.rateLimitKind === 'daily' ? dailyResetRetryAfter() : undefined,
       );
     }
 
@@ -283,13 +311,38 @@ export class OpenMeteoProvider implements WeatherProvider {
           const reason = String(
             (axiosErr?.response?.data as { reason?: unknown } | undefined)?.reason ?? '',
           ).toLowerCase();
-          const hourlyLimit = reason.includes('hour') || reason.includes('next hour');
-          if (hourlyLimit) {
+          const kind = classifyRateLimit(reason);
+
+          // Plafond journalier : aucune relance ne peut aboutir avant le reset
+          // de 00:00 UTC. On échoue tout de suite et on couvre le circuit jusqu'à
+          // cette échéance, pour que les autres runs de la journée ne repartent
+          // pas facturer des coordonnées que le fournisseur refusera aussi.
+          if (kind === 'daily') {
+            const resetAt = nextDailyReset();
+            this.rateLimitKind = 'daily';
+            this.rateLimitedUntil = resetAt.getTime();
+            logger.warn(
+              { reason, until: resetAt.toISOString() },
+              'Open-Meteo : quota journalier atteint, circuit couvert jusqu\'au reset',
+            );
+            // On leve ICI et pas via un `break` : après la boucle, l'erreur
+            // repasserait par `toApiError`, qui reconstruirait un 429 générique
+            // en perdant l'heure de reset. C'est pourtant le premier 429 de la
+            // journée, donc le seul que l'utilisateur voit, celui qui doit
+            // porter le `Retry-After`.
+            throw AppError.tooManyRequests(
+              rateLimitMessage('daily', resetAt),
+              dailyResetRetryAfter(),
+            );
+          }
+
+          if (kind === 'hourly') {
             const retryAfter = Number(axiosErr?.response?.headers?.['retry-after']);
             const waitMs =
               Number.isFinite(retryAfter) && retryAfter > 0
                 ? retryAfter * 1000
                 : RATE_LIMIT_RESET_MS;
+            this.rateLimitKind = 'hourly';
             this.rateLimitedUntil = Date.now() + Math.max(waitMs, 60 * 1000);
             logger.warn(
               { until: new Date(this.rateLimitedUntil).toISOString() },
@@ -459,6 +512,8 @@ export class OpenMeteoProvider implements WeatherProvider {
         const lats = chunk.map((c) => c.latitude.toFixed(3));
         const lons = chunk.map((c) => c.longitude.toFixed(3));
 
+        await reserveQuota(chunk.length);
+
         const data = await this.request<OpenMeteoResponse | OpenMeteoResponse[]>(
           {
             latitude: lats.join(','),
@@ -497,6 +552,10 @@ export class OpenMeteoProvider implements WeatherProvider {
         );
         return true;
       } catch (err) {
+        // Un 429 ne se converge pas : le circuit est déjà ouvert, et relancer
+        // les mêmes lots ne peut qu'aggraver la situation. Il remonte donc au
+        // caller, qui rendra une erreur unique et datée.
+        if (err instanceof AppError && err.statusCode === 429) throw err;
         logger.warn(
           { err, chunk: chunk.length },
           "Échec d'un lot du batch observations Open-Meteo",
@@ -507,6 +566,7 @@ export class OpenMeteoProvider implements WeatherProvider {
 
     let pending = chunks;
     for (let pass = 0; pass < BATCH_MAX_PASSES && pending.length > 0; pass += 1) {
+      this.abortIfDailyQuotaExhausted();
       if (pass > 0) {
         const backoff =
           BATCH_RETRY_BACKOFF_MS[Math.min(pass - 1, BATCH_RETRY_BACKOFF_MS.length - 1)] ?? 60_000;
@@ -523,6 +583,7 @@ export class OpenMeteoProvider implements WeatherProvider {
       );
       pending = failedChunks;
     }
+    this.abortIfDailyQuotaExhausted();
 
     if (pending.length > 0) {
       logger.warn(
@@ -556,6 +617,8 @@ export class OpenMeteoProvider implements WeatherProvider {
       try {
         const lats = chunk.map((c) => c.latitude.toFixed(3));
         const lons = chunk.map((c) => c.longitude.toFixed(3));
+
+        await reserveQuota(chunk.length);
 
         const data = await this.request<OpenMeteoResponse | OpenMeteoResponse[]>(
           {
@@ -604,6 +667,7 @@ export class OpenMeteoProvider implements WeatherProvider {
         );
         return true;
       } catch (err) {
+        if (err instanceof AppError && err.statusCode === 429) throw err;
         logger.warn({ err, chunk: chunk.length }, "Échec d'un lot du batch prévisions Open-Meteo");
         return false;
       }
@@ -611,6 +675,7 @@ export class OpenMeteoProvider implements WeatherProvider {
 
     let pending = chunks;
     for (let pass = 0; pass < BATCH_MAX_PASSES && pending.length > 0; pass += 1) {
+      this.abortIfDailyQuotaExhausted();
       if (pass > 0) {
         const backoff =
           BATCH_RETRY_BACKOFF_MS[Math.min(pass - 1, BATCH_RETRY_BACKOFF_MS.length - 1)] ?? 60_000;
@@ -627,6 +692,7 @@ export class OpenMeteoProvider implements WeatherProvider {
       );
       pending = failedChunks;
     }
+    this.abortIfDailyQuotaExhausted();
 
     if (pending.length > 0) {
       logger.warn(
@@ -715,6 +781,8 @@ export class OpenMeteoProvider implements WeatherProvider {
         const lats = chunk.map((c) => c.latitude.toFixed(3));
         const lons = chunk.map((c) => c.longitude.toFixed(3));
 
+        await reserveQuota(chunk.length);
+
         const data = await this.request<OpenMeteoResponse | OpenMeteoResponse[]>(
           {
             latitude: lats.join(','),
@@ -743,6 +811,10 @@ export class OpenMeteoProvider implements WeatherProvider {
         );
         return true;
       } catch (err) {
+        // Même règle qu'ailleurs : un 429 remonte. Une carte vide sans motif
+        // afficher serait plus trompeuse qu'un refus accompagné de l'heure de
+        // reset, que le frontend sait rendre.
+        if (err instanceof AppError && err.statusCode === 429) throw err;
         logger.warn({ err, chunk: chunk.length }, "Échec d'un lot du batch forecast Open-Meteo");
         return false;
       }
@@ -754,6 +826,13 @@ export class OpenMeteoProvider implements WeatherProvider {
     // vaut renvoyer les points déjà obtenus (et servir le cache au prochain
     // appel) que bloquer la carte pendant plusieurs minutes.
     let pending = chunks;
+    // Pas de `abortIfDailyQuotaExhausted` ici, contrairement aux batchs
+    // observations/prévisions : la couche cartographique n'a pas de run à
+    // arrêter, seulement une carte à servir. Mais le 429 remonte quand même,
+    // pour une raison symétrique : renvoyer une carte à moitié vide sans dire
+    // pourquoi serait plus trompeur qu'un refus daté, que le frontend sait
+    // rendre. Le repli sur la dernière observation connue reste le rôle du
+    // service de couche, pas celui du fournisseur.
     for (let pass = 0; pass < 2 && pending.length > 0; pass += 1) {
       if (pass > 0) await sleep(3000);
       const failedChunks: typeof chunks = [];
