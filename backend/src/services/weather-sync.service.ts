@@ -3,7 +3,11 @@ import { logger } from '../config/logger';
 import { env } from '../config/env';
 import { usersRepository } from '../repositories/users.repository';
 import { weatherRepository } from '../repositories/weather.repository';
-import type { WeatherInsertData, WeatherHourlyInsertData } from '../repositories/weather.repository';
+import type {
+  TargetCommune,
+  WeatherInsertData,
+  WeatherHourlyInsertData,
+} from '../repositories/weather.repository';
 import { weatherSyncRepository } from '../repositories/weather-sync.repository';
 import { getWeatherProvider } from './weather-provider';
 import { getQuotaSnapshot } from './weather-quota';
@@ -80,6 +84,61 @@ function observationCutoffIso(): string {
 
 function forecastCutoffIso(): string {
   return new Date(Date.now() - FORECAST_REFRESH_HOURS * 3_600_000).toISOString();
+}
+
+/**
+ * Réparation horaire : fenêtre et volume.
+ *
+ * La fenêtre est volontairement alignée sur ce que le fournisseur peut
+ * réellement resservir (réanalyse `past_days`), sinon des créneaux
+ * irrécupérables resteraient « manquants » à chaque run et le run
+ * auto-réparateur consommerait du quota sans jamais converger. L'heure en cours
+ * est exclue : elle est encore incomplète, l'exiger ferait cibler les 1579
+ * communes à chaque passage.
+ */
+const HOURLY_REPAIR_MAX_COMMUNES = 600;
+
+function hourlyRepairWindow(): { sinceIso: string; untilIso: string } {
+  const nowMs = Date.now();
+  const hourMs = 3_600_000;
+  const untilMs = Math.floor(nowMs / hourMs) * hourMs;
+  const pastDays = Math.max(1, env.OPEN_METEO_PAST_DAYS);
+  return {
+    sinceIso: new Date(untilMs - pastDays * 24 * hourMs).toISOString(),
+    untilIso: new Date(untilMs).toISOString(),
+  };
+}
+
+/**
+ * Communes à rafraîchir : celles dont l'observation est périmée, plus celles
+ * qui ont un trou horaire — sélection indépendante, sinon un run dont
+ * l'écriture horaire est tronquée n'est jamais rejoué sur ces communes et le
+ * trou devient définitif dans la courbe.
+ */
+async function selectObservationTargets(sourceId: string): Promise<TargetCommune[]> {
+  const [stale, gappy] = await Promise.all([
+    weatherRepository.communesNeedingObservations(sourceId, observationCutoffIso()),
+    weatherRepository
+      .communesMissingHourlySlots(
+        sourceId,
+        hourlyRepairWindow().sinceIso,
+        hourlyRepairWindow().untilIso,
+        HOURLY_REPAIR_MAX_COMMUNES,
+      )
+      .catch((err: unknown) => {
+        logger.warn({ err }, 'Sélection des trous horaires impossible, run limité aux observations');
+        return [] as TargetCommune[];
+      }),
+  ]);
+
+  const seen = new Set<string>();
+  const merged: TargetCommune[] = [];
+  for (const commune of [...gappy, ...stale]) {
+    if (seen.has(commune.id)) continue;
+    seen.add(commune.id);
+    merged.push(commune);
+  }
+  return merged;
 }
 
 export function dedupeByExisting<T>(
@@ -293,7 +352,7 @@ function observationRowsFromItems(items: WeatherCurrentBatchItem[]): {
  * peut être passée dans la réponse d'un run tardif (l'analyse réanalyse le
  * passé), et une heure à venir reste une prévision même après son passage.
  */
-function hourlyRowsFromItems(items: WeatherCurrentBatchItem[]): WeatherHourlyInsertData[] {
+export function hourlyRowsFromItems(items: WeatherCurrentBatchItem[]): WeatherHourlyInsertData[] {
   const nowMs = Date.now();
   const rows: WeatherHourlyInsertData[] = [];
 
@@ -333,9 +392,14 @@ async function syncObservations(opts: { communeIds?: string[] }): Promise<SyncOu
   // de données. On ne demande donc que les communes réellement à rafraîchir,
   // ce qui rend chaque run auto-réparateur : les trous se remplissent au run
   // suivant, et un run à jour ne coûte aucune requête HTTP.
+  //
+  // La sélection ne se limite pas à la péremption des observations : les communes
+  // ayant un créneau horaire manquant sont également ciblées, sinon un run dont
+  // l'écriture horaire est tronquée (429, chunk interrompu) n'est jamais rejoué
+  // sur ces communes et le trou reste définitivement vide dans la courbe.
   const communes = opts.communeIds?.length
     ? await weatherRepository.targetCommunes({ communeIds: opts.communeIds })
-    : await weatherRepository.communesNeedingObservations(sourceId, observationCutoffIso());
+    : await selectObservationTargets(sourceId);
   const inputs: BatchCommuneInput[] = communes.map((c) => ({
     id: c.id,
     latitude: c.latitude,

@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { weatherSyncTriggerSchema } from '../../src/validators/weather.validator';
-import { dedupeByExisting } from '../../src/services/weather-sync.service';
+import { dedupeByExisting, hourlyRowsFromItems } from '../../src/services/weather-sync.service';
 import { staleWeatherScopes } from '../../src/jobs/weather-refresh.job';
 import { hourlyRetentionCutoff } from '../../src/jobs/weather-hourly-purge.job';
 
@@ -281,5 +281,87 @@ describe('weather-sync : rétention de weather_hourly', () => {
     const cutoff = Date.parse(hourlyRetentionCutoff(NOW, 7));
     expect(cutoff).toBeLessThan(NOW - 24 * 3_600_000);
     expect(NOW + 48 * 3_600_000).toBeGreaterThan(cutoff);
+  });
+});
+
+/**
+ * Construction des lignes horaires.
+ *
+ * C'est ce mapping qui décide quelles heures entrent dans la courbe. S'il
+ * saute une heure, la courbe saute aussi : c'est ce qu'un run tronqué
+ * produisait.
+ */
+describe('weather-sync : lignes horaires', () => {
+  function item(hours: string[]) {
+    return [
+      {
+        communeId: 'c1',
+        latitude: -18.9,
+        longitude: 47.5,
+        current: {
+          observedAt: new Date().toISOString(),
+          temperatureC: 20,
+          humidityPercent: 50,
+          precipitationMm: 0,
+          rainfall24hMm: 0,
+          windSpeedKmh: 10,
+          windGustsKmh: 20,
+          windDirectionDeg: 180,
+          pressureHpa: 1010,
+          weatherCode: '1',
+        },
+        hours: hours.map((hourAt) => ({
+          hourAt,
+          temperatureC: 20,
+          humidityPercent: 50,
+          precipitationMm: 0,
+          rainMm: 0,
+          windSpeedKmh: 10,
+          windGustsKmh: 20,
+          windDirectionDeg: 180,
+          pressureHpa: 1010,
+          weatherCode: '1',
+        })),
+      },
+    ];
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('conserve toutes les heures fournies, sans les fusionner ni les combler', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-02T12:00:00Z'));
+
+    const hours = [
+      '2026-10-02T09:00:00.000Z',
+      '2026-10-02T10:00:00.000Z',
+      '2026-10-02T14:00:00.000Z',
+    ];
+    const rows = hourlyRowsFromItems(item(hours));
+
+    // Pas d'interpolation : 3 heures fournies, 3 lignes, et le saut reste visible.
+    expect(rows.map((r) => r.hourAt)).toEqual(hours);
+  });
+
+  it('bascule en prévision à la frontière de l’heure courante', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-02T12:30:00Z'));
+
+    const rows = hourlyRowsFromItems(
+      item(['2026-10-02T11:00:00.000Z', '2026-10-02T12:00:00.000Z', '2026-10-02T13:00:00.000Z']),
+    );
+
+    expect(rows.map((r) => r.isForecast)).toEqual([false, false, true]);
+  });
+
+  it('ignore une commune dont le fournisseur n a renvoyé aucune heure', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-10-02T12:00:00Z'));
+
+    // Rien à écrire : surtout pas de ligne à l'heure du run, qui masquerait le
+    // trou au lieu de le laisser visible.
+    expect(hourlyRowsFromItems(item([]))).toHaveLength(0);
   });
 });

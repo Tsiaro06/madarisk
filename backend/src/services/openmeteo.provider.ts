@@ -565,6 +565,8 @@ export class OpenMeteoProvider implements WeatherProvider {
     };
 
     let pending = chunks;
+    let rateLimitError: AppError | null = null;
+
     for (let pass = 0; pass < BATCH_MAX_PASSES && pending.length > 0; pass += 1) {
       this.abortIfDailyQuotaExhausted();
       if (pass > 0) {
@@ -576,14 +578,45 @@ export class OpenMeteoProvider implements WeatherProvider {
       await runPool(
         pending,
         async (chunk) => {
-          const ok = await fetchChunk(chunk);
-          if (!ok) failedChunks.push(chunk);
+          if (rateLimitError) return;
+          try {
+            const ok = await fetchChunk(chunk);
+            if (!ok) failedChunks.push(chunk);
+          } catch (err) {
+            // Un 429 survenu en cours de route ne doit pas effacer ce qui a
+            // déjà été récupéré sur les lots précédents : on cesse les lots
+            // restants et on conserve les observations et les heures déjà
+            // obtenues. Avant, l'exception remontait hors de `getCurrentBatch` et
+            // un rate-limit tardif transformait en trou définitif toute la
+            // fenêtre horaire déjà payée.
+            rateLimitError = err as AppError;
+          }
         },
         1,
       );
+      if (rateLimitError) break;
       pending = failedChunks;
     }
-    this.abortIfDailyQuotaExhausted();
+
+    // Run entièrement rate-limité : aucune donnée du tout, l'erreur 429 est
+    // alors la seule information utile et doit remonter telle quelle.
+    if (rateLimitError && results.length === 0) throw rateLimitError;
+
+    if (rateLimitError) {
+      // Le circuit vient d'être armé par le 429 : recontrôler ici ne ferait que
+      // renvoyer l'exception et annulerait les partiels que l'on veut justement
+      // conserver. On s'en tient à l'avertissement.
+      logger.warn(
+        {
+          communes: communes.length,
+          points: results.length,
+          lost: communes.length - results.length,
+        },
+        'Open-Meteo : limite de débit atteinte, batch interrompu avec les résultats partiels',
+      );
+    } else {
+      this.abortIfDailyQuotaExhausted();
+    }
 
     if (pending.length > 0) {
       logger.warn(

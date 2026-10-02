@@ -885,6 +885,63 @@ export const weatherRepository = {
   },
 
   /**
+   * Communes présentant au moins un créneau horaire manquant dans la fenêtre
+   * [`sinceIso`, `untilIso`).
+   *
+   * La réparation de la courbe horaire ne peut pas dépendre de la seule
+   * fraîcheur des observations : si l'écriture horaire d'un run est tronquée
+   * (limite de débit, chunk interrompu), la commune n'est plus re-ciblée tant que
+   * son observation reste fraîche et le trou devient définitif. Cette sélection
+   * est donc indépendante, et `limit` la borne pour qu'un run auto-réparateur ne
+   * puisse pas repartir sur les 1579 communes d'un coup.
+   *
+   * `sinceIso` et `untilIso` doivent être alignés sur l'heure exacte : les
+   * créneaux attendus sont les heures pleines de la fenêtre.
+   */
+  async communesMissingHourlySlots(
+    sourceId: string,
+    sinceIso: string,
+    untilIso: string,
+    limit: number,
+  ): Promise<TargetCommune[]> {
+    if (limit <= 0) return [];
+    const result = await db.query<{ id: string; longitude: string; latitude: string }>(
+      `WITH expected AS (
+         SELECT count(*)::int AS slot_count
+         FROM generate_series(
+           $2::timestamptz,
+           $3::timestamptz - interval '1 hour',
+           interval '1 hour'
+         )
+       ),
+       present AS (
+         SELECT h.commune_id, count(DISTINCT h.hour_at)::int AS slot_count
+         FROM weather_hourly h
+         WHERE h.weather_source_id = $1
+           AND h.hour_at >= $2::timestamptz
+           AND h.hour_at < $3::timestamptz
+         GROUP BY h.commune_id
+       )
+       SELECT
+         c.id,
+         ST_X(c.centroid)::text AS longitude,
+         ST_Y(c.centroid)::text AS latitude
+       FROM communes c
+       CROSS JOIN expected e
+       LEFT JOIN present p ON p.commune_id = c.id
+       WHERE COALESCE(p.slot_count, 0) < e.slot_count
+       ORDER BY COALESCE(p.slot_count, 0) ASC, c.name
+       LIMIT $4`,
+      [sourceId, sinceIso, untilIso, limit],
+    );
+    return result.rows.map((r) => ({
+      id: r.id,
+      longitude: parseFloat(r.longitude),
+      latitude: parseFloat(r.latitude),
+    }));
+  },
+
+  /**
    * Équivalent pour les prévisions : on ne re-télécharge que les communes
    * dont la prévision la plus récente a été générée avant `sinceIso`.
    */
