@@ -76,7 +76,10 @@ export const dashboardRepository = {
             WHERE TRUE${raClause}
             ORDER BY commune_id, assessed_at DESC
          ) latest WHERE risk_level = 'ELEVE') AS "highRiskCommunes",
-         (SELECT COALESCE(SUM(ec.exposed_population), 0)::text
+         -- Pas de COALESCE : SUM() sur des valeurs toutes nulles renvoie NULL,
+         -- ce qui signifie « population inconnue ». Ecraser en 0 afficherait une
+         -- absence de donnee comme une exposition reelle de zero habitant.
+         (SELECT SUM(ec.exposed_population)::text
             FROM exposed_communes ec
             JOIN hazard_events he ON he.id = ec.event_id
            WHERE ${expClause}) AS "exposedPopulation"`,

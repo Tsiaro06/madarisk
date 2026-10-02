@@ -42,16 +42,18 @@ async function verifyGeography(connectionString: string, ssl: boolean): Promise<
       communes: string;
       regions: string;
       orphan_communes: string;
-      invalid_districts: string;
-      invalid_communes: string;
-    }>(
+       invalid_districts: string;
+       invalid_communes: string;
+       communes_without_population: string;
+     }>(
       `SELECT
          (SELECT COUNT(*)::text FROM districts) AS districts,
          (SELECT COUNT(*)::text FROM communes) AS communes,
          (SELECT COUNT(*)::text FROM regions) AS regions,
          (SELECT COUNT(*)::text FROM communes WHERE district_id IS NULL) AS orphan_communes,
          (SELECT COUNT(*)::text FROM districts WHERE geom IS NULL OR NOT ST_IsValid(geom)) AS invalid_districts,
-         (SELECT COUNT(*)::text FROM communes WHERE geom IS NULL OR NOT ST_IsValid(geom)) AS invalid_communes`,
+         (SELECT COUNT(*)::text FROM communes WHERE geom IS NULL OR NOT ST_IsValid(geom)) AS invalid_communes,
+         (SELECT COUNT(*)::text FROM communes WHERE population IS NULL) AS communes_without_population`,
     );
     const row = counts.rows[0];
     const districts = Number(row.districts);
@@ -76,6 +78,18 @@ async function verifyGeography(connectionString: string, ssl: boolean): Promise<
     if (Number(row.orphan_communes) > 0) errors.push('des communes ne sont pas reliées à un district');
     if (Number(row.invalid_districts) > 0 || Number(row.invalid_communes) > 0) {
       errors.push('géométries invalides détectées');
+    }
+
+    // La population n'est pas bloquante pour charger la démo, mais son absence
+    // rend tout le calcul d'exposition muet : l'indicateur « population exposée »
+    // restera inconnu, et non nul. On le signale plutôt que de le laisser passer.
+    const communesWithoutPopulation = Number(row.communes_without_population);
+    if (communesWithoutPopulation > 0) {
+      console.warn(
+        `\n  ⚠ ${communesWithoutPopulation}/${communes} communes sans population : ` +
+          "l'indicateur « population exposée » restera vide (et non nul) tant que " +
+          'communes.population n\'est pas renseignée.',
+      );
     }
 
     const regionName = process.env.DEMO_REGION_NAME?.trim() || 'VAKINANKARATRA';
