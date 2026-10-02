@@ -1,22 +1,33 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowUpRight, Bell, LogOut, Settings } from 'lucide-react';
-import { useToast } from '@/components/ui/Toast';
+import { ArrowUpRight, LogOut, Settings } from 'lucide-react';
 import { useAuthStore } from '@/stores/authStore';
 import { formatNumber } from '@/lib/utils';
-import { dashboardData } from '@/data/dashboardData';
 import { RingGauge } from './RingGauge';
 
-export function BluePanel() {
+export interface BluePanelMiniStat {
+  id: string;
+  label: string;
+  value: string;
+  /** Pastille : couleur de la rampe de risque, pas une classe utilitaire. */
+  color: string;
+}
+
+export interface BluePanelProps {
+  /** Couverture météo : communes disposant d'une observation récente. */
+  coverage: {
+    percent: number;
+    current: number;
+    total: number;
+    detailLabel: string;
+  };
+  miniStats: BluePanelMiniStat[];
+  bigTotal: { value: number; label: string; ctaLabel: string; linkTo: string };
+}
+
+export function BluePanel({ coverage, miniStats, bigTotal }: BluePanelProps) {
   const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
-  const { toast } = useToast();
-  const { coverage, miniStats, bigTotal } = dashboardData;
-
-  const firstName = user?.firstName ?? 'Analyste';
-  const displayName = user ? `${user.firstName} ${user.lastName}` : 'Session de démonstration';
-  const email = user?.email ?? 'demo@madarisk.mg';
-  const initials = user ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}` : 'MR';
 
   async function handleLogout() {
     await logout();
@@ -29,7 +40,9 @@ export function BluePanel() {
   return (
     <aside className="dash-panel-blue dash-rise dash-rise-2 flex flex-col rounded-3xl p-6">
       <header>
-        <p className="text-2xl font-bold tracking-tight">Bonjour, {firstName} !</p>
+        <p className="text-2xl font-bold tracking-tight">
+          {user ? `Bonjour, ${user.firstName} !` : 'Bonjour !'}
+        </p>
         <p className="mt-1 text-sm text-white/75">
           Vue opérationnelle de MadaRisk Map — Madagascar
         </p>
@@ -66,7 +79,11 @@ export function BluePanel() {
             key={stat.id}
             className="flex items-center gap-3 rounded-2xl bg-white/12 px-4 py-3 ring-1 ring-inset ring-white/20 backdrop-blur-sm transition-colors duration-200 hover:bg-white/20"
           >
-            <span className={`size-2.5 shrink-0 rounded-full ${stat.dotClass}`} />
+            <span
+              aria-hidden="true"
+              className="size-2.5 shrink-0 rounded-full"
+              style={{ backgroundColor: stat.color }}
+            />
             <span className="min-w-0 flex-1 truncate text-sm text-white/85">{stat.label}</span>
             <span className="text-base font-bold tabular-nums">{stat.value}</span>
           </div>
@@ -92,17 +109,19 @@ export function BluePanel() {
         </div>
       </div>
 
-      {/* Pied : profil + actions */}
+      {/* Pied : profil + déconnexion */}
       <div className="mt-8 flex items-center gap-3 border-t border-white/20 pt-5">
         <div
           aria-hidden
           className="grid size-10 shrink-0 place-items-center rounded-full bg-dash-lime text-sm font-bold text-[#1a2e05]"
         >
-          {initials}
+          {user ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}` : '—'}
         </div>
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{displayName}</p>
-          <p className="truncate text-xs text-white/70">{email}</p>
+          <p className="truncate text-sm font-semibold">
+            {user ? `${user.firstName} ${user.lastName}` : 'Session inconnue'}
+          </p>
+          <p className="truncate text-xs text-white/70">{user?.email ?? '—'}</p>
         </div>
         <div className="flex items-center gap-1">
           <button
@@ -112,14 +131,6 @@ export function BluePanel() {
             onClick={() => navigate('/profil')}
           >
             <Settings className="size-4" />
-          </button>
-          <button
-            type="button"
-            aria-label="Notifications"
-            className={iconButton}
-            onClick={() => toast('Aucune nouvelle notification.', 'info')}
-          >
-            <Bell className="size-4" />
           </button>
           <button type="button" aria-label="Se déconnecter" className={iconButton} onClick={handleLogout}>
             <LogOut className="size-4" />

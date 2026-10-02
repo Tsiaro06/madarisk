@@ -21,20 +21,25 @@ export interface KpiDatum {
   hint: string;
   trend: TrendDelta;
   icon: 'siren' | 'alert' | 'users' | 'map';
+  /** `false` quand une hausse de l'indicateur est une mauvaise nouvelle. */
+  positiveIsGood: boolean;
 }
 
 /**
- * Écarts d'évolution : l'API `/dashboard/summary` n'expose pas encore d'historique,
- * ces valeurs sont donc des repères de maquette.
- * Remplacez-les par vos propres chiffres (ou renvoyez-les depuis l'API) et
- * mettez `value: null` pour masquer le badge.
+ * Écarts d'évolution.
+ *
+ * `/dashboard/summary` ne renvoie qu'un instantané : sans historique côté API,
+ * aucun écart n'est calculable. Les badges sont donc masqués (`value: null`)
+ * plutôt qu'alimentés par des pourcentages inventés -- un « +12 % » affiché
+ * sans source serait un mensonge chiffré, plus grave qu'un indicateur absent.
+ * Renseignez `value` le jour où l'API expose la série précédente.
  */
 export const SUMMARY_TRENDS: Record<string, TrendDelta> = {
-  activeEvents: { value: 12, label: 'vs 7 jours précédents' },
-  activeAlerts: { value: -15, label: 'vs 7 jours précédents' },
-  exposedPopulation: { value: 8, label: 'vs 7 jours précédents' },
+  activeEvents: { value: null, label: 'vs 7 jours précédents' },
+  activeAlerts: { value: null, label: 'vs 7 jours précédents' },
+  exposedPopulation: { value: null, label: 'vs 7 jours précédents' },
   totalDistricts: { value: null, label: 'vs 7 jours précédents' },
-  weatherCoverage: { value: 4, label: 'vs 7 jours précédents' },
+  weatherCoverage: { value: null, label: 'vs 7 jours précédents' },
 };
 
 const NO_TREND: TrendDelta = { value: null, label: 'vs 7 jours précédents' };
@@ -188,6 +193,7 @@ export function buildDashboardView(input: {
         hint: 'En cours ou suivis',
         trend: SUMMARY_TRENDS.activeEvents ?? NO_TREND,
         icon: 'siren',
+        positiveIsGood: false,
       },
       {
         id: 'activeAlerts',
@@ -196,6 +202,7 @@ export function buildDashboardView(input: {
         hint: 'Alertes en cours',
         trend: SUMMARY_TRENDS.activeAlerts ?? NO_TREND,
         icon: 'alert',
+        positiveIsGood: false,
       },
       {
         id: 'exposedPopulation',
@@ -205,6 +212,7 @@ export function buildDashboardView(input: {
         hint: 'Personnes en zone affectée',
         trend: SUMMARY_TRENDS.exposedPopulation ?? NO_TREND,
         icon: 'users',
+        positiveIsGood: false,
       },
       {
         id: 'totalDistricts',
@@ -213,6 +221,7 @@ export function buildDashboardView(input: {
         hint: 'Territoire supervisé',
         trend: SUMMARY_TRENDS.totalDistricts ?? NO_TREND,
         icon: 'map',
+        positiveIsGood: true,
       },
     ],
 

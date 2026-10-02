@@ -1,10 +1,14 @@
 import { useId } from 'react';
 import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 import type { LabelProps as RechartsLabelProps } from 'recharts';
-import { ArrowDownRight, ArrowUpRight, Download, MoreHorizontal, Share2 } from 'lucide-react';
-import { useToast } from '@/components/ui/Toast';
 import { cn, formatNumber } from '@/lib/utils';
-import type { TimelineDatum } from '@/data/dashboardData';
+
+export interface TimelineDatum {
+  label: string;
+  value: number;
+  /** Barre mise en avant (plus sombre + infobulle au-dessus). */
+  highlight: boolean;
+}
 
 interface BarChartCardProps {
   title: string;
@@ -12,8 +16,11 @@ interface BarChartCardProps {
   data: TimelineDatum[];
   total: number;
   totalUnit: string;
-  totalDelta: number;
-  positiveIsGood: boolean;
+  /**
+   * Variation en % sur la période précédente. `null` masque le badge : sans
+   * historique côté API, afficher un pourcentage serait l'inventer.
+   */
+  totalDelta: number | null;
 }
 
 interface TooltipEntry {
@@ -49,12 +56,9 @@ export function BarChartCard({
   total,
   totalUnit,
   totalDelta,
-  positiveIsGood,
 }: BarChartCardProps) {
   const rawId = useId().replace(/:/g, '');
   const gradId = `bar-grad-${rawId}`;
-  const { toast } = useToast();
-  const improving = totalDelta > 0 === positiveIsGood;
 
   // Infobulle de la barre mise en avant : bulle blanche suspendue au-dessus.
   const renderBarLabel = (props: RechartsLabelProps) => {
@@ -95,42 +99,11 @@ export function BarChartCard({
     );
   };
 
-  const actionButton =
-    'grid size-9 place-items-center rounded-full text-muted transition-colors hover:bg-dash-pale hover:text-dash';
-
   return (
     <section className="dash-card dash-rise dash-rise-4 p-5 sm:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold tracking-tight text-dash-title">{title}</h2>
-          <p className="mt-1 text-sm text-muted">{description}</p>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="Télécharger le rapport"
-            className={actionButton}
-            onClick={() => toast('Export PDF disponible dans Rapports.', 'info')}
-          >
-            <Download className="size-4" />
-          </button>
-          <button
-            type="button"
-            aria-label="Partager"
-            className={actionButton}
-            onClick={() => toast('Lien de partage copié.', 'info')}
-          >
-            <Share2 className="size-4" />
-          </button>
-          <button
-            type="button"
-            aria-label="Plus d'options"
-            className={actionButton}
-            onClick={() => toast("Options d'export disponibles.", 'info')}
-          >
-            <MoreHorizontal className="size-4" />
-          </button>
-        </div>
+      <header>
+        <h2 className="text-base font-semibold tracking-tight text-dash-title">{title}</h2>
+        <p className="mt-1 text-sm text-muted">{description}</p>
       </header>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto]">
@@ -173,16 +146,24 @@ export function BarChartCard({
             </p>
           </div>
           <div className="mt-4">
-            <span
-              className={cn(
-                'inline-flex items-center gap-0.5 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums',
-                improving ? 'bg-white text-dash-up' : 'bg-white text-dash-down',
-              )}
-            >
-              {totalDelta > 0 ? <ArrowUpRight className="size-3.5" /> : <ArrowDownRight className="size-3.5" />}
-              {Math.abs(totalDelta)} %
-            </span>
-            <p className="mt-2 text-xs text-muted">vs période précédente</p>
+            {totalDelta == null ? (
+              <p className="text-xs text-muted">
+                Période affichée, sans comparaison disponible
+              </p>
+            ) : (
+              <>
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-0.5 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums',
+                    totalDelta > 0 ? 'bg-white text-dash-down' : 'bg-white text-dash-up',
+                  )}
+                >
+                  {totalDelta > 0 ? '+' : ''}
+                  {totalDelta} %
+                </span>
+                <p className="mt-2 text-xs text-muted">vs période précédente</p>
+              </>
+            )}
           </div>
         </div>
       </div>
