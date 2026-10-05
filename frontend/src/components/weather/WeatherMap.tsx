@@ -150,7 +150,7 @@ function RefreshTooltips({
  *
  * Elle remplace le bouton du header : la cible naturelle d'une recherche
  * cartographique est la carte elle-même, et le champ reste visible pendant que
- * l'utilisateur déplace la carte. Coin haut-droit, seule zone libre — le centre
+ * l'utilisateur déplace la carte. Coin haut-gauche, seule zone libre — le centre
  * haut accueille les bandeaux d'état et le bas gauche la légende.
  */
 function CommuneSearchOverlay({
@@ -162,7 +162,7 @@ function CommuneSearchOverlay({
   const panelId = useId();
 
   return (
-    <div className="pointer-events-auto absolute right-3 top-3 z-[1000] flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2">
+    <div className="pointer-events-auto absolute left-3 top-3 z-[1000] flex max-w-[calc(100%-1.5rem)] flex-col items-start gap-2">
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
