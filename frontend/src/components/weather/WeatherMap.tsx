@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { GeoJSON, MapContainer, TileLayer, ZoomControl, useMap } from "react-leaflet";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { Layer, LeafletMouseEvent } from "leaflet";
-import { MapPinned, X } from "lucide-react";
 import L from "leaflet";
 import { CommuneMapSearch } from "@/components/crisis/CommuneMapSearch";
 import { getWeatherStyle, getWeatherValue } from "@/services/weather.service";
@@ -148,47 +147,19 @@ function RefreshTooltips({
 /**
  * Recherche de commune posée sur la carte.
  *
- * Elle remplace le bouton du header : la cible naturelle d'une recherche
- * cartographique est la carte elle-même, et le champ reste visible pendant que
- * l'utilisateur déplace la carte. Coin haut-gauche, seule zone libre — le centre
- * haut accueille les bandeaux d'état et le bas gauche la légende.
+ * Même rendu que sur la carte de salle de crise (`CrisisMapOverlay` en position
+ * « top-left ») : un champ toujours visible, sans bouton à activer. Le coin
+ * haut-gauche est la seule zone libre — le centre haut accueille les bandeaux
+ * d'état et le bas gauche la légende.
  */
 function CommuneSearchOverlay({
   onSelect,
 }: {
   onSelect: (communeId: string, communeName: string) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const panelId = useId();
-
   return (
-    <div className="pointer-events-auto absolute left-3 top-3 z-[1000] flex max-w-[calc(100%-1.5rem)] flex-col items-start gap-2">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
-        aria-controls={panelId}
-        title="Rechercher une commune sur la carte"
-        className="flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
-      >
-        {open ? (
-          <X className="size-3.5 text-muted" />
-        ) : (
-          <MapPinned className="size-3.5 text-brand-deep" />
-        )}
-        {open ? "Fermer" : "Rechercher une commune"}
-      </button>
-
-      {open ? (
-        <div id={panelId} className="w-[min(22rem,calc(100vw-6rem))]">
-          <CommuneMapSearch
-            onSelect={(communeId, communeName) => {
-              setOpen(false);
-              onSelect(communeId, communeName);
-            }}
-          />
-        </div>
-      ) : null}
+    <div className="pointer-events-none absolute left-3 top-3 z-[500]">
+      <CommuneMapSearch onSelect={onSelect} />
     </div>
   );
 }
@@ -310,13 +281,13 @@ export function WeatherMap({
         {focusTarget ? (
           <FlyToCommune data={collection} target={focusTarget} />
         ) : null}
+
+        <CommuneSearchOverlay onSelect={handleSearchSelect} />
       </MapContainer>
 
       <div className="pointer-events-none absolute bottom-3 left-3 z-[500]">
         <WeatherLegend metric={metric} />
       </div>
-
-      <CommuneSearchOverlay onSelect={handleSearchSelect} />
     </div>
   );
 }
