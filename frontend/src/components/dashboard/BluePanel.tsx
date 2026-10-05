@@ -25,7 +25,6 @@ export interface BluePanelProps {
 }
 
 export function BluePanel({ coverage, miniStats, bigTotal }: BluePanelProps) {
-  const user = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const navigate = useNavigate();
 
@@ -39,11 +38,11 @@ export function BluePanel({ coverage, miniStats, bigTotal }: BluePanelProps) {
 
   return (
     <aside className="dash-card dash-rise dash-rise-2 flex flex-col p-6">
+      {/* La formule d'accueil et l'identité de l'utilisateur (avatar, nom,
+          e-mail) sont volontairement absentes : elles sont déjà affichées par la
+          barre latérale et répetaient le titre de la barre du haut. */}
       <header>
-        <p className="text-2xl font-bold tracking-tight text-dash-title">
-          {user ? `Bonjour, ${user.firstName} !` : 'Bonjour !'}
-        </p>
-        <p className="mt-1 text-sm text-muted">
+        <p className="text-sm font-semibold text-dash-title">
           Vue opérationnelle de MadaRisk Map — Madagascar
         </p>
       </header>
@@ -110,33 +109,19 @@ export function BluePanel({ coverage, miniStats, bigTotal }: BluePanelProps) {
         </div>
       </div>
 
-      {/* Pied : profil + déconnexion */}
-      <div className="mt-8 flex items-center gap-3 border-t border-line pt-5">
-        <div
-          aria-hidden
-          className="grid size-10 shrink-0 place-items-center rounded-full bg-dash-lime text-sm font-bold text-[#1a2e05]"
+      {/* Pied : profil + déconnexion, conservés après le retrait de l'identité */}
+      <div className="mt-auto flex items-center justify-end gap-1 border-t border-line pt-5">
+        <button
+          type="button"
+          aria-label="Mon profil"
+          className={iconButton}
+          onClick={() => navigate('/profil')}
         >
-          {user ? `${user.firstName[0] ?? ''}${user.lastName[0] ?? ''}` : '—'}
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold text-ink">
-            {user ? `${user.firstName} ${user.lastName}` : 'Session inconnue'}
-          </p>
-          <p className="truncate text-xs text-muted">{user?.email ?? '—'}</p>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            type="button"
-            aria-label="Mon profil"
-            className={iconButton}
-            onClick={() => navigate('/profil')}
-          >
-            <Settings className="size-4" />
-          </button>
-          <button type="button" aria-label="Se déconnecter" className={iconButton} onClick={handleLogout}>
-            <LogOut className="size-4" />
-          </button>
-        </div>
+          <Settings className="size-4" />
+        </button>
+        <button type="button" aria-label="Se déconnecter" className={iconButton} onClick={handleLogout}>
+          <LogOut className="size-4" />
+        </button>
       </div>
     </aside>
   );
