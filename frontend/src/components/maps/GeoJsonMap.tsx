@@ -13,6 +13,12 @@ interface GeoJsonMapProps {
   selectedId?: string | null;
   className?: string;
   showLegend?: boolean;
+  /**
+   * Affiche le simple découpage administratif : contours neutres, sans
+   * coloration par niveau de risque ni légende. Utilisé par la page
+   * Territoires, où la carte ne doit montrer que les limites.
+   */
+  boundariesOnly?: boolean;
 }
 
 function isRiskLevel(v: unknown): v is RiskLevel {
@@ -28,11 +34,43 @@ function trackKind(props: Record<string, unknown> | null): TrackKind | null {
   return null;
 }
 
-function styleForFeature(feature?: Feature, selectedId?: string | null): PathOptions {
+/** Contours neutres du mode « limites seules ». */
+const BOUNDARY_COLOR = '#64748b';
+const BOUNDARY_FILL = '#f1f5f9';
+
+/**
+ * Identifiant d'une entité. Les communes exposent `communeId`, les districts
+ * `districtId` : ni l'un ni l'autre n'est stocké dans `id` par le backend.
+ */
+function featureId(feature?: Feature): string {
+  const props = (feature?.properties ?? {}) as Record<string, unknown> | null;
+  return String(
+    props?.id ??
+      props?.communeId ??
+      props?.districtId ??
+      (feature?.id as string | number | undefined) ??
+      '',
+  );
+}
+
+function styleForFeature(
+  feature?: Feature,
+  selectedId?: string | null,
+  boundariesOnly?: boolean,
+): PathOptions {
+  const selected = selectedId != null && featureId(feature) === String(selectedId);
+
+  if (boundariesOnly) {
+    return {
+      color: selected ? '#0f172a' : BOUNDARY_COLOR,
+      weight: selected ? 3 : 1.2,
+      fillColor: selected ? '#e2e8f0' : BOUNDARY_FILL,
+      fillOpacity: selected ? 0.9 : 0.55,
+    };
+  }
+
   const props = (feature?.properties ?? {}) as Record<string, unknown> | null;
   const risk = props?.riskLevel ?? props?.risk_level ?? props?.niveau;
-  const id = String(props?.id ?? props?.communeId ?? props?.commune_id ?? '');
-  const selected = selectedId != null && id === String(selectedId);
   const track = trackKind(props);
   let color = '#03224c';
   let dashArray: PathOptions['dashArray'];
@@ -68,7 +106,18 @@ function FitBounds({ data }: { data: FeatureCollection }) {
 
 function featureLabel(feature: Feature): string {
   const p = (feature.properties ?? {}) as Record<string, unknown>;
-  return String(p.name ?? p.communeName ?? p.nom ?? p.title ?? p.id ?? 'Entité');
+  return String(
+    p.name ??
+      p.communeName ??
+      p.nom ??
+      p.title ??
+      // Les entités de `/territories/map/*` portent leur nom dans `commune`
+      // (communes) ou `district` (districts).
+      p.commune ??
+      p.district ??
+      p.id ??
+      'Entité',
+  );
 }
 
 export function GeoJsonMap({
@@ -78,6 +127,7 @@ export function GeoJsonMap({
   selectedId,
   className,
   showLegend = true,
+  boundariesOnly = false,
 }: GeoJsonMapProps) {
   const geoJsonRef = useRef<L.GeoJSON | null>(null);
   const collection = useMemo<FeatureCollection>(
@@ -103,21 +153,25 @@ export function GeoJsonMap({
     layer.eachLayer((l) => {
       const feature = (l as L.Layer & { feature?: Feature }).feature;
       if (feature && 'setStyle' in l) {
-        (l as L.Path).setStyle(styleForFeature(feature, selectedId));
+        (l as L.Path).setStyle(styleForFeature(feature, selectedId, boundariesOnly));
       }
     });
-  }, [selectedId, collection]);
+  }, [selectedId, collection, boundariesOnly]);
 
   const onEachFeature = (feature: Feature<Geometry>, layer: Layer) => {
     const p = (feature.properties ?? {}) as Record<string, unknown>;
     const risk = p.riskLevel ?? p.risk_level;
     const score = p.riskScore ?? p.risk_score;
     const name = featureLabel(feature);
-    const lines = [
-      `<strong>${name}</strong>`,
-      risk ? `Risque : ${isRiskLevel(risk) ? RISK_LABELS[risk] : String(risk)}` : null,
-      score != null ? `Score : ${String(score)}` : null,
-    ].filter(Boolean);
+    // En mode « limites seules », la bulle ne porte que le nom : ni risque ni
+    // score ne doivent apparaître sur la page Territoires.
+    const lines = boundariesOnly
+      ? [`<strong>${name}</strong>`]
+      : [
+          `<strong>${name}</strong>`,
+          risk ? `Risque : ${isRiskLevel(risk) ? RISK_LABELS[risk] : String(risk)}` : null,
+          score != null ? `Score : ${String(score)}` : null,
+        ].filter(Boolean);
     layer.bindPopup(lines.join('<br/>'));
     layer.on({
       click: (e: LeafletMouseEvent) => {
@@ -145,14 +199,17 @@ export function GeoJsonMap({
           <GeoJSON
             key={JSON.stringify(collection.features?.length ?? 0) + String(selectedId ?? '')}
             data={collection}
-            style={(feature) => styleForFeature(feature, selectedId)}
+            style={(feature) => styleForFeature(feature, selectedId, boundariesOnly)}
             onEachFeature={onEachFeature}
             ref={geoJsonRef as never}
           />
           {collection.features.length > 0 ? <FitBounds data={collection} /> : null}
         </MapContainer>
       </div>
-      {showLegend && collection.features.length > 0 && (hasRiskFeatures || hasTrackFeatures) ? (
+      {showLegend &&
+      !boundariesOnly &&
+      collection.features.length > 0 &&
+      (hasRiskFeatures || hasTrackFeatures) ? (
         <div className="absolute bottom-3 left-3 z-[400] max-w-[min(18rem,80%)] rounded-lg border border-white/60 bg-white/95 px-3 py-2 text-xs shadow-md backdrop-blur">
           {hasTrackFeatures ? (
             <div className="mb-1.5">

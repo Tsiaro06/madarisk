@@ -32,16 +32,30 @@ export function TerritoiresPage() {
     enabled: tab === 'communes',
   });
 
-  const mapQ = useQuery({
-    queryKey: ['territories', 'map-communes', q],
-    queryFn: () => territoriesApi.mapCommunes({ search: q || undefined }),
+  // La carte ne dépend pas de la recherche : `/territories/map/*` n'accepte
+  // aucun filtre de nom côté backend, elle affiche toujours toutes les limites
+  // de l'échelle active.
+  const mapCommunesQ = useQuery({
+    queryKey: ['territories', 'map-communes'],
+    queryFn: () => territoriesApi.mapCommunes(),
     enabled: tab === 'communes',
   });
+
+  const mapDistrictsQ = useQuery({
+    queryKey: ['territories', 'map-districts'],
+    queryFn: () => territoriesApi.mapDistricts(),
+    enabled: tab === 'districts',
+  });
+
+  const mapData = tab === 'communes' ? mapCommunesQ.data : mapDistrictsQ.data;
+  const mapLoading = tab === 'communes' ? mapCommunesQ.isLoading : mapDistrictsQ.isLoading;
 
   const meta = tab === 'districts' ? districtsQ.data?.meta : communesQ.data?.meta;
   const loading = tab === 'districts' ? districtsQ.isLoading : communesQ.isLoading;
   const tabError =
-    tab === 'districts' ? districtsQ.isError : communesQ.isError || mapQ.isError;
+    tab === 'districts'
+      ? districtsQ.isError || mapDistrictsQ.isError
+      : communesQ.isError || mapCommunesQ.isError;
 
   return (
     <div className="space-y-5">
@@ -72,6 +86,7 @@ export function TerritoiresPage() {
               onClick={() => {
                 setTab(key);
                 setPage(1);
+                setSelectedId(null);
               }}
             >
               {label}
@@ -182,33 +197,25 @@ export function TerritoiresPage() {
           )}
         </Card>
 
-        {tab === 'communes' ? (
-          <Card title="Carte des communes">
-            {mapQ.isLoading ? (
-              <Spinner />
-            ) : (
-              <GeoJsonMap
-                data={mapQ.data}
-                height={520}
-                selectedId={selectedId}
-                onFeatureClick={(f) => {
-                  const id = String(
-                    (f.properties as Record<string, unknown> | null)?.id ??
-                      (f.properties as Record<string, unknown> | null)?.communeId ??
-                      '',
-                  );
-                  if (id) setSelectedId(id);
-                }}
-              />
-            )}
-          </Card>
-        ) : (
-          <Card title="Astuce">
-            <p className="text-sm text-muted">
-              Basculez sur l&apos;onglet Communes pour visualiser la géométrie et accéder au détail.
-            </p>
-          </Card>
-        )}
+        <Card title={tab === 'communes' ? 'Limites des communes' : 'Limites des districts'}>
+          {mapLoading ? (
+            <Spinner />
+          ) : (mapData?.features?.length ?? 0) === 0 ? (
+            <EmptyState title={tab === 'communes' ? 'Aucune commune' : 'Aucun district'} />
+          ) : (
+            <GeoJsonMap
+              data={mapData}
+              height={520}
+              boundariesOnly
+              selectedId={selectedId}
+              onFeatureClick={(f) => {
+                const props = (f.properties ?? {}) as Record<string, unknown>;
+                const id = props.id ?? props.communeId ?? props.districtId ?? f.id;
+                if (id) setSelectedId(String(id));
+              }}
+            />
+          )}
+        </Card>
       </div>
     </div>
   );
