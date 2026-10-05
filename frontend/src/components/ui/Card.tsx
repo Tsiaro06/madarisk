@@ -12,7 +12,7 @@ export function Card({ title, description, actions, children, className, ...prop
   return (
     <section
       className={cn(
-        'rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]',
+        'rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_10px_30px_-12px_rgba(15,23,42,0.16)]',
         className,
       )}
       {...props}

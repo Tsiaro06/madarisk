@@ -23,7 +23,7 @@ interface TopbarProps {
  */
 export function Topbar({ lastUpdatedAt, isFetching, error, onRetry }: TopbarProps) {
   return (
-    <header className="dash-rise dash-rise-1 flex flex-col gap-4 rounded-3xl border border-line bg-surface px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center lg:gap-6">
+    <header className="dash-rise dash-rise-1 flex flex-col gap-4 rounded-3xl border border-line bg-surface px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.05),0_10px_30px_-12px_rgba(15,23,42,0.16)] lg:flex-row lg:items-center lg:gap-6">
       {/* Marque */}
       <div className="flex min-w-0 items-center gap-3 lg:w-64">
         <span
