@@ -137,8 +137,10 @@ export function BarChartCard({
           </ResponsiveContainer>
         </div>
 
-        {/* Total de la période, à droite du graphique */}
-        <div className="flex min-w-[180px] flex-col justify-between rounded-3xl bg-dash-pale p-5">
+        {/* Total de la période, à droite du graphique. Blanc comme le reste des
+            cartes du tableau de bord : sans la bordure, il disparaîtrait dans
+            la carte blanche qui le contient. */}
+        <div className="flex min-w-[180px] flex-col justify-between rounded-3xl border border-line bg-white p-5">
           <div>
             <p className="text-xs font-medium text-muted">Total {totalUnit}</p>
             <p className="mt-2 text-4xl font-extrabold tracking-tight tabular-nums text-dash-title">
@@ -155,7 +157,7 @@ export function BarChartCard({
                 <span
                   className={cn(
                     'inline-flex items-center gap-0.5 rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums',
-                    totalDelta > 0 ? 'bg-white text-dash-down' : 'bg-white text-dash-up',
+                    totalDelta > 0 ? 'bg-dash-pale text-dash-down' : 'bg-dash-pale text-dash-up',
                   )}
                 >
                   {totalDelta > 0 ? '+' : ''}

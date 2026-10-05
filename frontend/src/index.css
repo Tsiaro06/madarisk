@@ -381,16 +381,6 @@ h3 {
   }
 }
 
-/* Panneau opérationnel gauche : dégradé bleu vif et halos clairs diagonaux. */
-.dash-panel-blue {
-  color: #ffffff;
-  background:
-    radial-gradient(ellipse 80% 50% at 88% 0%, rgba(255, 255, 255, 0.28), transparent 62%),
-    radial-gradient(ellipse 70% 55% at -10% 104%, rgba(20, 33, 110, 0.55), transparent 66%),
-    linear-gradient(158deg, #5b82f5 0%, #2f5bea 48%, #2140c4 100%);
-  box-shadow: 0 28px 60px -30px rgba(33, 64, 196, 0.7);
-}
-
 /* Barre de progression segmentée : remplissage animé au chargement. */
 @keyframes dash-fill-x {
   from {
