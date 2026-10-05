@@ -52,7 +52,6 @@ interface WeatherCommuneDetailsPanelProps {
   mode: WeatherViewMode;
   date: string;
   hour: number | null;
-  sourceName: string;
   lastDataAt: string | null;
   lastSyncAt: string | null;
   onClose?: () => void;
@@ -76,7 +75,6 @@ export function WeatherCommuneDetailsPanel({
   mode,
   date,
   hour,
-  sourceName,
   lastDataAt,
   lastSyncAt,
   onClose,
@@ -265,10 +263,6 @@ export function WeatherCommuneDetailsPanel({
             </p>
             <div className="mt-2 space-y-1 border-t border-line pt-2 text-xs text-muted">
               <p>
-                <span className="font-medium text-ink">Source :</span>{" "}
-                {sourceName || "—"}
-              </p>
-              <p>
                 <span className="font-medium text-ink">Date de donnée :</span>{" "}
                 {point?.observedAt
                   ? formatDate(point.observedAt)
@@ -310,10 +304,10 @@ export function WeatherCommuneDetailsPanel({
             }
             description={
               hourlyChart.length > 0
-                ? `Relevés horaires Open-Meteo, en ${config.unit}`
+                ? `Relevés horaires, en ${config.unit}`
                 : isHistory
                   ? `Observations enregistrées autour du ${displayDate}, en ${config.unit}`
-                  : `Horaires Open-Meteo, en ${config.unit}`
+                  : `Prévisions horaires, en ${config.unit}`
             }
             className="!p-4"
           >
@@ -424,17 +418,16 @@ export function WeatherCommuneDetailsPanel({
             ) : forecastQ.isError ? (
               <EmptyState
                 title={
-                  isRateLimited(forecastQ.error)
+                  isRateLimited(forecastQ.error) ||
+                  isServiceUnavailable(forecastQ.error)
                     ? "Prévisions indisponibles"
-                    : isServiceUnavailable(forecastQ.error)
-                      ? "Service météo indisponible"
-                      : "Erreur de chargement"
+                    : "Erreur de chargement"
                 }
                 description={
                   isRateLimited(forecastQ.error)
-                    ? "La limite de requêtes Open-Meteo est atteinte. Réessayez dans environ une heure."
+                    ? "La limite de requêtes est atteinte. Réessayez dans environ une heure."
                     : isServiceUnavailable(forecastQ.error)
-                      ? "La source de prévisions ne répond pas actuellement. Réessayez plus tard."
+                      ? "Les prévisions ne répondent pas actuellement. Réessayez plus tard."
                       : forecastQ.error instanceof Error
                         ? forecastQ.error.message
                         : "Vérifiez votre connexion."

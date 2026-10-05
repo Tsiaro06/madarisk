@@ -29,7 +29,6 @@ interface WeatherControlsProps {
   districtId: string;
   districts: DistrictOption[];
   maxDate: string | null;
-  sourceName: string;
   lastDataAt: string | null;
   lastSyncAt: string | null;
   onMetricChange: (metric: WeatherMetric) => void;
@@ -49,7 +48,6 @@ export function WeatherControls({
   districtId,
   districts,
   maxDate,
-  sourceName,
   lastDataAt,
   lastSyncAt,
   onMetricChange,
@@ -169,10 +167,6 @@ export function WeatherControls({
 
       <div className="space-y-1.5 rounded-lg bg-gray-50 px-3 py-2.5 text-xs text-muted">
         <p>
-          <span className="font-medium text-ink">Source :</span>{" "}
-          {sourceName || "—"}
-        </p>
-        <p>
           <span className="font-medium text-ink">Date des données :</span>{" "}
           {lastDataAt ? formatDate(lastDataAt) : "—"}
         </p>
@@ -201,7 +195,7 @@ export function WeatherControls({
         </Button>
         <p className="mt-1.5 text-xs text-muted">
           {refreshProgress ??
-            "Synchronise les observations récentes (Open-Meteo) pour toutes les communes."}
+            "Synchronise les observations récentes pour toutes les communes."}
         </p>
       </AdministrativeInterventionPanel>
     </div>

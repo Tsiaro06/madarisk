@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Database, Info, Settings2, X } from "lucide-react";
+import { Info, Settings2, X } from "lucide-react";
 import { territoriesApi, weatherApi } from "@/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -96,17 +96,11 @@ export function WeatherMapPage() {
 
   const mode = getWeatherViewMode(date, hour);
 
-  // La couche carte sert les observations `current` d'Open-Meteo (voir
-  // OpenMeteoProvider.getCurrentBatch), jamais le produit décennal DGM. Les
-  // deux sources sont actives en base et `weather_sources` est trié par nom :
-  // prendre la première source active revenait donc à afficher « Météo
-  // Madagascar — Maproom DGM » au-dessus de données Open-Meteo. On sélectionne
-  // donc explicitement par `providerType`.
-  const sourceName =
-    monitoringQ.data?.sources.find((s) => s.providerType === "OPEN_METEO")?.name ??
-    monitoringQ.data?.sources.find((s) => s.isActive)?.name ??
-    "Open-Meteo";
-  const lastSyncAt = monitoringQ.data?.sync.observations.lastSuccessAt ?? null;
+  // Ni le fournisseur ni le nom de la source ne sont affichés : dans une salle de
+// crise l'utilisateur veut l'heure de la dernière observation, pas l'éditeur de
+// l'API qui l'a servie. La fraîcheur reste lisible (bandeau `STALE`, dates des
+// panneaux).
+const lastSyncAt = monitoringQ.data?.sync.observations.lastSuccessAt ?? null;
   const lastDataAt = weather.latestObservationAt ?? lastSyncAt;
   const selectedFeature = useMemo(() => {
     if (!selectedId || !communesQ.data) return null;
@@ -338,7 +332,6 @@ export function WeatherMapPage() {
       districtId={districtId}
       districts={districtOptions}
       maxDate={maxDate}
-      sourceName={sourceName}
       lastDataAt={lastDataAt}
       lastSyncAt={lastSyncAt}
       onMetricChange={setMetric}
@@ -363,7 +356,6 @@ export function WeatherMapPage() {
       mode={mode}
       date={date}
       hour={hour}
-      sourceName={sourceName}
       lastDataAt={lastDataAt}
       lastSyncAt={lastSyncAt}
       onClose={mobileDetails ? () => setMobileDetails(false) : undefined}
@@ -379,17 +371,6 @@ export function WeatherMapPage() {
           </p>
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <div className="hidden items-center gap-2 rounded-lg bg-gray-50 px-3 py-1.5 lg:flex">
-            <Database className="size-3.5 text-muted" />
-            <span className="text-xs text-muted">
-              {sourceName}
-              {lastDataAt ? (
-                <span className="ml-1 hidden xl:inline">
-                  · à jour au {new Date(lastDataAt).toLocaleDateString("fr-FR")}
-                </span>
-              ) : null}
-            </span>
-          </div>
           <WeatherModeBadge mode={mode} />
           <RefreshDataButton
             queryKey={["weather", "map-layer", "page"]}
@@ -450,8 +431,7 @@ export function WeatherMapPage() {
           ) : forecastUnavailable ? (
             <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 px-3 py-2 text-sm text-amber-800 shadow-sm">
               Prévisions momentanément indisponibles : la limite de requêtes
-              Open-Meteo est atteinte. Réessai automatique dans quelques
-              minutes.
+              est atteinte. Réessai automatique dans quelques minutes.
             </div>
           ) : noDataForHistory || noDataForObservation ? (
             <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-sky-300 bg-sky-50/95 px-3 py-2 text-sm text-sky-800 shadow-sm">
