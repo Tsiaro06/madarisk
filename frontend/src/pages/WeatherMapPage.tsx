@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Database, Info, MapPinned, Settings2, X } from "lucide-react";
+import { Database, Info, Settings2, X } from "lucide-react";
 import { territoriesApi, weatherApi } from "@/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -8,7 +8,6 @@ import { Spinner } from "@/components/ui/Spinner";
 import { useToast } from "@/components/ui/Toast";
 import { WeatherMap } from "@/components/weather/WeatherMap";
 import { WeatherControls } from "@/components/weather/WeatherControls";
-import { CommuneMapSearch } from "@/components/crisis/CommuneMapSearch";
 import {
   WeatherCommuneDetailsPanel,
   type SelectedCommune,
@@ -37,7 +36,6 @@ export function WeatherMapPage() {
   const [hour, setHour] = useState<number | null>(null);
   const [districtId, setDistrictId] = useState<string>("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [searchFocus, setSearchFocus] = useState<{
     id: string;
     nonce: number;
@@ -201,7 +199,6 @@ export function WeatherMapPage() {
 
   const handleSearchSelect = (id: string) => {
     setDistrictId("");
-    setSearchOpen(false);
     selectCommune(id);
     setSearchFocus((prev) => ({ id, nonce: (prev?.nonce ?? 0) + 1 }));
   };
@@ -394,13 +391,6 @@ export function WeatherMapPage() {
             </span>
           </div>
           <WeatherModeBadge mode={mode} />
-          <Button
-            variant={searchOpen ? "secondary" : "outline"}
-            size="sm"
-            onClick={() => setSearchOpen((v) => !v)}
-          >
-            <MapPinned className="size-4" /> Commune
-          </Button>
           <RefreshDataButton
             queryKey={["weather", "map-layer", "page"]}
             onRefresh={() => void qc.refetchQueries({ queryKey: ["weather"] })}
@@ -442,14 +432,9 @@ export function WeatherMapPage() {
               selectedCommuneId={selectedId}
               focusTarget={searchFocus}
               onSelectCommune={selectCommune}
+              onSearchSelect={handleSearchSelect}
             />
           )}
-
-          {searchOpen ? (
-            <div className="absolute left-3 top-3 z-[600]">
-              <CommuneMapSearch onSelect={handleSearchSelect} />
-            </div>
-          ) : null}
 
           {weather.query.isError ? (
             <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-red-300 bg-red-50/95 px-3 py-2 text-sm text-red-800 shadow-sm">

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { GeoJSON, MapContainer, TileLayer, ZoomControl, useMap } from "react-leaflet";
 import type { Feature, FeatureCollection, Geometry } from "geojson";
 import type { Layer, LeafletMouseEvent } from "leaflet";
+import { MapPinned, X } from "lucide-react";
 import L from "leaflet";
+import { CommuneMapSearch } from "@/components/crisis/CommuneMapSearch";
 import { getWeatherStyle, getWeatherValue } from "@/services/weather.service";
 import {
   formatWeatherValue,
@@ -19,6 +21,7 @@ interface WeatherMapProps {
   selectedCommuneId: string | null;
   focusTarget?: { id: string; nonce: number } | null;
   onSelectCommune: (communeId: string, communeName: string) => void;
+  onSearchSelect?: (communeId: string, communeName: string) => void;
 }
 
 function featureName(props: Record<string, unknown>): string {
@@ -142,6 +145,54 @@ function RefreshTooltips({
   return null;
 }
 
+/**
+ * Recherche de commune posée sur la carte.
+ *
+ * Elle remplace le bouton du header : la cible naturelle d'une recherche
+ * cartographique est la carte elle-même, et le champ reste visible pendant que
+ * l'utilisateur déplace la carte. Coin haut-droit, seule zone libre — le centre
+ * haut accueille les bandeaux d'état et le bas gauche la légende.
+ */
+function CommuneSearchOverlay({
+  onSelect,
+}: {
+  onSelect: (communeId: string, communeName: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelId = useId();
+
+  return (
+    <div className="pointer-events-auto absolute right-3 top-3 z-[1000] flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={panelId}
+        title="Rechercher une commune sur la carte"
+        className="flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
+      >
+        {open ? (
+          <X className="size-3.5 text-muted" />
+        ) : (
+          <MapPinned className="size-3.5 text-brand-deep" />
+        )}
+        {open ? "Fermer" : "Rechercher une commune"}
+      </button>
+
+      {open ? (
+        <div id={panelId} className="w-[min(22rem,calc(100vw-6rem))]">
+          <CommuneMapSearch
+            onSelect={(communeId, communeName) => {
+              setOpen(false);
+              onSelect(communeId, communeName);
+            }}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export function WeatherMap({
   communes,
   pointByCommune,
@@ -149,6 +200,7 @@ export function WeatherMap({
   selectedCommuneId,
   focusTarget = null,
   onSelectCommune,
+  onSearchSelect,
 }: WeatherMapProps) {
   const collection = useMemo<FeatureCollection>(
     () => communes ?? { type: "FeatureCollection", features: [] },
@@ -156,6 +208,13 @@ export function WeatherMap({
   );
   const pointLookup = pointByCommune;
   const selectedId = selectedCommuneId;
+
+  // La recherche sélectionne ET recentre : `onSearchSelect` permet au parent de
+  // remettre le filtre district à zéro avant que la commune ne soit résolue
+  // dans la couche GeoJSON.
+  const handleSearchSelect = (communeId: string, communeName: string) => {
+    (onSearchSelect ?? onSelectCommune)(communeId, communeName);
+  };
 
   // react-leaflet n'instancie le <GeoJSON> qu'une fois et n'applique ensuite
   // que `setStyle` : la clé de remontage ne doit donc changer que lorsque la
@@ -256,6 +315,8 @@ export function WeatherMap({
       <div className="pointer-events-none absolute bottom-3 left-3 z-[500]">
         <WeatherLegend metric={metric} />
       </div>
+
+      <CommuneSearchOverlay onSelect={handleSearchSelect} />
     </div>
   );
 }
