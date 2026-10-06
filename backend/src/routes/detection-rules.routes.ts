@@ -7,6 +7,8 @@ import { detectionRulesController } from '../controllers/detection-rules.control
 import {
   listDetectionRulesQuerySchema,
   detectionRuleIdParamsSchema,
+  createDetectionRuleSchema,
+  updateDetectionRuleSchema,
 } from '../validators/detection-rules.validator';
 
 const router = Router();
@@ -20,10 +22,28 @@ router.get(
   asyncHandler(detectionRulesController.listRules),
 );
 
+router.post(
+  '/',
+  validate({ body: createDetectionRuleSchema }),
+  asyncHandler(detectionRulesController.createRule),
+);
+
 router.get(
   '/:id',
   validate({ params: detectionRuleIdParamsSchema }),
   asyncHandler(detectionRulesController.getRule),
+);
+
+router.patch(
+  '/:id',
+  validate({ params: detectionRuleIdParamsSchema, body: updateDetectionRuleSchema }),
+  asyncHandler(detectionRulesController.updateRule),
+);
+
+router.delete(
+  '/:id',
+  validate({ params: detectionRuleIdParamsSchema }),
+  asyncHandler(detectionRulesController.deleteRule),
 );
 
 export default router;

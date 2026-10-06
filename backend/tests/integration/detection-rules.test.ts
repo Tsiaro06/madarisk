@@ -10,14 +10,18 @@ interface RuleRow {
 }
 
 let superAdmin: { id: string; token: string };
+let client: { id: string; token: string };
 let activeRuleId: string;
 let inactiveRuleId: string;
+const createdRuleIds: string[] = [];
 
 function makeEmail(suffix: string): string {
-  return `det_${suffix}_${Date.now()}@madarisk.test`;
+  return `det_${suffix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}@madarisk.test`;
 }
 
-async function createUserAndLogin(role: 'SUPER_ADMIN'): Promise<{ id: string; token: string }> {
+async function createUserAndLogin(
+  role: 'SUPER_ADMIN' | 'CLIENT',
+): Promise<{ id: string; token: string }> {
   const email = makeEmail(role.toLowerCase());
   const hash = await password.hash('Passw0rd!');
   const user = await usersRepository.create({
@@ -36,6 +40,7 @@ async function createUserAndLogin(role: 'SUPER_ADMIN'): Promise<{ id: string; to
 
 beforeAll(async () => {
   superAdmin = await createUserAndLogin('SUPER_ADMIN');
+  client = await createUserAndLogin('CLIENT');
 
   const activeInsert = await db.query<RuleRow>(
     `INSERT INTO hazard_detection_rules
@@ -68,10 +73,10 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  await db.query('DELETE FROM hazard_detection_rules WHERE id IN ($1, $2)', [
-    activeRuleId,
-    inactiveRuleId,
-  ]);
+  const ids = [activeRuleId, inactiveRuleId, ...createdRuleIds].filter(Boolean);
+  if (ids.length > 0) {
+    await db.query('DELETE FROM hazard_detection_rules WHERE id = ANY($1::uuid[])', [ids]);
+  }
 });
 
 describe('GET /api/v1/detection-rules', () => {
@@ -159,6 +164,134 @@ describe('GET /api/v1/detection-rules/:id', () => {
       .set('Authorization', `Bearer ${superAdmin.token}`);
 
     expect(res.status).toBe(422);
+  });
+});
+
+describe('POST /api/v1/detection-rules', () => {
+  const validBody = {
+    hazardType: 'FORTE_PLUIE',
+    metric: 'rainfall_24h_mm',
+    operator: 'GT',
+    threshold: 120,
+    durationMinutes: 0,
+    forecastHorizonHours: 0,
+    severityRules: [{ level: 'ELEVEE', min: 75 }],
+  };
+
+  it('retourne 401 sans jeton', async () => {
+    const res = await request(app).post('/api/v1/detection-rules').send(validBody);
+    expect(res.status).toBe(401);
+  });
+
+  it('retourne 403 pour un CLIENT', async () => {
+    const res = await request(app)
+      .post('/api/v1/detection-rules')
+      .set('Authorization', `Bearer ${client.token}`)
+      .send(validBody);
+    expect(res.status).toBe(403);
+  });
+
+  it('rejette un opérateur BETWEEN sans thresholdMax en 422', async () => {
+    const res = await request(app)
+      .post('/api/v1/detection-rules')
+      .set('Authorization', `Bearer ${superAdmin.token}`)
+      .send({ ...validBody, operator: 'BETWEEN', thresholdMax: undefined });
+
+    expect(res.status).toBe(422);
+    expect(res.body.success).toBe(false);
+  });
+
+  it('crée une règle (SUPER_ADMIN) et la retrouve en base', async () => {
+    const res = await request(app)
+      .post('/api/v1/detection-rules')
+      .set('Authorization', `Bearer ${superAdmin.token}`)
+      .send(validBody);
+
+    expect(res.status).toBe(201);
+    expect(res.body.success).toBe(true);
+    const rule = res.body.data;
+    createdRuleIds.push(rule.id);
+    expect(rule.hazardType).toBe('FORTE_PLUIE');
+    expect(rule.metric).toBe('rainfall_24h_mm');
+    expect(rule.operator).toBe('GT');
+    expect(rule.threshold).toBe(120);
+    expect(rule.isActive).toBe(true);
+    expect(rule.createdBy).toBe(superAdmin.id);
+    expect(rule.severityRules).toEqual([{ level: 'ELEVEE', min: 75 }]);
+
+    const fetched = await request(app)
+      .get(`/api/v1/detection-rules/${rule.id}`)
+      .set('Authorization', `Bearer ${superAdmin.token}`);
+    expect(fetched.status).toBe(200);
+    expect(fetched.body.data.threshold).toBe(120);
+  });
+});
+
+describe('PATCH /api/v1/detection-rules/:id', () => {
+  it('met à jour le seuil et l’activité d’une règle', async () => {
+    const create = await request(app)
+      .post('/api/v1/detection-rules')
+      .set('Authorization', `Bearer ${superAdmin.token}`)
+      .send({
+        hazardType: 'VENT_VIOLENT',
+        metric: 'wind',
+        operator: 'GT',
+        threshold: 90,
+      });
+    expect(create.status).toBe(201);
+    const ruleId = create.body.data.id as string;
+    createdRuleIds.push(ruleId);
+
+    const res = await request(app)
+      .patch(`/api/v1/detection-rules/${ruleId}`)
+      .set('Authorization', `Bearer ${superAdmin.token}`)
+      .send({ threshold: 70, isActive: false });
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.threshold).toBe(70);
+    expect(res.body.data.isActive).toBe(false);
+  });
+
+  it('retourne 404 pour une règle inexistante', async () => {
+    const res = await request(app)
+      .patch('/api/v1/detection-rules/00000000-0000-0000-0000-000000000000')
+      .set('Authorization', `Bearer ${superAdmin.token}`)
+      .send({ threshold: 10 });
+
+    expect(res.status).toBe(404);
+  });
+});
+
+describe('DELETE /api/v1/detection-rules/:id', () => {
+  it('supprime une règle puis retourne 404 à la lecture', async () => {
+    const create = await request(app)
+      .post('/api/v1/detection-rules')
+      .set('Authorization', `Bearer ${superAdmin.token}`)
+      .send({
+        hazardType: 'SECHERESSE',
+        metric: 'temperature',
+        operator: 'GE',
+        threshold: 40,
+      });
+    expect(create.status).toBe(201);
+    const ruleId = create.body.data.id as string;
+
+    const del = await request(app)
+      .delete(`/api/v1/detection-rules/${ruleId}`)
+      .set('Authorization', `Bearer ${superAdmin.token}`);
+    expect(del.status).toBe(204);
+
+    const fetched = await request(app)
+      .get(`/api/v1/detection-rules/${ruleId}`)
+      .set('Authorization', `Bearer ${superAdmin.token}`);
+    expect(fetched.status).toBe(404);
+  });
+
+  it('retourne 404 pour une règle déjà absente', async () => {
+    const res = await request(app)
+      .delete('/api/v1/detection-rules/00000000-0000-0000-0000-000000000000')
+      .set('Authorization', `Bearer ${superAdmin.token}`);
+    expect(res.status).toBe(404);
   });
 });
 
