@@ -139,7 +139,7 @@ function renderPage() {
 }
 
 async function openAdminPanel(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: /Intervention administrative/ }));
+  await user.click(screen.getByRole('button', { name: /Actions exceptionnelles/ }));
 }
 
 beforeEach(() => {
@@ -164,7 +164,7 @@ describe('EvenementDetailPage — actions administratives restantes', () => {
       roleState.role = role;
       renderPage();
       await screen.findByText('Cyclone test');
-      expect(screen.queryByText('Intervention administrative')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Actions exceptionnelles/ })).not.toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Ajouter le point' })).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: 'Relancer le calcul de zone' }),

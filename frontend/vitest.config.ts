@@ -16,5 +16,9 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     pool: 'threads',
+    // Les tests d'interaction (userEvent + render) dépassent 5 s quand les
+    // 15 workers démarrent en parallèle : marge pour éviter les flakys.
+    testTimeout: 15_000,
+    hookTimeout: 15_000,
   },
 });

@@ -48,7 +48,7 @@ function renderPage() {
 }
 
 async function openAdminPanel(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: /Intervention administrative/ }));
+  await user.click(screen.getByRole('button', { name: /Actions exceptionnelles/ }));
 }
 
 async function fillAndSubmitCreateForm(user: ReturnType<typeof userEvent.setup>) {
@@ -79,7 +79,7 @@ describe('EvenementsPage — création d’un événement exceptionnel', () => {
     (role) => {
       roleState.role = role;
       renderPage();
-      expect(screen.queryByText('Intervention administrative')).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Actions exceptionnelles/ })).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: /Créer un événement exceptionnel/ }),
       ).not.toBeInTheDocument();
