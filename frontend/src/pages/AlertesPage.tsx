@@ -63,6 +63,7 @@ export function AlertesPage() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
+  const [origine, setOrigine] = useState('');
   const [open, setOpen] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
@@ -78,13 +79,14 @@ export function AlertesPage() {
   const [form, setForm] = useState(EMPTY_ALERT_FORM);
 
   const listQ = useQuery({
-    queryKey: ['alerts', page, status, type],
+    queryKey: ['alerts', page, status, type, origine],
     queryFn: () =>
       alertsApi.list({
         page,
         limit: 12,
         status: status || undefined,
         type: type || undefined,
+        automatic: origine || undefined,
       }),
   });
 
@@ -265,6 +267,19 @@ export function AlertesPage() {
           }}
           options={ALERT_TYPES.map((t) => ({ value: t, label: t }))}
         />
+        <Select
+          label="Origine"
+          value={origine}
+          placeholder="Toutes"
+          onChange={(e) => {
+            setOrigine(e.target.value);
+            setPage(1);
+          }}
+          options={[
+            { value: 'true', label: 'Automatique' },
+            { value: 'false', label: 'Manuelle' },
+          ]}
+        />
       </div>
 
       <Card>
@@ -291,6 +306,18 @@ export function AlertesPage() {
                         <Badge tone={statusTone(a.status)}>{a.status}</Badge>
                         <Badge tone="warning">{a.severity}</Badge>
                         <Badge tone="brand">{a.type}</Badge>
+                        {a.isAutomatic ? (
+                          <Badge tone="info">
+                            Automatique
+                            {a.basis === 'PREVISION'
+                              ? ' · Prévision'
+                              : a.basis === 'OBSERVATION'
+                                ? ' · Observation'
+                                : ''}
+                          </Badge>
+                        ) : (
+                          <Badge tone="neutral">Manuelle</Badge>
+                        )}
                         {isSimulatedSource(a.source) ? <SimulatedBadge /> : null}
                       </div>
                       <p className="mt-1 text-sm text-muted">{a.message}</p>

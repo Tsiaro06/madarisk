@@ -44,7 +44,9 @@ function renderPage() {
 }
 
 async function openAdminPanel(user: ReturnType<typeof userEvent.setup>) {
-  await user.click(screen.getByRole('button', { name: /Intervention administrative/ }));
+  // Le panneau porte un titre contextuel (« Alertes ») : on cible le sous-titre
+  // commun à tous les panneaux plutôt que le titre.
+  await user.click(screen.getByRole('button', { name: /Actions exceptionnelles/ }));
 }
 
 async function fillAndSubmitCreateForm(user: ReturnType<typeof userEvent.setup>) {
@@ -73,13 +75,78 @@ beforeEach(() => {
   api.archive.mockResolvedValue(undefined);
 });
 
+describe('AlertesPage — métadonnées automatiques', () => {
+  it('affiche le badge « Automatique · Prévision » sur une alerte générée', async () => {
+    api.list.mockResolvedValue({
+      data: [
+        {
+          id: 'a1',
+          eventId: null,
+          districtId: null,
+          communeId: null,
+          type: 'CYCLONE',
+          severity: 'ELEVEE',
+          status: 'PUBLIEE',
+          title: 'Vigilance cyclone Test',
+          message: 'Message de vigilance',
+          basis: 'PREVISION',
+          isAutomatic: true,
+          createdBy: null,
+          publishedAt: '2026-10-01T00:00:00.000Z',
+          expiresAt: null,
+          createdAt: '2026-10-01T00:00:00.000Z',
+          updatedAt: '2026-10-01T00:00:00.000Z',
+          eventName: null,
+          districtName: null,
+          communeName: null,
+        },
+      ],
+      meta: { page: 1, limit: 12, total: 1, totalPages: 1 },
+    });
+    renderPage();
+    expect(await screen.findByText('Automatique · Prévision')).toBeInTheDocument();
+    expect(screen.getByText('Vigilance cyclone Test')).toBeInTheDocument();
+  });
+
+  it('affiche le badge « Manuelle » sur une alerte créée à la main', async () => {
+    api.list.mockResolvedValue({
+      data: [
+        {
+          id: 'a2',
+          eventId: null,
+          districtId: null,
+          communeId: null,
+          type: 'INFORMATION',
+          severity: 'FAIBLE',
+          status: 'BROUILLON',
+          title: 'Alerte manuelle',
+          message: 'Message',
+          createdBy: null,
+          publishedAt: null,
+          expiresAt: null,
+          createdAt: '2026-10-01T00:00:00.000Z',
+          updatedAt: '2026-10-01T00:00:00.000Z',
+          eventName: null,
+          districtName: null,
+          communeName: null,
+        },
+      ],
+      meta: { page: 1, limit: 12, total: 1, totalPages: 1 },
+    });
+    renderPage();
+    expect(await screen.findByText('Manuelle')).toBeInTheDocument();
+  });
+});
+
 describe('AlertesPage — création d’une alerte exceptionnelle', () => {
   it.each(['CLIENT', 'ANALYSTE_SIG'] as const)(
     'rend l’action invisible pour %s',
     (role) => {
       roleState.role = role;
       renderPage();
-      expect(screen.queryByText('Intervention administrative')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: /Actions exceptionnelles/ }),
+      ).not.toBeInTheDocument();
       expect(
         screen.queryByRole('button', { name: /Créer une alerte exceptionnelle/ }),
       ).not.toBeInTheDocument();

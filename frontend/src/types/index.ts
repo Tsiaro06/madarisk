@@ -12,6 +12,7 @@ export type EventType =
   | 'AUTRE';
 export type SeverityLevel = 'FAIBLE' | 'MODEREE' | 'ELEVEE' | 'EXTREME';
 export type AlertStatus = 'BROUILLON' | 'PUBLIEE' | 'ARCHIVEE' | 'EXPIREE';
+export type AlertBasis = 'PREVISION' | 'OBSERVATION';
 export type AlertType =
   | 'CYCLONE'
   | 'INONDATION'
@@ -286,6 +287,9 @@ export interface AlertListRow {
   title: string;
   message: string;
   source?: string | null;
+  basis?: AlertBasis | null;
+  isAutomatic?: boolean;
+  updateCount?: number;
   createdBy: string | null;
   publishedAt: string | null;
   expiresAt: string | null;
