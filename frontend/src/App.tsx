@@ -6,6 +6,7 @@ import { AppRouter } from '@/routes/AppRouter';
 import { Spinner } from '@/components/ui/Spinner';
 import { DemoBanner } from '@/components/demo/DemoBanner';
 import { ScenarioPanel } from '@/components/demo/ScenarioPanel';
+import { RealtimeListener } from '@/lib/realtime';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -33,7 +34,12 @@ function AuthBootstrap({ children }: { children: ReactNode }) {
     );
   }
 
-  return children;
+  return (
+    <>
+      {children}
+      <RealtimeListener />
+    </>
+  );
 }
 
 export default function App() {
