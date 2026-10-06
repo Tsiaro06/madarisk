@@ -98,6 +98,8 @@ export const alertsService = {
       districtId?: string;
       communeId?: string;
       activeOnly: boolean;
+      automatic?: boolean;
+      basis?: AlertBasis;
     },
     actor: { id: string; role: UserRole },
   ): Promise<PaginatedResult<AlertListRow>> {
@@ -112,6 +114,8 @@ export const alertsService = {
       districtId: query.districtId,
       communeId: query.communeId,
       activeOnly: query.activeOnly,
+      automatic: query.automatic,
+      basis: query.basis,
       clientOnly,
     });
   },

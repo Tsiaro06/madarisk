@@ -3,6 +3,7 @@ import request from 'supertest';
 import app from '../../src/app';
 import { db } from '../../src/config/database';
 import { usersRepository } from '../../src/repositories/users.repository';
+import { alertsRepository } from '../../src/repositories/alerts.repository';
 import { password } from '../../src/utils/password';
 import { weatherService } from '../../src/services/weather.service';
 import { WeatherProvider } from '../../src/types/weather.types';
@@ -344,6 +345,91 @@ describe('Alertes - cycle de vie', () => {
       .post(`/api/v1/alerts/${alertId}/publish`)
       .set('Authorization', `Bearer ${admin.token}`);
     expect(res.status).toBe(400);
+  });
+});
+
+describe('Alertes - filtres automatic et basis', () => {
+  let manualId: string;
+  let automaticId: string;
+  let filterEventId: string;
+
+  beforeAll(async () => {
+    filterEventId = await createEvent(admin.token);
+    const res = await request(app)
+      .post('/api/v1/alerts')
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({
+        eventId: filterEventId,
+        type: 'CYCLONE',
+        severity: 'ELEVEE',
+        title: `Manuelle filtre ${Date.now()}`,
+        message: 'Alerte manuelle pour le test des filtres.',
+        expiresAt: '2026-12-31T23:59:59.000Z',
+      });
+    expect(res.status).toBe(201);
+    manualId = res.body.data.id;
+
+    const automatic = await alertsRepository.create({
+      eventId: filterEventId,
+      type: 'CYCLONE',
+      severity: 'ELEVEE',
+      status: 'PUBLIEE',
+      title: `Automatique filtre ${Date.now()}`,
+      message: 'Alerte automatique pour le test des filtres.',
+      source: 'DETECTION',
+      basis: 'OBSERVATION',
+      isAutomatic: true,
+      publishedAt: new Date().toISOString(),
+      createdBy: admin.id,
+    });
+    automaticId = automatic.id;
+  });
+
+  it('automatic=true ne retourne que les alertes automatiques', async () => {
+    const res = await request(app)
+      .get(`/api/v1/alerts?automatic=true&eventId=${filterEventId}&limit=100`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    for (const row of res.body.data) {
+      expect(row.isAutomatic).toBe(true);
+    }
+    const ids = res.body.data.map((a: { id: string }) => a.id);
+    expect(ids).toContain(automaticId);
+    expect(ids).not.toContain(manualId);
+  });
+
+  it('automatic=false ne retourne que les alertes manuelles', async () => {
+    const res = await request(app)
+      .get(`/api/v1/alerts?automatic=false&eventId=${filterEventId}&limit=100`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+    for (const row of res.body.data) {
+      expect(row.isAutomatic).toBe(false);
+    }
+    const ids = res.body.data.map((a: { id: string }) => a.id);
+    expect(ids).toContain(manualId);
+    expect(ids).not.toContain(automaticId);
+  });
+
+  it('basis filtre les alertes automatiques par origine', async () => {
+    const res = await request(app)
+      .get(`/api/v1/alerts?basis=OBSERVATION&eventId=${filterEventId}&limit=100`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    for (const row of res.body.data) {
+      expect(row.basis).toBe('OBSERVATION');
+    }
+    const ids = res.body.data.map((a: { id: string }) => a.id);
+    expect(ids).toContain(automaticId);
+
+    const none = await request(app)
+      .get(`/api/v1/alerts?basis=PREVISION&eventId=${filterEventId}&limit=100`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(none.status).toBe(200);
+    const noneIds = none.body.data.map((a: { id: string }) => a.id);
+    expect(noneIds).not.toContain(automaticId);
   });
 });
 
