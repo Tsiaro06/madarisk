@@ -17,10 +17,12 @@ import dashboardRoutes from './dashboard.routes';
 import reportsRoutes from './reports.routes';
 import aiRoutes from './ai.routes';
 import demoRoutes from './demo.routes';
+import streamRoutes from './stream.routes';
 
 const router = Router();
 
 router.use('/health', healthRoutes);
+router.use('/stream', streamRoutes);
 router.use('/system', systemRoutes);
 router.use('/auth', authRoutes);
 router.use('/users', usersRoutes);

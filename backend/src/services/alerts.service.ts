@@ -7,6 +7,7 @@ import { territoriesRepository } from '../repositories/territories.repository';
 import { risksRepository } from '../repositories/risks.repository';
 import { alertsRepository } from '../repositories/alerts.repository';
 import { automaticAlertService } from './automatic-alerts.service';
+import { realtimeService } from './realtime.service';
 import {
   Alert,
   AlertBasis,
@@ -83,6 +84,8 @@ export const alertsService = {
       newValue: { title: alert.title, type: alert.type, status: alert.status },
       ipAddress: getIp(req),
     });
+
+    realtimeService.publish('alert.created', { alertId: alert.id, status: alert.status });
 
     return alert;
   },
@@ -241,6 +244,8 @@ export const alertsService = {
       ipAddress: getIp(req),
     });
 
+    realtimeService.publish('alert.updated', { alertId: id, status: 'PUBLIEE' });
+
     return published!;
   },
 
@@ -273,6 +278,8 @@ export const alertsService = {
       newValue: { status: 'ARCHIVEE' },
       ipAddress: getIp(req),
     });
+
+    realtimeService.publish('alert.archived', { alertId: id, status: 'ARCHIVEE' });
 
     return archived!;
   },

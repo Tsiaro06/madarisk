@@ -11,6 +11,7 @@ import type {
   AlertType,
 } from '../types/alert.types';
 import type { EventType, SeverityLevel, EventStatus } from '../types/event.types';
+import { realtimeService } from './realtime.service';
 
 interface GenerateOptions {
   eventId: string;
@@ -327,6 +328,16 @@ export const automaticAlertService = {
         { eventId: opts.eventId, created, updated, basis, trigger: opts.trigger },
         'Alertes automatiques générées',
       );
+      const payload = {
+        eventId: opts.eventId,
+        basis,
+        created,
+        updated,
+        status: targetStatus,
+        automatic: true,
+      };
+      if (created > 0) realtimeService.publish('alert.created', payload);
+      if (updated > 0) realtimeService.publish('alert.updated', payload);
     }
 
     return { eventId: opts.eventId, basis, autoPublish, created, updated, unchanged, alerts };
