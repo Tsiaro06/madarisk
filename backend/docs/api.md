@@ -116,12 +116,28 @@ Enums : `type` = `CYCLONE|INONDATION|SECHERESSE|FORTE_PLUIE|VENT_VIOLENT|GLISSEM
 | POST | `/risk-configurations` | SUPER_ADMIN | Idempotence par `name` ; poids par défaut 0.30/0.25/0.20/0.15/0.10, seuils 20/40/60/80 |
 | PATCH | `/risk-configurations/:id` | SUPER_ADMIN | Somme des poids = 1 ; seuils croissants |
 
+## Détection automatique
+
+| Méthode | Route | Rôle | Notes |
+|---|---|---|---|
+| GET | `/detection-rules` | SUPER_ADMIN | `isActive?`, `hazardType?`, `metric?` — règles actives par défaut |
+| POST | `/detection-rules` | SUPER_ADMIN | `hazardType`, `metric`, `operator`, `threshold`, `thresholdMax?` (BETWEEN), `forecastHorizonHours?`, `severityRules?`, portée unique `regionId?`/`districtId?`/`communeId?`. 201 ; 409 si doublon hazardType+metric+horizon |
+| GET | `/detection-rules/:id` | SUPER_ADMIN | Détail |
+| PATCH | `/detection-rules/:id` | SUPER_ADMIN | Mise à jour partielle |
+| DELETE | `/detection-rules/:id` | SUPER_ADMIN | 204 |
+| POST | `/detection/run` | ADMIN/SUPER_ADMIN | `scope?`: `OBSERVATIONS\|FORECASTS\|ALL` — évalue les règles, crée/met à jour les événements et alertes. 409 si une exécution est en cours ; `SKIPPED` si aucune règle active |
+| GET | `/detection/runs` | connecté | Journal des exécutions (`status`, `alertsCreated`, …) |
+| GET | `/events/:id/detection-timeline` | connecté | Chronologie de détection d'un événement |
+
+La détection s'exécute aussi automatiquement après chaque synchronisation météo (cron ou `POST /weather/refresh/communes`) et recalcule exposition + risques + alertes automatiques. Avec `ALERTS_AUTO_PUBLISH=true`, les alertes générées sont publiées directement (`PUBLIEE`).
+
 ## Alertes
 
 | Méthode | Route | Rôle | Notes |
 |---|---|---|---|
 | POST | `/alerts` | ADMIN/SUPER_ADMIN | Cible `eventId` **ou** `districtId` **ou** `communeId` (un seul) ; `type`, `severity`, `title`, `message`, `expiresAt?`. 201 |
-| GET | `/alerts` | connecté | `status`, `type`, `severity`, `eventId`, `districtId`, `communeId`, `activeOnly` |
+| GET | `/alerts` | connecté | `status`, `type`, `severity`, `eventId`, `districtId`, `communeId`, `activeOnly`, `automatic` (alertes auto uniquement), `basis` (`PREVISION\|OBSERVATION`) |
+| GET | `/stream` | connecté | Flux SSE temps réel : `alert.created`, `alert.updated`, `alert.archived`, `detection.run` (ping toutes les 25 s ; lire via `fetch` + Authorization, EventSource ne supporte pas les en-têtes) |
 | GET | `/alerts/:id` | connecté | Détail |
 | PATCH | `/alerts/:id` | ADMIN/SUPER_ADMIN | Mise à jour |
 | POST | `/alerts/:id/publish` | ADMIN/SUPER_ADMIN | Publie (BROUILLON → PUBLIEE) |

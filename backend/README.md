@@ -182,6 +182,8 @@ Le fichier `.env.example` liste toutes les variables. Les plus importantes :
 | `WEATHER_REFRESH_CRON` | `0 */4 * * *` | Rétrocompatibilité (défaut de `WEATHER_OBSERVATION_CRON` si non défini) |
 | `WEATHER_OBSERVATION_STALE_MINUTES` / `WEATHER_FORECAST_STALE_HOURS` | `150` / `6` | Seuils de fraîcheur exposés par `/weather/monitoring` |
 | `RISK_RECALCULATION_CRON` | `10 * * * *` | Planning crontab (risques) |
+| `DETECTION_NORMAL_CYCLES_BEFORE_MONITORING` / `DETECTION_MONITORING_HOURS` / `DETECTION_DEDUPE_HOURS` | `3` / `24` / `48` | Moteur de détection : cycles avant suivi, durée de suivi, fenêtre anti-doublon |
+| `ALERTS_AUTO_PUBLISH` | `false` | `true` = les alertes automatiques sont publiées directement (`PUBLIEE`) au lieu de rester en brouillon |
 | `OPEN_METEO_BASE_URL` / `OPEN_METEO_TIMEOUT_MS` | `https://api.open-meteo.com` / `10000` | API et timeout météo |
 | `LOG_LEVEL` | `info` | Niveau des logs Pino |
 
@@ -341,6 +343,8 @@ Le moteur de détection automatise le cycle de vie : chaque transition est trac�
 - `DETECTION_DEDUPE_HOURS` (défaut **48h**) évite les doublons entre exécutions.
 - Passe automatique : source `HAZARD_DETECTION`. Changement manuel via `PATCH /events/:id/status` : source `MANUAL_UI`, avec l'identité de l'opérateur (`actor_type`/`actor_id`).
 - Les passages automatiques se font lors des exécutions planifiées (actives si `ENABLE_SCHEDULED_JOBS=true`) selon les règles de détection actives par aléa.
+- La détection s'exécute aussi **après chaque synchronisation météo** (cron ou `POST /weather/refresh/communes`) et journalise l'exécution même sans règle active (statut `SKIPPED`).
+- Règles gérées par API (SUPER_ADMIN) : `GET/POST /detection-rules`, `GET/PATCH/DELETE /detection-rules/:id`. `GET /detection/runs` liste les exécutions (dont `alertsCreated`).
 
 ## 18. Météo & moteur de risque (Phase 8)
 
@@ -371,6 +375,8 @@ Explications détaillées du calcul dans [`docs/risk-engine.md`](docs/risk-engin
 - `POST /alerts` (ADMIN/SUPER_ADMIN) : créer (type `CYCLONE|INONDATION|FORTE_PLUIE|VENT_VIOLENT|SECHERESSE|INFORMATION|URGENCE`, sévérité, titre, message, cible `eventId` **ou** `districtId` **ou** `communeId`).
 - `GET /alerts`, `GET /alerts/:id` : consultation.
 - `PATCH /alerts/:id`, `POST /alerts/:id/publish`, `POST /alerts/:id/archive` : gestion du cycle `BROUILLON → PUBLIEE → ARCHIVEE / EXPIREE`.
+- `GET /alerts?automatic=&basis=` : filtrer les alertes automatiques (`PREVISION` / `OBSERVATION`).
+- `GET /stream` : flux SSE temps réel (`alert.created`, `alert.updated`, `alert.archived`, `detection.run`) — à lire via `fetch` + `Authorization` (EventSource ne supporte pas les en-têtes).
 
 ### Tableau de bord
 

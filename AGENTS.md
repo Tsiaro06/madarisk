@@ -19,7 +19,7 @@ Both packages must be handled independently (`cd backend` / `cd frontend`).
 - `npm run dev` — Vite on 5173, proxies `/api` and `/health` to `http://localhost:5000`
 - `npm run build` = `tsc -b && vite build` — this IS the typecheck; there is no separate typecheck script
 - `npm run lint` is **oxlint** (not eslint); config in `.oxlintrc.json`
-- **No test framework/script exists** — verify with `npm run lint` then `npm run build`
+- `npm test` = **vitest** (jsdom, setup `src/test/setup.ts`); verify with `npm run lint` → `npm test` → `npm run build`
 
 ## Frontend conventions
 - Path alias `@/*` → `src/*` (configured in both `vite.config.ts` and tsconfig); always use `@/...` imports
@@ -36,5 +36,5 @@ Both packages must be handled independently (`cd backend` / `cd frontend`).
 
 ## Gotchas
 - `backend/.env` is gitignored but `docker-compose.yml` mounts it as read-only — missing it breaks docker runs
-- Frontend has no test setup; do not invent one unless asked
+- Backend vitest pins `ALERTS_AUTO_PUBLISH=false` (`vitest.config.ts`) so the dev `.env` never leaks into tests
 - The backend API must be running for frontend dev work (proxy target `localhost:5000`); `VITE_API_URL` defaults to `/api/v1`

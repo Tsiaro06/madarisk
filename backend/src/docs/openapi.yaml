@@ -46,6 +46,8 @@ tags:
     description: Paramétrage des poids et seuils du moteur de risque
   - name: Détection automatique
     description: Règles de détection automatique des aléas météo (SUPER_ADMIN)
+  - name: Temps réel
+    description: Flux Server-Sent Events des alertes et détections (GET /stream)
   - name: Alertes
     description: Alertes publiques et communications de crise (Phase 9)
   - name: Tableau de bord
@@ -2777,6 +2779,44 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '500':
           $ref: '#/components/responses/InternalError'
+    post:
+      tags: [Détection automatique]
+      summary: Créer une règle de détection (SUPER_ADMIN)
+      description: >
+        Crée une règle d'aléa (métrique, opérateur, seuil, horizon de prévision).
+        Portée facultative : au plus une seule de regionId / districtId /
+        communeId ; sans portée la règle s'applique à tout le territoire.
+        Opérateur BETWEEN exige thresholdMax >= threshold. Une règle avec la
+        même combinaison hazardType + metric + forecastHorizonHours existe déjà → 409.
+      security:
+        - bearerAuth: []
+      operationId: createDetectionRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DetectionRuleCreateBody' }
+      responses:
+        '201':
+          description: Règle créée
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/HazardDetectionRule' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /detection/run:
     post:
@@ -2923,6 +2963,88 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Détection automatique]
+      summary: Modifier une règle de détection (SUPER_ADMIN)
+      description: Mise à jour partielle ; mêmes contraintes de portée et d'opérateur qu'à la création.
+      security:
+        - bearerAuth: []
+      operationId: updateDetectionRule
+      parameters:
+        - { $ref: '#/components/parameters/DetectionRuleId' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DetectionRuleUpdateBody' }
+      responses:
+        '200':
+          description: Règle mise à jour
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/HazardDetectionRule' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Détection automatique]
+      summary: Supprimer une règle de détection (SUPER_ADMIN)
+      security:
+        - bearerAuth: []
+      operationId: deleteDetectionRule
+      parameters:
+        - { $ref: '#/components/parameters/DetectionRuleId' }
+      responses:
+        '204':
+          description: Règle supprimée
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /stream:
+    get:
+      tags: [Temps réel]
+      summary: Flux Server-Sent Events (alertes et détections)
+      description: >
+        Flux SSE temps réel : événements alert.created, alert.updated,
+        alert.archived et detection.run. Le client doit maintenir la connexion
+        ouverte (le serveur envoie un commentaire ": ping" toutes les 25 s) et
+        se reconnecter avec un backoff (le champ retry est envoyé : 5000 ms).
+        L'event source du navigateur ne supporte pas Authorization : lire ce
+        flux via fetch() + ReadableStream reader avec l'en-tête Bearer.
+      security:
+        - bearerAuth: []
+      operationId: streamEvents
+      responses:
+        '200':
+          description: Flux text/event-stream ouvert
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                description: >
+                  Frames SSE : "event: alert.created\ndata: {...}\n\n" etc.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
 
   /alerts:
     post:
@@ -2997,6 +3119,20 @@ paths:
             required: false,
             schema: { type: boolean },
             description: Alerte actives uniquement ("true"/"1"),
+          }
+        - {
+            name: automatic,
+            in: query,
+            required: false,
+            schema: { type: boolean },
+            description: Alertes générées automatiquement uniquement ("true"/"false"),
+          }
+        - {
+            name: basis,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/AlertBasis' },
+            description: Nature des données ayant déclenché l'alerte (PREVISION / OBSERVATION),
           }
       responses:
         '200':
@@ -4784,6 +4920,55 @@ components:
         createdBy: { type: string, format: uuid, nullable: true }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+    DetectionRuleCreateBody:
+      type: object
+      description: Création d'une règle de détection (au plus une portée parmi regionId/districtId/communeId ; BETWEEN exige thresholdMax)
+      required: [hazardType, metric, operator, threshold]
+      properties:
+        hazardType: { $ref: '#/components/schemas/HazardType' }
+        metric: { type: string, minLength: 1, maxLength: 60, description: Métrique évaluée (ex. wind_speed_10m, rainfall_24h, temperature_2m) }
+        operator: { type: string, enum: [GT, GE, LT, LE, EQ, BETWEEN] }
+        threshold: { type: number }
+        thresholdMax: { type: number, nullable: true, description: Borne haute (obligatoire pour BETWEEN) }
+        durationMinutes: { type: integer, minimum: 0, default: 0 }
+        aggregationWindowMinutes: { type: integer, minimum: 0, default: 0 }
+        forecastHorizonHours: { type: integer, minimum: 0, default: 0, description: '0 = observation seule, >0 = prévision' }
+        severityRules:
+          type: array
+          items:
+            type: object
+            required: [level, min]
+            properties:
+              level: { $ref: '#/components/schemas/SeverityLevel' }
+              min: { type: number, minimum: 0, maximum: 100 }
+        isActive: { type: boolean, default: true }
+        regionId: { type: string, format: uuid, nullable: true }
+        districtId: { type: string, format: uuid, nullable: true }
+        communeId: { type: string, format: uuid, nullable: true }
+    DetectionRuleUpdateBody:
+      type: object
+      description: Mise à jour partielle d'une règle de détection
+      properties:
+        hazardType: { $ref: '#/components/schemas/HazardType' }
+        metric: { type: string, minLength: 1, maxLength: 60 }
+        operator: { type: string, enum: [GT, GE, LT, LE, EQ, BETWEEN] }
+        threshold: { type: number }
+        thresholdMax: { type: number, nullable: true }
+        durationMinutes: { type: integer, minimum: 0 }
+        aggregationWindowMinutes: { type: integer, minimum: 0 }
+        forecastHorizonHours: { type: integer, minimum: 0 }
+        severityRules:
+          type: array
+          items:
+            type: object
+            required: [level, min]
+            properties:
+              level: { $ref: '#/components/schemas/SeverityLevel' }
+              min: { type: number, minimum: 0, maximum: 100 }
+        isActive: { type: boolean }
+        regionId: { type: string, format: uuid, nullable: true }
+        districtId: { type: string, format: uuid, nullable: true }
+        communeId: { type: string, format: uuid, nullable: true }
     DetectionRunResult:
       type: object
       description: Résultat d'une exécution de détection automatique
@@ -4800,6 +4985,7 @@ components:
         detections: { type: integer }
         eventsCreated: { type: integer }
         eventsUpdated: { type: integer }
+        alertsCreated: { type: integer, description: Alertes automatiques créées par ce run }
     DetectionRunInfo:
       type: object
       description: Traçabilité d'une exécution de détection
@@ -4814,10 +5000,12 @@ components:
         rulesTriggered: { type: integer }
         eventsCreated: { type: integer }
         eventsUpdated: { type: integer }
+        alertsCreated: { type: integer, description: Alertes automatiques créées par ce run }
         errorMessage: { type: string, nullable: true }
     DetectionRunStatus:
       type: string
-      enum: [RUNNING, SUCCESS, FAILED, PARTIAL]
+      enum: [RUNNING, SUCCESS, FAILED, PARTIAL, SKIPPED]
+      description: SKIPPED = exécution enregistrée mais sans effet (aucune règle active)
     EventTimelineEntry:
       type: object
       description: >
