@@ -5,6 +5,7 @@ import { weatherRepository } from '../repositories/weather.repository';
 import { openMeteoProvider } from './openmeteo.provider';
 import { dgmMaproomProvider } from './weather-maproom.provider';
 import { getWeatherProvider, setWeatherProvider } from './weather-provider';
+import { detectAfterSync } from './weather-sync.service';
 import {
   WeatherCurrent,
   WeatherDgmIngestResult,
@@ -336,6 +337,16 @@ export const weatherService = {
       ipAddress: getIp(req),
     });
 
+    // Le refresh legacy ne passe pas par weatherSyncService.trigger : on
+    // déclenche donc ici la même chaîne automatique (détection → exposition →
+    // alertes automatiques). Échecs absorbés pour ne pas faire échouer le
+    // refresh lui-même.
+    try {
+      await detectAfterSync('OBSERVATIONS', 'MANUAL');
+    } catch (err) {
+      logger.warn({ err }, 'Détection post-rafraîchissement ignorée (échec)');
+    }
+
     return { totalTargeted, totalSaved, totalFailed: failures.length, failures };
   },
 
@@ -417,10 +428,7 @@ export const weatherService = {
             { sourceId, districtId: query.districtId, minHours: MIN_HOURS_FOR_DAILY_LAYER },
           );
 
-          if (
-            daily.points.length > 0 &&
-            daily.hoursCovered >= MIN_HOURS_FOR_DAILY_LAYER
-          ) {
+          if (daily.points.length > 0 && daily.hoursCovered >= MIN_HOURS_FOR_DAILY_LAYER) {
             return {
               type: 'FeatureCollection',
               features: daily.points.map((p) => ({

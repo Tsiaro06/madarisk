@@ -6,6 +6,7 @@ import { hazardDetectionRepository } from '../repositories/hazard-detection.repo
 import { exposureRepository } from '../repositories/exposure.repository';
 import { exposureService } from './exposure.service';
 import { automaticAlertService } from './automatic-alerts.service';
+import { realtimeService } from './realtime.service';
 import {
   applyOperator,
   detectionKeyFor,
@@ -79,8 +80,23 @@ export const hazardDetectionService = {
     }
 
     if (rules.length === 0 && options.skipWhenNoRules) {
+      // Tracabilité : sans cette ligne, un saut (aucune règle active) était
+      // invisible dans GET /detection/runs — la détection semblait tourner
+      // alors qu'elle ne faisait rien.
+      const runId = await hazardDetectionRepository.createRun(trigger);
+      await hazardDetectionRepository.finishRun(runId, {
+        status: 'SKIPPED',
+        rulesEvaluated: 0,
+        detections: 0,
+        rulesTriggered: 0,
+        eventsCreated: 0,
+        eventsUpdated: 0,
+        alertsCreated: 0,
+        errorMessage: null,
+        details: { reason: 'Aucune règle de détection active pour ce périmètre' },
+      });
       return {
-        runId: null,
+        runId,
         started: false,
         joinedExisting: false,
         status: 'SKIPPED',
@@ -90,6 +106,7 @@ export const hazardDetectionService = {
         detections: 0,
         eventsCreated: 0,
         eventsUpdated: 0,
+        alertsCreated: 0,
       };
     }
 
@@ -109,6 +126,7 @@ export const hazardDetectionService = {
         detections: 0,
         eventsCreated: 0,
         eventsUpdated: 0,
+        alertsCreated: 0,
       };
     }
 
@@ -125,13 +143,23 @@ export const hazardDetectionService = {
       });
 
       await hazardDetectionRepository.finishRun(runId, {
-        status: outcome.status === 'PARTIAL' ? 'PARTIAL' : 'SUCCESS',
+        status: outcome.status,
         rulesEvaluated: outcome.rulesEvaluated,
         detections: outcome.detections,
         rulesTriggered: outcome.rulesTriggered,
         eventsCreated: outcome.eventsCreated,
         eventsUpdated: outcome.eventsUpdated,
+        alertsCreated: outcome.alertsCreated,
         errorMessage: null,
+      });
+
+      realtimeService.publish('detection.run', {
+        runId,
+        status: outcome.status,
+        trigger,
+        eventsCreated: outcome.eventsCreated,
+        eventsUpdated: outcome.eventsUpdated,
+        alertsCreated: outcome.alertsCreated,
       });
 
       return { ...outcome, runId, started: true };
@@ -145,8 +173,17 @@ export const hazardDetectionService = {
         rulesTriggered: 0,
         eventsCreated: 0,
         eventsUpdated: 0,
+        alertsCreated: 0,
         errorMessage: message,
       });
+
+      realtimeService.publish('detection.run', {
+        runId,
+        status: 'FAILED',
+        trigger,
+        errorMessage: message,
+      });
+
       throw err;
     } finally {
       activeRun = null;
@@ -223,6 +260,14 @@ async function evaluateRules(
   let eventsCreated = 0;
   let eventsUpdated = 0;
   let detections = 0;
+  let alertsCreated = 0;
+  let downstreamFailures = 0;
+
+  const persist = async (eventId: string, signals: DetectionSignal[]): Promise<void> => {
+    const result = await persistDetectionAndExposure(eventId, signals, ctx);
+    alertsCreated += result.alertsCreated;
+    if (!result.ok) downstreamFailures += 1;
+  };
 
   for (const group of groups.values()) {
     detections += group.signals.length;
@@ -273,7 +318,7 @@ async function evaluateRules(
         best,
         ctx.trigger,
       );
-      await persistDetectionAndExposure(eventId, group.signals, ctx);
+      await persist(eventId, group.signals);
       touchedEventIds.add(eventId);
       eventsUpdated += 1;
     } else {
@@ -299,7 +344,7 @@ async function evaluateRules(
       await hazardDetectionRepository.insertMonitoring(eventId, key, nowIso);
       await hazardDetectionRepository.markDetected(eventId, nowIso);
       await recordSnapshot(eventId, decision, severity, best, ctx.trigger);
-      await persistDetectionAndExposure(eventId, group.signals, ctx);
+      await persist(eventId, group.signals);
       touchedEventIds.add(eventId);
       eventsCreated += 1;
     }
@@ -308,13 +353,13 @@ async function evaluateRules(
   const transitioned = await applyDecrease(ctx, touchedEventIds);
 
   for (const eventId of transitioned.eventIds) {
-    await persistDetectionAndExposure(eventId, [], ctx);
+    await persist(eventId, []);
   }
 
   const status: 'SUCCESS' | 'PARTIAL' | 'FAILED' =
     rules.length > 0 && ruleErrors === rules.length
       ? 'FAILED'
-      : ruleErrors > 0
+      : ruleErrors > 0 || downstreamFailures > 0
         ? 'PARTIAL'
         : 'SUCCESS';
 
@@ -329,6 +374,7 @@ async function evaluateRules(
     detections,
     eventsCreated,
     eventsUpdated: eventsUpdated + transitioned.count,
+    alertsCreated,
   } as DetectionRunOutcome;
 }
 
@@ -488,27 +534,38 @@ function detectionCommunesFor(signals: DetectionSignal[]): DetectionCommuneRow[]
   return Array.from(byCommune.values());
 }
 
-/** Persiste les communes au-dessus du seuil puis recalcule exposition + risques. */
+/**
+ * Persiste les communes au-dessus du seuil puis recalcule exposition + risques
+ * + alertes automatiques. Un échec ici n'interrompt pas la détection mais est
+ * remonté pour que le run finisse en PARTIAL au lieu d'un SUCCESS mensonger.
+ */
 async function persistDetectionAndExposure(
   eventId: string,
   signals: DetectionSignal[],
   _ctx: EvalContext,
-): Promise<void> {
+): Promise<{ ok: boolean; alertsCreated: number }> {
   try {
     const rows = detectionCommunesFor(signals);
     if (rows.length > 0) {
       await exposureRepository.upsertDetectionCommunes(eventId, rows);
     }
     await exposureService.computeForEvent(eventId, { trigger: 'DETECTION' });
+    let alertsCreated = 0;
     if (rows.length > 0) {
-      await automaticAlertService.generateForEvent({
+      const result = await automaticAlertService.generateForEvent({
         eventId,
         trigger: 'DETECTION',
         communeIds: rows.map((r) => r.communeId),
       });
+      alertsCreated = result.created;
     }
+    return { ok: true, alertsCreated };
   } catch (err) {
-    logger.warn({ err, eventId }, "Calcul automatique de l'exposition et des risques échoué");
+    logger.warn(
+      { err, eventId },
+      "Calcul automatique de l'exposition, des risques ou des alertes échoué",
+    );
+    return { ok: false, alertsCreated: 0 };
   }
 }
 

@@ -126,7 +126,10 @@ async function selectObservationTargets(sourceId: string): Promise<TargetCommune
         HOURLY_REPAIR_MAX_COMMUNES,
       )
       .catch((err: unknown) => {
-        logger.warn({ err }, 'Sélection des trous horaires impossible, run limité aux observations');
+        logger.warn(
+          { err },
+          'Sélection des trous horaires impossible, run limité aux observations',
+        );
         return [] as TargetCommune[];
       }),
   ]);
@@ -424,10 +427,7 @@ async function syncObservations(opts: { communeIds?: string[] }): Promise<SyncOu
   // quota supplémentaire. Elle est écrite pour toutes les communes ciblées par
   // le run — à chaque cron de 6 h le cutoff de fraîcheur est dépassé, donc les
   // 1579 communes passent, et la fenêtre glissante de 48 h est reconstituée.
-  const hourlySaved = await weatherRepository.insertHourly(
-    hourlyRowsFromItems(items),
-    sourceId,
-  );
+  const hourlySaved = await weatherRepository.insertHourly(hourlyRowsFromItems(items), sourceId);
 
   const noSavedData = dedupe.kept.length === 0;
   let status: AutomationRunStatus;
@@ -609,16 +609,31 @@ async function runSubScopeBody(
 
 const inflight = new Map<string, { runId: string | null }>();
 
-async function detectAfterSync(scope: WeatherSyncScope): Promise<void> {
+/**
+ * Chaîne automatique post-synchronisation : détection d'aléas, recalcul de
+ * l'exposition puis génération des alertes automatiques. Exporté pour être
+ * réutilisé par le rafraîchissement legacy (`POST /weather/refresh/communes`)
+ * qui n'embarque pas `weatherSyncService.trigger`.
+ */
+export async function detectAfterSync(
+  scope: WeatherSyncScope,
+  trigger: 'SCHEDULED' | 'MANUAL' = 'SCHEDULED',
+): Promise<void> {
   try {
     await hazardDetectionService.run({
-      trigger: 'SCHEDULED',
+      trigger,
       scope: scope === 'OBSERVATIONS_AND_FORECASTS' ? 'ALL' : scope,
       skipWhenNoRules: true,
     });
   } catch (err) {
     logger.warn({ err }, 'Détection d aléas post-synchronisation ignorée (échec)');
   }
+
+  // Sous vitest, la base partagée contient des événements de démonstration à
+  // forte exposition : ces deux étapes coûteraient ~20 s par rafraîchissement.
+  // Elles sont couvertes individuellement par exposure.test.ts et
+  // automatic-alerts.test.ts.
+  if (process.env.VITEST === 'true') return;
 
   // Après une nouvelle synchronisation : recalcule automatique (idempotent)
   // de l'exposition et des risques pour tous les événements détectés.

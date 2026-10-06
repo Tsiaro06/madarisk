@@ -4,13 +4,14 @@ export type DetectionOperator = 'GT' | 'GE' | 'LT' | 'LE' | 'EQ' | 'BETWEEN';
 
 export const DETECTION_OPERATORS: DetectionOperator[] = ['GT', 'GE', 'LT', 'LE', 'EQ', 'BETWEEN'];
 
-export type AutomationRunStatus = 'RUNNING' | 'SUCCESS' | 'FAILED' | 'PARTIAL';
+export type AutomationRunStatus = 'RUNNING' | 'SUCCESS' | 'FAILED' | 'PARTIAL' | 'SKIPPED';
 
 export const AUTOMATION_RUN_STATUSES: AutomationRunStatus[] = [
   'RUNNING',
   'SUCCESS',
   'FAILED',
   'PARTIAL',
+  'SKIPPED',
 ];
 
 export interface SeverityRule {

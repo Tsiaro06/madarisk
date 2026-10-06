@@ -77,6 +77,7 @@ interface RunRow {
   rules_triggered: string;
   events_created: string;
   events_updated: string;
+  alerts_created: string;
   error_message: string | null;
 }
 
@@ -92,6 +93,7 @@ function mapRun(row: RunRow): DetectionRunInfo {
     rulesTriggered: parseInt(row.rules_triggered, 10),
     eventsCreated: parseInt(row.events_created, 10),
     eventsUpdated: parseInt(row.events_updated, 10),
+    alertsCreated: parseInt(row.alerts_created ?? '0', 10),
     errorMessage: row.error_message,
   };
 }
@@ -258,6 +260,7 @@ export const hazardDetectionRepository = {
       rulesTriggered: number;
       eventsCreated: number;
       eventsUpdated: number;
+      alertsCreated?: number;
       errorMessage?: string | null;
       details?: Record<string, unknown>;
     },
@@ -272,7 +275,8 @@ export const hazardDetectionRepository = {
            events_created = $6,
            events_updated = $7,
            error_message = $8,
-           details = $9
+           details = $9,
+           alerts_created = $10
        WHERE id = $1`,
       [
         runId,
@@ -284,6 +288,7 @@ export const hazardDetectionRepository = {
         data.eventsUpdated,
         data.errorMessage ?? null,
         JSON.stringify(data.details ?? {}),
+        data.alertsCreated ?? 0,
       ],
     );
   },
@@ -292,7 +297,7 @@ export const hazardDetectionRepository = {
     const result = await db.query<RunRow>(
       `SELECT id, started_at, finished_at, status, trigger,
               rules_evaluated, detections, rules_triggered,
-              events_created, events_updated, error_message
+              events_created, events_updated, alerts_created, error_message
        FROM hazard_detection_runs
        ORDER BY started_at DESC
        LIMIT $1`,

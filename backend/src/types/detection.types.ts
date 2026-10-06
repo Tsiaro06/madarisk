@@ -50,6 +50,7 @@ export interface DetectionRunOutcome {
   detections: number;
   eventsCreated: number;
   eventsUpdated: number;
+  alertsCreated: number;
 }
 
 export interface DetectionRunInfo {
@@ -63,6 +64,7 @@ export interface DetectionRunInfo {
   rulesTriggered: number;
   eventsCreated: number;
   eventsUpdated: number;
+  alertsCreated: number;
   errorMessage: string | null;
 }
 
