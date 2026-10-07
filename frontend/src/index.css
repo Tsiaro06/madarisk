@@ -192,7 +192,7 @@ h3 {
   animation: login-beacon 2.8s ease-out infinite;
 }
 
-/* Carte météo — commune sélectionnée (recherche) : clignotement */
+/* Recherche (carte météo, territoires) — entité sélectionnée : clignotement */
 @keyframes madarisk-commune-pulse {
   0%,
   100% {

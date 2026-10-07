@@ -19,6 +19,12 @@ interface GeoJsonMapProps {
    * Territoires, où la carte ne doit montrer que les limites.
    */
   boundariesOnly?: boolean;
+  /**
+   * Identifiant de l'entité à recentrer et à faire clignoter (recherche par
+   * Entrée sur la page Territoires). Le clignotement s'arrête dès que la
+   * valeur change ou repasse à null.
+   */
+  blinkId?: string | null;
 }
 
 function isRiskLevel(v: unknown): v is RiskLevel {
@@ -104,6 +110,23 @@ function FitBounds({ data }: { data: FeatureCollection }) {
   return null;
 }
 
+/** Recadre la carte sur l'entité recherchée (Entrée) pour la rendre visible. */
+function FocusOn({ data, blinkId }: { data: FeatureCollection; blinkId: string | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!blinkId) return;
+    const feature = data.features?.find((f) => featureId(f) === String(blinkId));
+    if (!feature) return;
+    try {
+      const bounds = L.geoJSON(feature as GeoJSON.GeoJsonObject).getBounds();
+      if (bounds.isValid()) map.fitBounds(bounds, { padding: [40, 40], maxZoom: 11 });
+    } catch {
+      // ignore invalid geometry
+    }
+  }, [data, blinkId, map]);
+  return null;
+}
+
 function featureLabel(feature: Feature): string {
   const p = (feature.properties ?? {}) as Record<string, unknown>;
   return String(
@@ -128,6 +151,7 @@ export function GeoJsonMap({
   className,
   showLegend = true,
   boundariesOnly = false,
+  blinkId = null,
 }: GeoJsonMapProps) {
   const geoJsonRef = useRef<L.GeoJSON | null>(null);
   const collection = useMemo<FeatureCollection>(
@@ -157,6 +181,22 @@ export function GeoJsonMap({
       }
     });
   }, [selectedId, collection, boundariesOnly]);
+
+  // Clignotement de l'entité recherchée : Leaflet n'applique `className`
+  // qu'à la création du chemin et jamais via `setStyle`, on pose donc la
+  // classe directement sur le DOM SVG (ajout/retrait selon `blinkId`).
+  useEffect(() => {
+    const layer = geoJsonRef.current;
+    if (!layer) return;
+    layer.eachLayer((l) => {
+      const path = (l as unknown as { _path?: SVGElement })._path;
+      if (!path) return;
+      const feature = (l as L.Layer & { feature?: Feature }).feature;
+      const match =
+        blinkId != null && feature != null && featureId(feature) === String(blinkId);
+      path.classList.toggle('madarisk-commune-pulse', match);
+    });
+  }, [blinkId, selectedId, collection]);
 
   const onEachFeature = (feature: Feature<Geometry>, layer: Layer) => {
     const p = (feature.properties ?? {}) as Record<string, unknown>;
@@ -204,6 +244,7 @@ export function GeoJsonMap({
             ref={geoJsonRef as never}
           />
           {collection.features.length > 0 ? <FitBounds data={collection} /> : null}
+          <FocusOn data={collection} blinkId={blinkId} />
         </MapContainer>
       </div>
       {showLegend &&

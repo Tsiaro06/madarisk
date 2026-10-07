@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { territoriesApi } from '@/api';
@@ -19,6 +19,9 @@ export function TerritoiresPage() {
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [blinkId, setBlinkId] = useState<string | null>(null);
+  const pendingEnterRef = useRef(false);
+  const mapCardRef = useRef<HTMLDivElement>(null);
 
   const districtsQ = useQuery({
     queryKey: ['territories', 'districts', page, q],
@@ -57,6 +60,31 @@ export function TerritoiresPage() {
       ? districtsQ.isError || mapDistrictsQ.isError
       : communesQ.isError || mapCommunesQ.isError;
 
+  const firstResult =
+    (tab === 'districts' ? districtsQ.data?.data : communesQ.data?.data)?.[0] ?? null;
+  const searchFetching =
+    tab === 'districts' ? districtsQ.isFetching : communesQ.isFetching;
+
+  // Entrée : sélectionne le premier résultat et le révèle sur la carte
+  // (recentrage + clignotement). Si les résultats sont encore en cours de
+  // chargement, on mémorise l'intention et on l'applique dès qu'ils arrivent.
+  const revealOnMap = useCallback((id: string) => {
+    setSelectedId(id);
+    setBlinkId(id);
+    mapCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, []);
+
+  useEffect(() => {
+    if (!pendingEnterRef.current || !firstResult) return;
+    pendingEnterRef.current = false;
+    revealOnMap(firstResult.id);
+  }, [firstResult, revealOnMap]);
+
+  const selectEntity = (id: string) => {
+    setSelectedId(id);
+    setBlinkId(null);
+  };
+
   return (
     <div className="space-y-5">
       <div>
@@ -87,6 +115,8 @@ export function TerritoiresPage() {
                 setTab(key);
                 setPage(1);
                 setSelectedId(null);
+                setBlinkId(null);
+                pendingEnterRef.current = false;
               }}
             >
               {label}
@@ -101,6 +131,16 @@ export function TerritoiresPage() {
             onChange={(e) => {
               setQ(e.target.value);
               setPage(1);
+            }}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter') return;
+              e.preventDefault();
+              if (firstResult) {
+                pendingEnterRef.current = false;
+                revealOnMap(firstResult.id);
+              } else if (searchFetching) {
+                pendingEnterRef.current = true;
+              }
             }}
           />
         </div>
@@ -127,7 +167,14 @@ export function TerritoiresPage() {
                     </thead>
                     <tbody>
                       {districtsQ.data?.data.map((d) => (
-                        <tr key={d.id} className="border-b border-line transition hover:bg-gray-50">
+                        <tr
+                          key={d.id}
+                          className={cn(
+                            'border-b border-line cursor-pointer transition hover:bg-gray-50',
+                            selectedId === d.id && 'bg-brand-soft',
+                          )}
+                          onClick={() => selectEntity(d.id)}
+                        >
                           <td className="px-3 py-2.5 font-mono text-xs">{d.adminCode}</td>
                           <td className="px-3 py-2.5">
                             <Link
@@ -173,7 +220,7 @@ export function TerritoiresPage() {
                           'border-b border-line cursor-pointer transition hover:bg-gray-50',
                           selectedId === c.id && 'bg-brand-soft',
                         )}
-                        onClick={() => setSelectedId(c.id)}
+                        onClick={() => selectEntity(c.id)}
                       >
                         <td className="px-3 py-2.5 font-mono text-xs">{c.adminCode}</td>
                         <td className="px-3 py-2.5">
@@ -197,25 +244,28 @@ export function TerritoiresPage() {
           )}
         </Card>
 
-        <Card title={tab === 'communes' ? 'Limites des communes' : 'Limites des districts'}>
-          {mapLoading ? (
-            <Spinner />
-          ) : (mapData?.features?.length ?? 0) === 0 ? (
-            <EmptyState title={tab === 'communes' ? 'Aucune commune' : 'Aucun district'} />
-          ) : (
-            <GeoJsonMap
-              data={mapData}
-              height={520}
-              boundariesOnly
-              selectedId={selectedId}
-              onFeatureClick={(f) => {
-                const props = (f.properties ?? {}) as Record<string, unknown>;
-                const id = props.id ?? props.communeId ?? props.districtId ?? f.id;
-                if (id) setSelectedId(String(id));
-              }}
-            />
-          )}
-        </Card>
+        <div ref={mapCardRef}>
+          <Card title={tab === 'communes' ? 'Limites des communes' : 'Limites des districts'}>
+            {mapLoading ? (
+              <Spinner />
+            ) : (mapData?.features?.length ?? 0) === 0 ? (
+              <EmptyState title={tab === 'communes' ? 'Aucune commune' : 'Aucun district'} />
+            ) : (
+              <GeoJsonMap
+                data={mapData}
+                height={520}
+                boundariesOnly
+                selectedId={selectedId}
+                blinkId={blinkId}
+                onFeatureClick={(f) => {
+                  const props = (f.properties ?? {}) as Record<string, unknown>;
+                  const id = props.id ?? props.communeId ?? props.districtId ?? f.id;
+                  if (id) selectEntity(String(id));
+                }}
+              />
+            )}
+          </Card>
+        </div>
       </div>
     </div>
   );
