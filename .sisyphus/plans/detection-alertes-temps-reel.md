@@ -3,7 +3,7 @@
 ## Objectif
 Que la chaîne ingestion → détection → événement → alerte auto-publiée → UI temps réel fonctionne de bout en bout.
 
-Décisions validées par l'utilisateur : auto-publication des alertes (`ALERTS_AUTO_PUBLISH=true`), temps réel via **SSE + TanStack Query** (aucun canal externe), règles de détection via **API CRUD + seed**. Seuils seed validés : **vent > 70 km/h**, **pluie > 50 mm/24h**.
+Décisions validées par l'utilisateur : auto-publication des alertes (`ALERTS_AUTO_PUBLISH=true`), temps réel via **SSE + TanStack Query** (aucun canal externe), règles de détection via **API CRUD + seed**. Seuils seed validés : **rafales > 90 km/h** (relevé de 70 à 90 le 2026-10-07 pour ne détecter que du vent cyclonique), **pluie > 50 mm/24h**.
 
 ## État des lieux (vérifié)
 - 0 règle en base, aucun endpoint d'écriture (schemas Zod déjà prêts, morts) → détection sautée silencieusement (`hazard-detection.service.ts:81`, skip non enregistré car `createRun` non appelé et enum `automation_run_status` sans `SKIPPED`).
@@ -26,7 +26,7 @@ Décisions validées par l'utilisateur : auto-publication des alertes (`ALERTS_A
 
 ### B2. Seed de règles par défaut
 - `database/scripts/seed.ts` : nouvelle section idempotente (garde `WHERE NOT EXISTS` sur metric+hazard_type, dans la transaction existante, pattern section 2 L42-56) avec ~4 règles nationales (aucun scope géo) en s'appuyant sur les alias de `src/services/detection.logic.ts:5-55` :
-  - `CYCLONE` / `wind_gusts` / GT / **70 km/h** (horizon 0 = observations)
+  - `CYCLONE` / `wind_gusts` / GT / **90 km/h** (horizon 0 = observations ; seuil relevé de 70 à 90 le 2026-10-07)
   - `FORTE_PLUIE` / `rainfall` / GT / **50 mm/24h**
   - `VENT_VIOLENT` / `wind` / GT / 60 km/h
   - `VAGUE_DE_CHALEUR` / `temperature` / GE / 35 °C (forecast horizon 48)

@@ -110,14 +110,14 @@ export async function runBaseSeed(): Promise<void> {
         hazardType: 'CYCLONE',
         metric: 'wind_gusts',
         operator: 'GT',
-        threshold: 70,
+        threshold: 90,
         horizon: 0,
         severityRules: [
           { level: 'MODEREE', min: 20 },
           { level: 'ELEVEE', min: 45 },
           { level: 'EXTREME', min: 75 },
         ],
-        label: 'Cyclone — rafales > 70 km/h (observé)',
+        label: 'Cyclone — rafales > 90 km/h (observé)',
       },
       {
         hazardType: 'CYCLONE',
@@ -212,10 +212,33 @@ export async function runBaseSeed(): Promise<void> {
         );
         rulesCreated += 1;
         console.log(`  ✓ Règle de détection créée : ${rule.label}.`);
+      } else {
+        // Règle seedée existante : le seed reste la source de vérité des seuils.
+        // `created_by IS NULL` protège les règles créées via l'API CRUD.
+        const updated = await client.query(
+          `UPDATE hazard_detection_rules
+              SET operator = $1, threshold = $2, severity_rules = $3, updated_at = now()
+            WHERE hazard_type = $4 AND metric = $5 AND forecast_horizon_hours = $6
+              AND created_by IS NULL
+              AND (operator IS DISTINCT FROM $1 OR threshold IS DISTINCT FROM $2
+                   OR severity_rules IS DISTINCT FROM $3::jsonb)`,
+          [
+            rule.operator,
+            rule.threshold,
+            JSON.stringify(rule.severityRules),
+            rule.hazardType,
+            rule.metric,
+            rule.horizon,
+          ],
+        );
+        if ((updated.rowCount ?? 0) > 0) {
+          rulesCreated += 1;
+          console.log(`  ✓ Règle de détection mise à jour : ${rule.label}.`);
+        }
       }
     }
     if (rulesCreated === 0) {
-      console.log('  ○ Règles de détection par défaut existent déjà.');
+      console.log('  ○ Règles de détection par défaut à jour.');
     }
 
     await client.query('COMMIT');
