@@ -204,6 +204,13 @@ afterAll(async () => {
     [communeId, secondCommuneId],
   ]);
   await db.query(`DELETE FROM risk_configurations WHERE name LIKE 'wx-%'`);
+  // Les brouillons « Risque extrême détecté » créés par le recalcul doivent
+  // partir avant les événements : alerts.event_id est ON DELETE SET NULL.
+  await db.query(
+    `DELETE FROM alerts WHERE event_id IN (
+      SELECT id FROM hazard_events WHERE created_by IN ($1, $2, $3))`,
+    [admin.id, superAdmin.id, client.id],
+  );
   await db.query(`DELETE FROM hazard_events WHERE created_by IN ($1, $2, $3)`, [
     admin.id,
     superAdmin.id,

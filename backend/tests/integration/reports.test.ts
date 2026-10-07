@@ -85,6 +85,8 @@ afterAll(async () => {
     `DELETE FROM reports WHERE generated_by = ANY($1::uuid[])`,
     [userIds],
   );
+  await db.query(`DELETE FROM alerts WHERE event_id IN (
+    SELECT id FROM hazard_events WHERE created_by = ANY($1::uuid[]))`, [userIds]);
   await db.query(`DELETE FROM hazard_events WHERE created_by = ANY($1::uuid[])`, [userIds]);
   await db.query(
     `DELETE FROM user_sessions WHERE user_id = ANY($1::uuid[])`,

@@ -77,6 +77,8 @@ afterAll(async () => {
   if (ids.length > 0) {
     await db.query('DELETE FROM hazard_detection_rules WHERE id = ANY($1::uuid[])', [ids]);
   }
+  await db.query('DELETE FROM audit_logs WHERE user_id IN ($1, $2)', [superAdmin.id, client.id]);
+  await db.query('DELETE FROM users WHERE id IN ($1, $2)', [superAdmin.id, client.id]);
 });
 
 describe('GET /api/v1/detection-rules', () => {

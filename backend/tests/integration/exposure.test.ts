@@ -248,6 +248,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (eventIds.length > 0) {
+    await db.query('DELETE FROM alerts WHERE event_id = ANY($1::uuid[])', [eventIds]);
     await db.query('DELETE FROM hazard_events WHERE id = ANY($1::uuid[])', [eventIds]);
   }
   if (districtId) {

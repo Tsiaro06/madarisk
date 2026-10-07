@@ -80,6 +80,11 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  await db.query(
+    `DELETE FROM alerts WHERE event_id IN (
+      SELECT id FROM hazard_events WHERE created_by IN ($1, $2, $3))`,
+    [adminId, superAdminId, clientId],
+  );
   await db.query(`DELETE FROM hazard_events WHERE created_by IN ($1, $2, $3)`, [
     adminId,
     superAdminId,

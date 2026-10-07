@@ -94,6 +94,8 @@ describe('couche cartographique : source des données', () => {
   });
 
   afterAll(async () => {
+    await db.query(`DELETE FROM audit_logs WHERE user_id = $1`, [admin.id]);
+    await db.query(`DELETE FROM users WHERE id = $1`, [admin.id]);
     await db.query(`DELETE FROM weather_hourly WHERE hour_at >= '2027-01-01'::timestamptz`);
     // Le refresh de district passe par le vrai chemin d'écriture : on efface les
     // observations du stub plutôt que de laisser des valeurs synthétiques
