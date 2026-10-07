@@ -128,17 +128,33 @@ beforeEach(() => {
 });
 
 describe('TerritoiresPage — révélation d’une recherche sur la carte', () => {
-  it('Entrée sélectionne le premier résultat et le fait clignoter', async () => {
+  it('révèle automatiquement le premier résultat, sans Entrée', async () => {
     const user = userEvent.setup();
     renderPage();
 
     await screen.findByText('10101');
     await user.type(screen.getByLabelText('Recherche'), 'Ambo');
-    await user.keyboard('{Enter}');
 
     await waitFor(() =>
       expect(screen.getByTestId('map')).toHaveAttribute('data-blink-id', 'c1'),
     );
+    // La saisie ne fait pas sauter la page : le scroll est réservé à Entrée.
+    expect(Element.prototype.scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it('Entrée fait défiler jusqu’à la carte sur le résultat', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await screen.findByText('10101');
+    await user.type(screen.getByLabelText('Recherche'), 'Ambo');
+    await waitFor(() =>
+      expect(screen.getByTestId('map')).toHaveAttribute('data-blink-id', 'c1'),
+    );
+
+    await user.keyboard('{Enter}');
+
+    expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
   });
 
   it('Entrée sur l’onglet Districts fait cligner le premier district', async () => {

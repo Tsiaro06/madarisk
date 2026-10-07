@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { territoriesApi } from '@/api';
@@ -20,7 +20,7 @@ export function TerritoiresPage() {
   const [page, setPage] = useState(1);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [blinkId, setBlinkId] = useState<string | null>(null);
-  const pendingEnterRef = useRef(false);
+  const [autoRevealId, setAutoRevealId] = useState<string | null>(null);
   const mapCardRef = useRef<HTMLDivElement>(null);
 
   const districtsQ = useQuery({
@@ -62,23 +62,28 @@ export function TerritoiresPage() {
 
   const firstResult =
     (tab === 'districts' ? districtsQ.data?.data : communesQ.data?.data)?.[0] ?? null;
-  const searchFetching =
-    tab === 'districts' ? districtsQ.isFetching : communesQ.isFetching;
 
-  // Entrée : sélectionne le premier résultat et le révèle sur la carte
-  // (recentrage + clignotement). Si les résultats sont encore en cours de
-  // chargement, on mémorise l'intention et on l'applique dès qu'ils arrivent.
-  const revealOnMap = useCallback((id: string) => {
+  // Révélation automatique, dérivée pendant le rendu (pattern React
+  // « adjusting state when props change ») : dès que la recherche courante
+  // a un résultat, le premier devient la sélection et clignote sur la carte ;
+  // un terme sans résultat efface le clignotement. Le défilement vers la
+  // carte reste réservé à la frappe d'Entrée (événement utilisateur).
+  // Hors page 1 (pagination), pas d'auto-révélation : elle ne concerne que
+  // les résultats de recherche.
+  const wantedId =
+    q.trim() && page === 1 && firstResult ? firstResult.id : null;
+  if (wantedId !== autoRevealId) {
+    setAutoRevealId(wantedId);
+    setBlinkId(wantedId);
+    if (wantedId != null) setSelectedId(wantedId);
+  }
+
+  // Entrée : recentrage explicite sur le premier résultat + défilement.
+  const revealOnMap = (id: string) => {
     setSelectedId(id);
     setBlinkId(id);
     mapCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }, []);
-
-  useEffect(() => {
-    if (!pendingEnterRef.current || !firstResult) return;
-    pendingEnterRef.current = false;
-    revealOnMap(firstResult.id);
-  }, [firstResult, revealOnMap]);
+  };
 
   const selectEntity = (id: string) => {
     setSelectedId(id);
@@ -116,7 +121,6 @@ export function TerritoiresPage() {
                 setPage(1);
                 setSelectedId(null);
                 setBlinkId(null);
-                pendingEnterRef.current = false;
               }}
             >
               {label}
@@ -135,12 +139,7 @@ export function TerritoiresPage() {
             onKeyDown={(e) => {
               if (e.key !== 'Enter') return;
               e.preventDefault();
-              if (firstResult) {
-                pendingEnterRef.current = false;
-                revealOnMap(firstResult.id);
-              } else if (searchFetching) {
-                pendingEnterRef.current = true;
-              }
+              if (wantedId) revealOnMap(wantedId);
             }}
           />
         </div>

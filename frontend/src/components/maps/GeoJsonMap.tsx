@@ -20,9 +20,9 @@ interface GeoJsonMapProps {
    */
   boundariesOnly?: boolean;
   /**
-   * Identifiant de l'entité à recentrer et à faire clignoter (recherche par
-   * Entrée sur la page Territoires). Le clignotement s'arrête dès que la
-   * valeur change ou repasse à null.
+   * Identifiant de l'entité à recentrer et à faire clignoter (recherche sur
+   * la page Territoires). Le clignotement s'arrête dès que la valeur change
+   * ou repasse à null.
    */
   blinkId?: string | null;
 }
