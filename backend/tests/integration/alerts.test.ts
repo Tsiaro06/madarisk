@@ -173,6 +173,15 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  // Avant de supprimer users/hazard_events (ON DELETE SET NULL sur
+  // alerts.created_by / alerts.event_id) : sinon les alertes de test
+  // survivent orphelines et s'affichent en « Alertes actives » du dev.
+  await db.query(
+    `DELETE FROM alerts
+      WHERE created_by IN ($1, $2, $3)
+         OR event_id IN (SELECT id FROM hazard_events WHERE created_by IN ($1, $2, $3))`,
+    [admin.id, superAdmin.id, client.id],
+  );
   if (riskEventId) {
     await db.query(`DELETE FROM alerts WHERE event_id = $1`, [riskEventId]);
   }
