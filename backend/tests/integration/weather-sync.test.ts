@@ -168,7 +168,7 @@ class SyncMockProvider implements WeatherProvider {
         rainMm: [],
         windSpeedKmh: [],
         windDirectionDeg: [],
-        surfacePressureHpa: [],
+        pressureHpa: [],
         weatherCode: [],
       },
     };

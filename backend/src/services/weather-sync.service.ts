@@ -210,9 +210,8 @@ function aggregateDailyFromForecast(forecast: WeatherForecast): WeatherForecastD
         windGustsMaxKmh: null,
         windDirectionDeg: null,
         pressureAvgHpa:
-          forecast.hourly.surfacePressureHpa[i] !== null &&
-          forecast.hourly.surfacePressureHpa[i] !== undefined
-            ? forecast.hourly.surfacePressureHpa[i]
+          forecast.hourly.pressureHpa[i] !== null && forecast.hourly.pressureHpa[i] !== undefined
+            ? forecast.hourly.pressureHpa[i]
             : null,
         weatherCode:
           forecast.hourly.weatherCode[i] !== null && forecast.hourly.weatherCode[i] !== undefined

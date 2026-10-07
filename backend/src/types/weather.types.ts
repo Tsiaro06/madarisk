@@ -74,7 +74,7 @@ export interface WeatherForecast {
     rainMm: (number | null)[];
     windSpeedKmh: (number | null)[];
     windDirectionDeg: (number | null)[];
-    surfacePressureHpa: (number | null)[];
+    pressureHpa: (number | null)[];
     weatherCode: (number | null)[];
   };
 }

@@ -64,7 +64,7 @@ const mockProvider: WeatherProvider = {
       rainMm: [150],
       windSpeedKmh: [110],
       windDirectionDeg: [45],
-      surfacePressureHpa: [980],
+      pressureHpa: [980],
       weatherCode: [95],
     },
   }),

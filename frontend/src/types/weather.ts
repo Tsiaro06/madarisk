@@ -47,7 +47,7 @@ export type WeatherForecastPropertyKey =
   | "humidityPercent"
   | "precipitationMm"
   | "windSpeedKmh"
-  | "surfacePressureHpa";
+  | "pressureHpa";
 
 export interface WeatherBucket {
   label: string;
@@ -234,7 +234,7 @@ export const WEATHER_METRIC_CONFIGS: Record<
     label: "Pression",
     unit: "hPa",
     property: "pressureHpa",
-    forecastProperty: "surfacePressureHpa",
+    forecastProperty: "pressureHpa",
     buckets: [
       { label: "< 1005 hPa", color: violet, match: (v) => v < 1005 },
       {

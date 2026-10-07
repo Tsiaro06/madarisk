@@ -29,7 +29,7 @@ interface OpenMeteoCurrentResponse {
   wind_speed_10m: number | null;
   wind_direction_10m: number | null;
   wind_gusts_10m: number | null;
-  surface_pressure: number | null;
+  pressure_msl: number | null;
   weather_code: number | null;
   time: string;
 }
@@ -43,7 +43,7 @@ interface OpenMeteoDailyResponse {
   wind_gusts_10m_max: (number | null)[];
   wind_direction_10m_dominant: (number | null)[];
   relative_humidity_2m_mean: (number | null)[];
-  surface_pressure_mean: (number | null)[];
+  pressure_msl_mean: (number | null)[];
   weather_code: (number | null)[];
 }
 
@@ -63,7 +63,7 @@ interface OpenMeteoResponse {
     wind_speed_10m: (number | null)[];
     wind_direction_10m: (number | null)[];
     wind_gusts_10m: (number | null)[];
-    surface_pressure: (number | null)[];
+    pressure_msl: (number | null)[];
     weather_code: (number | null)[];
   };
 }
@@ -76,7 +76,7 @@ const CURRENT_VARIABLES = [
   'wind_speed_10m',
   'wind_direction_10m',
   'wind_gusts_10m',
-  'surface_pressure',
+  'pressure_msl',
   'weather_code',
 ].join(',');
 
@@ -88,7 +88,7 @@ const HOURLY_VARIABLES = [
   'wind_speed_10m',
   'wind_direction_10m',
   'wind_gusts_10m',
-  'surface_pressure',
+  'pressure_msl',
   'weather_code',
 ].join(',');
 
@@ -100,7 +100,7 @@ const DAILY_VARIABLES = [
   'wind_gusts_10m_max',
   'wind_direction_10m_dominant',
   'relative_humidity_2m_mean',
-  'surface_pressure_mean',
+  'pressure_msl_mean',
   'weather_code',
 ].join(',');
 
@@ -323,7 +323,7 @@ export class OpenMeteoProvider implements WeatherProvider {
             this.rateLimitedUntil = resetAt.getTime();
             logger.warn(
               { reason, until: resetAt.toISOString() },
-              'Open-Meteo : quota journalier atteint, circuit couvert jusqu\'au reset',
+              "Open-Meteo : quota journalier atteint, circuit couvert jusqu'au reset",
             );
             // On leve ICI et pas via un `break` : après la boucle, l'erreur
             // repasserait par `toApiError`, qui reconstruirait un 429 générique
@@ -378,7 +378,7 @@ export class OpenMeteoProvider implements WeatherProvider {
       windSpeedKmh: current.wind_speed_10m,
       windGustsKmh: current.wind_gusts_10m,
       windDirectionDeg: current.wind_direction_10m,
-      pressureHpa: current.surface_pressure,
+      pressureHpa: current.pressure_msl,
       weatherCode: current.weather_code !== null ? String(current.weather_code) : null,
     };
   }
@@ -389,10 +389,7 @@ export class OpenMeteoProvider implements WeatherProvider {
    * correspond a hier : lire le premier index donnerait le cumul d'hier au
    * lieu du cumul du jour (et afficherait de la pluie dans le passe).
    */
-  private dailyValueForToday(
-    resp: OpenMeteoResponse,
-    key: 'precipitation_sum',
-  ): number | null {
+  private dailyValueForToday(resp: OpenMeteoResponse, key: 'precipitation_sum'): number | null {
     const daily = resp.daily;
     if (!daily?.time) return null;
     const idx = daily.time.indexOf(this.localDateIn(resp.timezone));
@@ -440,7 +437,7 @@ export class OpenMeteoProvider implements WeatherProvider {
         windSpeedKmh: hourly.wind_speed_10m?.[i] ?? null,
         windGustsKmh: hourly.wind_gusts_10m?.[i] ?? null,
         windDirectionDeg: hourly.wind_direction_10m?.[i] ?? null,
-        pressureHpa: hourly.surface_pressure?.[i] ?? null,
+        pressureHpa: hourly.pressure_msl?.[i] ?? null,
         weatherCode:
           hourly.weather_code?.[i] !== null && hourly.weather_code?.[i] !== undefined
             ? String(hourly.weather_code[i])
@@ -680,7 +677,7 @@ export class OpenMeteoProvider implements WeatherProvider {
             windSpeedMaxKmh: daily.wind_speed_10m_max?.[di] ?? null,
             windGustsMaxKmh: daily.wind_gusts_10m_max?.[di] ?? null,
             windDirectionDeg: daily.wind_direction_10m_dominant?.[di] ?? null,
-            pressureAvgHpa: daily.surface_pressure_mean?.[di] ?? null,
+            pressureAvgHpa: daily.pressure_msl_mean?.[di] ?? null,
             weatherCode:
               daily.weather_code?.[di] !== null && daily.weather_code?.[di] !== undefined
                 ? String(daily.weather_code[di])
@@ -771,7 +768,7 @@ export class OpenMeteoProvider implements WeatherProvider {
         rainMm: data.hourly?.rain ?? [],
         windSpeedKmh: data.hourly?.wind_speed_10m ?? [],
         windDirectionDeg: data.hourly?.wind_direction_10m ?? [],
-        surfacePressureHpa: data.hourly?.surface_pressure ?? [],
+        pressureHpa: data.hourly?.pressure_msl ?? [],
         weatherCode: data.hourly?.weather_code ?? [],
       },
     };
@@ -930,7 +927,7 @@ export class OpenMeteoProvider implements WeatherProvider {
           windSpeedKmh: hourly.wind_speed_10m[timeIdx],
           windGustsKmh: hourly.wind_gusts_10m?.[timeIdx] ?? null,
           windDirectionDeg: hourly.wind_direction_10m[timeIdx],
-          pressureHpa: hourly.surface_pressure[timeIdx],
+          pressureHpa: hourly.pressure_msl[timeIdx],
           weatherCode:
             hourly.weather_code[timeIdx] !== null ? String(hourly.weather_code[timeIdx]) : null,
         },
@@ -954,7 +951,7 @@ export class OpenMeteoProvider implements WeatherProvider {
       .map((i) => hourly.wind_speed_10m[i])
       .filter((v): v is number => v !== null);
     const pressures = dayIndices
-      .map((i) => hourly.surface_pressure[i])
+      .map((i) => hourly.pressure_msl[i])
       .filter((v): v is number => v !== null);
     const codes = dayIndices
       .map((i) => hourly.weather_code[i])

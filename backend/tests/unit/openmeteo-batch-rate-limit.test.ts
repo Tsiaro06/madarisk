@@ -34,7 +34,7 @@ function okResponse(index: number): unknown {
       wind_speed_10m: 10,
       wind_gusts_10m: 20,
       wind_direction_deg: 180,
-      surface_pressure: 1010,
+      pressure_msl: 1010,
       weather_code: 1,
     },
     hourly: { time: [time], temperature_2m: [20] },
