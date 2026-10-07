@@ -29,7 +29,7 @@ Décisions validées par l'utilisateur : auto-publication des alertes (`ALERTS_A
   - `CYCLONE` / `wind_gusts` / GT / **90 km/h** (horizon 0 = observations ; seuil relevé de 70 à 90 le 2026-10-07)
   - `FORTE_PLUIE` / `rainfall` / GT / **50 mm/24h**
   - `VENT_VIOLENT` / `wind` / GT / 60 km/h
-  - `VAGUE_DE_CHALEUR` / `temperature` / GE / 35 °C (forecast horizon 48)
+  - `VAGUE_DE_CHALEUR` / `temperature` / GE / 40 °C (forecast horizon 48 ; seuil relevé de 35 à 40 le 2026-10-07)
   - `severityRules` calés sur la logique d'évaluation (vérifier `evaluateRules`/`detection.logic.ts:81-197` avant de fixer les min).
 - Exécuter `npm run db:migrate` puis `npm run db:seed` sur la base dev.
 

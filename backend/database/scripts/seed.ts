@@ -175,14 +175,14 @@ export async function runBaseSeed(): Promise<void> {
         hazardType: 'VAGUE_DE_CHALEUR',
         metric: 'temperature',
         operator: 'GE',
-        threshold: 35,
+        threshold: 40,
         horizon: 48,
         severityRules: [
-          { level: 'MODEREE', min: 10 },
-          { level: 'ELEVEE', min: 25 },
-          { level: 'EXTREME', min: 40 },
+          { level: 'MODEREE', min: 5 },
+          { level: 'ELEVEE', min: 15 },
+          { level: 'EXTREME', min: 30 },
         ],
-        label: 'Vague de chaleur — ≥ 35 °C (prévision 48 h)',
+        label: 'Vague de chaleur — ≥ 40 °C (prévision 48 h)',
       },
     ];
 

@@ -210,8 +210,8 @@ export const WEATHER_METRIC_CONFIGS: Record<
       { label: "< 18 °C", color: coldBlue, match: (v) => v < 18 },
       { label: "18 à 24 °C", color: green, match: (v) => v >= 18 && v < 24 },
       { label: "24 à 30 °C", color: yellow, match: (v) => v >= 24 && v < 30 },
-      { label: "30 à 35 °C", color: orange, match: (v) => v >= 30 && v < 35 },
-      { label: "≥ 35 °C", color: red, match: (v) => v >= 35 },
+      { label: "30 à 40 °C", color: orange, match: (v) => v >= 30 && v < 40 },
+      { label: "≥ 40 °C", color: red, match: (v) => v >= 40 },
     ],
   },
   relative_humidity_2m: {
