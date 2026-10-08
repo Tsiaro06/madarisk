@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, LogOut, Menu, UserRound } from 'lucide-react';
+import { AlertTriangle, Menu } from 'lucide-react';
 import { alertsApi } from '@/api';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
@@ -10,6 +10,7 @@ import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Spinner } from '@/components/ui/Spinner';
 import { AiChatBubble } from '@/components/ai/AiChatBubble';
 import { Sidebar, SIDEBAR_RAIL_WIDTH, SIDEBAR_WIDTH } from './Sidebar';
+import { AccountMenu } from './AccountMenu';
 
 const PAGE_META: { match: (path: string) => boolean; title: string; subtitle: string }[] = [
   {
@@ -68,20 +69,23 @@ function pageMeta(pathname: string) {
   );
 }
 
+/** Initiales de l'utilisateur pour la pastille (convention `ProfilePage`). */
+function initialsOf(user: { firstName: string; lastName: string }): string {
+  return `${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`.toUpperCase();
+}
+
 export function AppShell() {
   const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
   const location = useLocation();
   const [open, setOpen] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
   const [sidebarVisible, setSidebarVisible] = useState(true);
   // Même valeur que le breakpoint `lg` de Tailwind, qui n'est pas exposé au
   // JS : c'est la seule façon de brancher le clic de l'icône du navbar sur le
   // tiroir mobile ou sur la colonne desktop.
   const isDesktop = useMediaQuery('(min-width: 1024px)');
-  const menuRef = useRef<HTMLDivElement>(null);
 
   const fullBleed =
     location.pathname === '/' || location.pathname.startsWith('/meteo');
@@ -94,17 +98,6 @@ export function AppShell() {
 
   const urgent = urgentQuery.data?.data ?? [];
   const meta = pageMeta(location.pathname);
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDown);
-    return () => document.removeEventListener('mousedown', onDown);
-  }, [menuOpen]);
 
   const onLogout = async () => {
     await logout();
@@ -149,13 +142,14 @@ export function AppShell() {
       <div
         className="flex min-h-0 min-w-0 flex-col lg:h-screen lg:overflow-hidden lg:pl-[var(--sidebar-offset)] lg:transition-[padding] duration-300 ease-out"
       >
-        <header className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-line bg-surface/95 px-4 py-3 backdrop-blur-md sm:px-5">
+        <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-line/80 bg-surface/85 px-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-xl sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <button
               type="button"
               className={cn(
                 'grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-surface text-muted transition',
                 'hover:border-brand/35 hover:bg-brand-soft hover:text-brand-deep',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
                 sidebarExpanded && 'border-brand/40 bg-brand-soft text-brand-deep',
               )}
               onClick={() => (isDesktop ? setSidebarVisible((v) => !v) : setOpen(true))}
@@ -175,49 +169,13 @@ export function AppShell() {
           </div>
 
           <div className="flex shrink-0 items-center gap-2">
-            <div ref={menuRef} className="relative">
-              <button
-                type="button"
-                onClick={() => setMenuOpen((v) => !v)}
-                className={cn(
-                  'grid size-10 place-items-center rounded-full border border-line bg-surface text-ink/70 transition',
-                  'hover:border-brand/35 hover:bg-brand-soft hover:text-brand-deep',
-                  menuOpen && 'border-brand/40 bg-brand-soft text-brand-deep',
-                )}
-                aria-haspopup="menu"
-                aria-expanded={menuOpen}
-                aria-label="Menu compte"
-                title="Mon compte"
-              >
-                <UserRound className="size-5" />
-              </button>
-              {menuOpen ? (
-                <div
-                  className="absolute right-0 mt-2 w-52 overflow-hidden rounded-xl border border-line bg-surface shadow-xl"
-                  role="menu"
-                >
-                  <Link
-                    to="/profil"
-                    className="flex items-center gap-2 px-3 py-2.5 text-sm text-ink hover:bg-brand-soft"
-                    onClick={() => setMenuOpen(false)}
-                    role="menuitem"
-                  >
-                    <UserRound className="size-4 text-brand" /> Mon profil
-                  </Link>
-                  <button
-                    type="button"
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-sm text-risk-extreme hover:bg-red-50"
-                    role="menuitem"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      void onLogout();
-                    }}
-                  >
-                    <LogOut className="size-4" /> Déconnexion
-                  </button>
-                </div>
-              ) : null}
-            </div>
+            <AccountMenu
+              name={`${user.firstName} ${user.lastName}`}
+              email={user.email}
+              role={user.role}
+              initials={initialsOf(user)}
+              onLogout={() => void onLogout()}
+            />
           </div>
         </header>
 

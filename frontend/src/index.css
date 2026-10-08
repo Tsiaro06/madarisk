@@ -322,6 +322,12 @@ h3 {
   transform-origin: top right;
 }
 
+/* Menu compte de la barre (AppShell) : même fondu + léger glissement. */
+.account-menu {
+  animation: navbar-menu-in 0.15s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transform-origin: top right;
+}
+
 /* ------------------------------------------------------------------
    Tableau de bord — palette claire et entrées en matière douces.
    ------------------------------------------------------------------ */
@@ -407,6 +413,7 @@ h3 {
   .login-beacon,
   .madarisk-commune-pulse,
   .navbar-menu,
+  .account-menu,
   .dash-rise,
   .dash-fill {
     animation: none !important;

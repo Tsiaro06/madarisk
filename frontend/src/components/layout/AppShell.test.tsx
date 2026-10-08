@@ -7,7 +7,7 @@ import { AppShell } from './AppShell';
 
 vi.mock('@/stores/authStore', () => ({
   useAuthStore: (selector: (state: unknown) => unknown) =>
-    selector({ user: { id: 'u1', role: 'ADMIN' }, logout: vi.fn() }),
+    selector({ user: { id: 'u1', firstName: 'Nomena', lastName: 'Rakoto', email: 'nomena@madarisk.mg', role: 'ADMIN' }, logout: vi.fn() }),
 }));
 
 vi.mock('@/api', () => ({
