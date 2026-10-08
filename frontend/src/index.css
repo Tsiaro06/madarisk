@@ -214,8 +214,9 @@ h3 {
    la classe `dark` de <html>).
    ------------------------------------------------------------------ */
 .soft-ui {
-  --sb-accent: #3d4ef5;
-  --sb-accent-soft: rgba(61, 78, 245, 0.1);
+  /* Accent bleu marine, même code que les pastilles de la barre (#03224c). */
+  --sb-accent: #03224c;
+  --sb-accent-soft: rgba(3, 34, 76, 0.1);
   --sb-text: #191a21;
   --sb-text-soft: #4c4f5e;
   --sb-muted: #8b8ea0;
@@ -235,18 +236,19 @@ h3 {
     inset 0 0 0 1px rgba(255, 255, 255, 0.75),
     0 0 0 1px rgba(23, 24, 35, 0.04),
     0 30px 70px -30px rgba(25, 26, 60, 0.35),
-    0 0 90px -34px rgba(61, 78, 245, 0.45);
+    0 0 90px -34px rgba(3, 34, 76, 0.45);
   --sb-shadow-collapsed:
     inset 0 0 0 1px rgba(255, 255, 255, 0.8),
     0 0 0 1px rgba(23, 24, 35, 0.05),
     0 24px 50px -24px rgba(25, 26, 60, 0.3),
-    0 0 70px -30px rgba(61, 78, 245, 0.5);
+    0 0 70px -30px rgba(3, 34, 76, 0.5);
   color: var(--sb-text);
 }
 
 .soft-ui[data-theme="dark"] {
-  --sb-accent: #4a5bff;
-  --sb-accent-soft: rgba(74, 91, 255, 0.16);
+  /* Bleu marine éclairci pour ressortir sur le fond sombre du sidebar. */
+  --sb-accent: #3a6c9f;
+  --sb-accent-soft: rgba(58, 108, 159, 0.16);
   --sb-text: #f4f4f6;
   --sb-text-soft: #c3c5d1;
   --sb-muted: #7c7f8f;
@@ -259,11 +261,11 @@ h3 {
   --sb-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.06),
     0 30px 70px -30px rgba(0, 0, 0, 0.9),
-    -26px 0 70px -40px rgba(74, 91, 255, 0.65);
+    -26px 0 70px -40px rgba(58, 108, 159, 0.65);
   --sb-shadow-collapsed:
     inset 0 0 0 1px rgba(255, 255, 255, 0.07),
     0 24px 50px -24px rgba(0, 0, 0, 0.9),
-    -18px 0 60px -36px rgba(74, 91, 255, 0.6);
+    -18px 0 60px -36px rgba(58, 108, 159, 0.6);
 }
 
 /* La colonne latérale repose sur la page quasi noire. */
@@ -280,14 +282,14 @@ h3 {
   pointer-events: none;
   background: radial-gradient(
     120% 60% at 100% 0%,
-    rgba(61, 78, 245, 0.16),
+    rgba(3, 34, 76, 0.16),
     transparent 62%
   );
   opacity: 0.9;
 }
 
 .sidebar[data-theme="dark"]::before {
-  background: radial-gradient(110% 55% at 100% 50%, rgba(74, 91, 255, 0.2), transparent 60%);
+  background: radial-gradient(110% 55% at 100% 50%, rgba(58, 108, 159, 0.2), transparent 60%);
 }
 
 /* Navbar : halo bleu plus discret que celui de la colonne, orienté à gauche
@@ -298,11 +300,11 @@ h3 {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  background: radial-gradient(70% 120% at 0% 0%, rgba(61, 78, 245, 0.1), transparent 60%);
+  background: radial-gradient(70% 120% at 0% 0%, rgba(3, 34, 76, 0.1), transparent 60%);
 }
 
 .navbar[data-theme="dark"]::before {
-  background: radial-gradient(70% 120% at 0% 0%, rgba(74, 91, 255, 0.16), transparent 60%);
+  background: radial-gradient(70% 120% at 0% 0%, rgba(58, 108, 159, 0.16), transparent 60%);
 }
 
 /* Menus déroulants (notifications, compte) : fondu + léger décalage. */
