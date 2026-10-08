@@ -1,7 +1,20 @@
 import { useState, type CSSProperties } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Menu } from 'lucide-react';
+import {
+  AlertTriangle,
+  Clipboard,
+  Clock3,
+  CloudSun,
+  FileText,
+  Grid3x3,
+  Hexagon,
+  LayoutDashboard,
+  Map,
+  Menu,
+  UserRound,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { alertsApi } from '@/api';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
@@ -12,51 +25,65 @@ import { AiChatBubble } from '@/components/ai/AiChatBubble';
 import { Sidebar, SIDEBAR_RAIL_WIDTH, SIDEBAR_WIDTH } from './Sidebar';
 import { AccountMenu } from './AccountMenu';
 
-const PAGE_META: { match: (path: string) => boolean; title: string; subtitle: string }[] = [
+const PAGE_META: {
+  match: (path: string) => boolean;
+  title: string;
+  subtitle: string;
+  icon: LucideIcon;
+}[] = [
   {
     match: (p) => p === '/',
     title: 'Carte de crise',
     subtitle: 'Choisissez un événement à gauche, explorez la carte',
+    icon: Map,
   },
   {
     match: (p) => p.startsWith('/dashboard'),
     title: 'Tableau de bord',
     subtitle: 'Vue d’ensemble des risques et alertes',
+    icon: LayoutDashboard,
   },
   {
     match: (p) => p.startsWith('/meteo'),
     title: 'Météo',
     subtitle: 'Observations et prévisions par commune',
+    icon: CloudSun,
   },
   {
     match: (p) => p.startsWith('/evenements'),
     title: 'Événements',
     subtitle: 'Crises détectées et suivies',
+    icon: Clock3,
   },
   {
     match: (p) => p.startsWith('/alertes'),
     title: 'Alertes',
     subtitle: 'Ce qui demande votre attention',
+    icon: Clipboard,
   },
   {
     match: (p) => p.startsWith('/risques'),
     title: 'Niveaux de risque',
     subtitle: 'Évaluation automatique par territoire',
+    icon: Grid3x3,
   },
   {
     match: (p) => p.startsWith('/territoires'),
     title: 'Territoires',
     subtitle: 'Districts et communes de Madagascar',
+    icon: FileText,
   },
   {
     match: (p) => p.startsWith('/administration'),
     title: 'Utilisateurs',
     subtitle: 'Gérer les accès',
+    icon: Hexagon,
   },
   {
     match: (p) => p.startsWith('/profil'),
     title: 'Mon profil',
     subtitle: 'Compte et sécurité',
+    icon: UserRound,
   },
 ];
 
@@ -65,6 +92,7 @@ function pageMeta(pathname: string) {
     PAGE_META.find((m) => m.match(pathname)) ?? {
       title: 'MadaRisk Map',
       subtitle: 'Cartographie des risques · Madagascar',
+      icon: Hexagon,
     }
   );
 }
@@ -143,7 +171,7 @@ export function AppShell() {
         className="flex min-h-0 min-w-0 flex-col lg:h-screen lg:overflow-hidden lg:pl-[var(--sidebar-offset)] lg:transition-[padding] duration-300 ease-out"
       >
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-line/80 bg-surface/85 px-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-xl sm:px-5">
-          <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
             <button
               type="button"
               className={cn(
@@ -160,6 +188,12 @@ export function AppShell() {
             >
               <Menu className="size-5" />
             </button>
+            <span aria-hidden className="hidden h-8 w-px shrink-0 bg-line/70 sm:block" />
+            {/* Pastille d'icône de la page courante, reprenant celle du menu
+                latéral : renforce la lisibilité de la localisation. */}
+            <span aria-hidden className="hidden size-10 shrink-0 place-items-center rounded-xl border border-brand/15 bg-brand-soft text-brand-deep sm:grid">
+              <meta.icon className="size-5" />
+            </span>
             <div className="min-w-0">
               <p className="truncate font-display text-lg font-semibold tracking-tight text-ink sm:text-xl">
                 {meta.title}
