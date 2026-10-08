@@ -26,7 +26,7 @@ import {
   toUtcHourAt,
   isFutureHour,
 } from "@/services/weather.service";
-import { formatDate } from "@/lib/utils";
+import { formatDate, syncRunStatusLabel } from "@/lib/utils";
 import {
   formatWeatherValue,
   WEATHER_METRICS_ORDER,
@@ -54,6 +54,7 @@ interface WeatherCommuneDetailsPanelProps {
   hour: number | null;
   lastDataAt: string | null;
   lastSyncAt: string | null;
+  lastSyncStatus?: string | null;
   onClose?: () => void;
 }
 
@@ -77,6 +78,7 @@ export function WeatherCommuneDetailsPanel({
   hour,
   lastDataAt,
   lastSyncAt,
+  lastSyncStatus,
   onClose,
 }: WeatherCommuneDetailsPanelProps) {
   const isHistory = mode === "HISTORIQUE";
@@ -274,7 +276,13 @@ export function WeatherCommuneDetailsPanel({
                 <span className="font-medium text-ink">
                   Dernière synchronisation :
                 </span>{" "}
-                {lastSyncAt ? formatDate(lastSyncAt) : "—"}
+                {lastSyncAt
+                  ? `${formatDate(lastSyncAt)}${
+                      syncRunStatusLabel(lastSyncStatus)
+                        ? ` (${syncRunStatusLabel(lastSyncStatus)})`
+                        : ""
+                    }`
+                  : "—"}
               </p>
             </div>
           </Card>

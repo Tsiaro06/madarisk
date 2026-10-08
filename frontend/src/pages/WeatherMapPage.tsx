@@ -97,10 +97,17 @@ export function WeatherMapPage() {
   const mode = getWeatherViewMode(date, hour);
 
   // Ni le fournisseur ni le nom de la source ne sont affichés : dans une salle de
-// crise l'utilisateur veut l'heure de la dernière observation, pas l'éditeur de
-// l'API qui l'a servie. La fraîcheur reste lisible (bandeau `STALE`, dates des
-// panneaux).
-const lastSyncAt = monitoringQ.data?.sync.observations.lastSuccessAt ?? null;
+  // crise l'utilisateur veut l'heure de la dernière observation, pas l'éditeur de
+  // l'API qui l'a servie. La fraîcheur reste lisible (bandeau `STALE`, dates des
+  // panneaux).
+  // La dernière *tentative* prime sur la dernière réussite : une synchro stoppée
+  // au milieu par le quota (PARTIAL) ne doit pas figer la date affichée à la
+  // veille, son statut est affiché à côté de la date.
+  const obsSync = monitoringQ.data?.sync.observations;
+  const lastRun = obsSync?.lastRun ?? null;
+  const lastSyncAt =
+    lastRun?.finishedAt ?? lastRun?.startedAt ?? obsSync?.lastSuccessAt ?? null;
+  const lastSyncStatus = lastRun?.status ?? null;
   const lastDataAt = weather.latestObservationAt ?? lastSyncAt;
   const selectedFeature = useMemo(() => {
     if (!selectedId || !communesQ.data) return null;
@@ -334,6 +341,7 @@ const lastSyncAt = monitoringQ.data?.sync.observations.lastSuccessAt ?? null;
       maxDate={maxDate}
       lastDataAt={lastDataAt}
       lastSyncAt={lastSyncAt}
+      lastSyncStatus={lastSyncStatus}
       onMetricChange={setMetric}
       onDateChange={setDate}
       onHourChange={setHour}
@@ -358,6 +366,7 @@ const lastSyncAt = monitoringQ.data?.sync.observations.lastSuccessAt ?? null;
       hour={hour}
       lastDataAt={lastDataAt}
       lastSyncAt={lastSyncAt}
+      lastSyncStatus={lastSyncStatus}
       onClose={mobileDetails ? () => setMobileDetails(false) : undefined}
     />
   );

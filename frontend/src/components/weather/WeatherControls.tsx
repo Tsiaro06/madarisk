@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, syncRunStatusLabel } from "@/lib/utils";
 import { RefreshCw } from "lucide-react";
 import {
   addDaysToToday,
@@ -31,6 +31,7 @@ interface WeatherControlsProps {
   maxDate: string | null;
   lastDataAt: string | null;
   lastSyncAt: string | null;
+  lastSyncStatus?: string | null;
   onMetricChange: (metric: WeatherMetric) => void;
   onDateChange: (date: string) => void;
   onHourChange: (hour: number | null) => void;
@@ -50,6 +51,7 @@ export function WeatherControls({
   maxDate,
   lastDataAt,
   lastSyncAt,
+  lastSyncStatus,
   onMetricChange,
   onDateChange,
   onHourChange,
@@ -172,7 +174,13 @@ export function WeatherControls({
         </p>
         <p>
           <span className="font-medium text-ink">Synchronisation :</span>{" "}
-          {lastSyncAt ? formatDate(lastSyncAt) : "—"}
+          {lastSyncAt
+            ? `${formatDate(lastSyncAt)}${
+                syncRunStatusLabel(lastSyncStatus)
+                  ? ` (${syncRunStatusLabel(lastSyncStatus)})`
+                  : ""
+              }`
+            : "—"}
         </p>
       </div>
 

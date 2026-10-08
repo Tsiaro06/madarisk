@@ -24,3 +24,23 @@ export function formatDate(value?: string | null) {
     return value;
   }
 }
+
+/**
+ * Libellé d'un run de synchronisation météo. Un run `PARTIAL` (quota épuisé au
+ * milieu d'un lot) n'est pas un succès : l'afficher à côté de la date évite de
+ * laisser croire que la synchronisation n'a pas tournu aujourd'hui.
+ */
+export function syncRunStatusLabel(status?: string | null): string | null {
+  switch (status) {
+    case 'SUCCESS':
+      return 'réussie';
+    case 'PARTIAL':
+      return 'partielle';
+    case 'FAILED':
+      return 'échouée';
+    case 'RUNNING':
+      return 'en cours';
+    default:
+      return null;
+  }
+}
