@@ -103,6 +103,7 @@ export const alertsService = {
       activeOnly: boolean;
       automatic?: boolean;
       basis?: AlertBasis;
+      group?: 'event';
     },
     actor: { id: string; role: UserRole },
   ): Promise<PaginatedResult<AlertListRow>> {
@@ -119,6 +120,7 @@ export const alertsService = {
       activeOnly: query.activeOnly,
       automatic: query.automatic,
       basis: query.basis,
+      group: query.group,
       clientOnly,
     });
   },

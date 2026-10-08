@@ -48,6 +48,12 @@ interface AlertListRaw extends AlertRow {
   region_name: string | null;
 }
 
+interface AlertGroupRaw extends AlertListRaw {
+  alert_count: number;
+  commune_count: number;
+  group_ids: string[];
+}
+
 interface UpdateEntryRow {
   id: string;
   alert_id: string;
@@ -99,6 +105,31 @@ function mapAlertList(row: AlertListRaw): AlertListRow {
     districtName: row.district_name,
     communeName: row.commune_name,
     regionName: row.region_name,
+  };
+}
+
+// Une alerte automatique est créée par commune touchée : regroupée par
+// événement, la carte doit parler du groupe et non d'une seule commune
+// (titre « Prévision Cyclone — Antananarivo » → « … — 12 communes »).
+// Les alertes sans événement restent individuelles, sans métadonnées de groupe.
+function mapAlertListGroup(row: AlertGroupRaw): AlertListRow {
+  const base = mapAlertList(row);
+  if (!row.event_id) return base;
+  const communeCount = Number(row.commune_count);
+  const alertCount = Number(row.alert_count);
+  let { title, message } = base;
+  if (communeCount > 1 && row.commune_name) {
+    const label = `${communeCount} communes`;
+    title = title.split(row.commune_name).join(label);
+    message = message.split(row.commune_name).join(`${label} concernées`);
+  }
+  return {
+    ...base,
+    title,
+    message,
+    groupIds: row.group_ids,
+    alertCount,
+    communeCount,
   };
 }
 
@@ -157,6 +188,7 @@ export interface AlertListQuery {
   clientOnly: boolean;
   automatic?: boolean;
   basis?: AlertBasis;
+  group?: 'event';
 }
 
 export interface AlertUpdateData {
@@ -271,6 +303,74 @@ export const alertsRepository = {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
+    const offset = (query.page - 1) * query.limit;
+
+    if (query.group === 'event') {
+      // Une ligne par événement : la représentante est l'alerte la plus
+      // récente du groupe, les alertes sans événement restent individuelles
+      // (clé COALESCE(event_id, id)).
+      const countResult = await db.query<CountRow>(
+        `SELECT COUNT(*)::text AS count
+         FROM (
+           SELECT COALESCE(a.event_id, a.id) AS grp
+           FROM alerts a
+           ${where}
+           GROUP BY grp
+         ) grouped`,
+        values,
+      );
+      const groupedTotal = parseCount(countResult.rows[0]);
+
+      const pageResult = await db.query<AlertGroupRaw>(
+        `WITH filtered AS (
+           SELECT
+             ${ALERT_COLUMNS},
+             COALESCE(he.name, NULL::text) AS "event_name",
+             COALESCE(d.name, NULL::text) AS "district_name",
+             COALESCE(cm.name, NULL::text) AS "commune_name",
+             COALESCE(r.name, NULL::text) AS "region_name"
+           FROM alerts a
+           ${LIST_JOINS}
+           ${where}
+         ),
+         agg AS (
+           SELECT
+             COALESCE(event_id, id) AS grp,
+             COUNT(*)::int AS alert_count,
+             COUNT(DISTINCT commune_id)::int AS commune_count,
+             ARRAY_AGG(id ORDER BY published_at DESC NULLS LAST, created_at DESC) AS group_ids
+           FROM filtered
+           GROUP BY grp
+         ),
+         ranked AS (
+           SELECT
+             f.*,
+             ROW_NUMBER() OVER (
+               PARTITION BY COALESCE(f.event_id, f.id)
+               ORDER BY f.published_at DESC NULLS LAST, f.created_at DESC
+             ) AS rn,
+             g.alert_count,
+             g.commune_count,
+             g.group_ids
+           FROM filtered f
+           JOIN agg g ON g.grp = COALESCE(f.event_id, f.id)
+         )
+         SELECT *
+         FROM ranked
+         WHERE rn = 1
+         ORDER BY published_at DESC NULLS LAST, created_at DESC
+         LIMIT $${idx++} OFFSET $${idx++}`,
+        [...values, query.limit, offset],
+      );
+
+      return {
+        items: pageResult.rows.map(mapAlertListGroup),
+        page: query.page,
+        limit: query.limit,
+        total: groupedTotal,
+      };
+    }
+
     const countResult = await db.query<CountRow>(
       `SELECT COUNT(*)::text AS count
        FROM alerts a
@@ -279,7 +379,6 @@ export const alertsRepository = {
     );
     const total = parseCount(countResult.rows[0]);
 
-    const offset = (query.page - 1) * query.limit;
     const pageResult = await db.query<AlertListRaw>(
       `SELECT
          ${ALERT_COLUMNS},

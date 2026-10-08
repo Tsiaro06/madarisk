@@ -95,6 +95,10 @@ export const listAlertsQuerySchema = z.object({
       v === 'true' || v === '1' ? true : v === 'false' || v === '0' ? false : undefined,
     ),
   basis: basisEnum.optional(),
+  group: z
+    .enum(['event'])
+    .optional()
+    .describe('Regrouper les alertes par événement (une seule ligne par événement)'),
 });
 
 export const alertIdParamsSchema = z.object({

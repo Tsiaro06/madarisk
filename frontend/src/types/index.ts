@@ -298,6 +298,10 @@ export interface AlertListRow {
   eventName: string | null;
   districtName: string | null;
   communeName: string | null;
+  /** Présents uniquement avec group=event (liste regroupée par événement). */
+  groupIds?: string[];
+  alertCount?: number;
+  communeCount?: number;
 }
 
 export const RISK_COLORS: Record<RiskLevel, string> = {

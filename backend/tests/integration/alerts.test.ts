@@ -485,3 +485,118 @@ describe('Alertes - génération depuis un risque extrême', () => {
     expect(drafts.length).toBe(1);
   });
 });
+
+describe('Alertes - regroupement par événement (group=event)', () => {
+  let eventId: string;
+  let ids: string[];
+  let manualId: string;
+
+  beforeAll(async () => {
+    eventId = await createEvent(admin.token);
+    const rows = await db.query<{ id: string; name: string }>(
+      `SELECT c.id, c.name
+       FROM communes c
+       JOIN districts d ON d.id = c.district_id
+       WHERE d.normalized_name = 'MAROANTSETRA'
+       ORDER BY c.name
+       LIMIT 2`,
+    );
+    const [c1, c2] = rows.rows;
+    ids = [];
+
+    const make = async (
+      communeIdX: string,
+      name: string,
+      status: 'BROUILLON' | 'PUBLIEE',
+      publishedAt: string | null,
+    ) => {
+      const alert = await alertsRepository.create({
+        eventId,
+        communeId: communeIdX,
+        type: 'CYCLONE',
+        severity: 'ELEVEE',
+        status,
+        title: `Prévision Cyclone — ${name}`,
+        message: `Des conditions dangereuses de cyclone sont prévues à proximité de ${name}.`,
+        source: 'DETECTION',
+        basis: 'PREVISION',
+        isAutomatic: true,
+        publishedAt,
+        createdBy: admin.id,
+      });
+      ids.push(alert.id);
+    };
+
+    await make(c1.id, c1.name, 'BROUILLON', null);
+    await make(c1.id, c1.name, 'PUBLIEE', '2026-10-01T08:00:00.000Z');
+    await make(c2.id, c2.name, 'PUBLIEE', '2026-10-01T09:00:00.000Z');
+
+    const manual = await alertsRepository.create({
+      districtId,
+      type: 'INFORMATION',
+      severity: 'FAIBLE',
+      status: 'PUBLIEE',
+      title: 'Alerte hors événement',
+      message: 'Message sans événement',
+      createdBy: admin.id,
+      publishedAt: '2026-10-01T10:00:00.000Z',
+    });
+    manualId = manual.id;
+  });
+
+  it('regroupe les alertes d un même événement en une seule ligne', async () => {
+    const res = await request(app)
+      .get(`/api/v1/alerts?group=event&eventId=${eventId}&limit=100`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBe(1);
+
+    const group = res.body.data[0];
+    expect(group.eventId).toBe(eventId);
+    expect(group.alertCount).toBe(3);
+    expect(group.communeCount).toBe(2);
+    expect(group.groupIds).toHaveLength(3);
+    expect(group.groupIds).toEqual(expect.arrayContaining(ids));
+    // La représentante est l'alerte la plus récente (publiée à 09:00)
+    expect(group.id).toBe(ids[2]);
+    // Le titre/message parlent du groupe, pas d'une commune unique
+    expect(group.title).toContain('2 communes');
+    expect(group.message).toContain('2 communes concernées');
+    expect(group.message).not.toContain(group.communeName);
+  });
+
+  it('laisse les alertes sans événement individuelles et indique le total regroupé', async () => {
+    const res = await request(app)
+      .get('/api/v1/alerts?group=event&limit=100')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+
+    const manual = res.body.data.find(
+      (a: { id: string }) => a.id === manualId,
+    );
+    expect(manual).toBeDefined();
+    expect(manual.alertCount).toBeUndefined();
+    expect(manual.communeCount).toBeUndefined();
+    expect(manual.groupIds).toBeUndefined();
+
+    for (const row of res.body.data) {
+      if (row.eventId === eventId) {
+        expect(row.groupIds).toHaveLength(3);
+      }
+    }
+  });
+
+  it('sans group, le comportement antérieur est conservé', async () => {
+    const res = await request(app)
+      .get(`/api/v1/alerts?eventId=${eventId}&limit=100`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBe(3);
+    expect(res.body.meta.total).toBe(3);
+    const raw = res.body.data.find(
+      (a: { id: string }) => a.id === ids[0],
+    );
+    expect(raw).toBeDefined();
+    expect(raw.alertCount).toBeUndefined();
+  });
+});

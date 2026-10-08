@@ -3134,6 +3134,16 @@ paths:
             schema: { $ref: '#/components/schemas/AlertBasis' },
             description: Nature des données ayant déclenché l'alerte (PREVISION / OBSERVATION),
           }
+        - name: group
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [event]
+          description: >-
+            Regrouper les alertes par événement : une seule ligne par événement
+            avec groupIds, alertCount et communeCount (les alertes sans événement
+            restent individuelles).
       responses:
         '200':
           description: Liste des alertes
@@ -5051,6 +5061,16 @@ components:
         createdBy: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+        groupIds:
+          type: array
+          items: { type: string, format: uuid }
+          description: Présent avec group=event — tous les ids du groupe (actions groupées)
+        alertCount:
+          type: integer
+          description: Présent avec group=event — nombre d'alertes regroupées
+        communeCount:
+          type: integer
+          description: Présent avec group=event — nombre de communes distinctes touchées
     AlertBasis:
       type: string
       enum: [PREVISION, OBSERVATION]

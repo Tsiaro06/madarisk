@@ -55,6 +55,10 @@ export interface AlertListRow extends Alert {
   districtName: string | null;
   communeName: string | null;
   regionName: string | null;
+  /** Présents uniquement quand la liste est regroupée par événement (group=event). */
+  groupIds?: string[];
+  alertCount?: number;
+  communeCount?: number;
 }
 
 export interface AlertUpdateEntry {

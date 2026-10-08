@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@/components/ui/Toast';
 import { ApiClientError } from '@/api/client';
+import { useCrisisStore } from '@/stores/crisisStore';
 import { AlertesPage } from './AlertesPage';
 
 const roleState = vi.hoisted(() => ({ role: 'ADMIN' as string | null }));
@@ -248,5 +249,140 @@ describe('AlertesPage — création d’une alerte exceptionnelle', () => {
     expect(screen.getByText('Alerte créée')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Créer une alerte exceptionnelle/ }));
     expect(screen.getByLabelText('Titre')).toHaveValue('');
+  });
+});
+
+describe('AlertesPage — regroupement par événement', () => {
+  beforeEach(() => {
+    useCrisisStore.getState().setActiveEventId(null);
+  });
+
+  it('demande le regroupement par événement à l’API', async () => {
+    renderPage();
+    await waitFor(() =>
+      expect(api.list).toHaveBeenCalledWith(expect.objectContaining({ group: 'event' })),
+    );
+  });
+
+  it('affiche une seule carte pour un événement multi-communes', async () => {
+    api.list.mockResolvedValue({
+      data: [
+        {
+          id: 'g1',
+          eventId: '11111111-1111-1111-1111-111111111111',
+          districtId: null,
+          communeId: '30000000-0000-0000-0000-000000000001',
+          type: 'CYCLONE',
+          severity: 'ELEVEE',
+          status: 'PUBLIEE',
+          title: 'Prévision Cyclone — 12 communes',
+          message: 'Des conditions dangereuses de cyclone sont prévues à proximité de Antananarivo.',
+          isAutomatic: true,
+          basis: 'PREVISION',
+          createdBy: null,
+          publishedAt: '2026-10-01T00:00:00.000Z',
+          expiresAt: null,
+          createdAt: '2026-10-01T00:00:00.000Z',
+          updatedAt: '2026-10-01T00:00:00.000Z',
+          eventName: 'Cyclone Test',
+          districtName: null,
+          communeName: 'Antananarivo',
+          groupIds: ['g1', 'g2', 'g3'],
+          alertCount: 3,
+          communeCount: 12,
+        },
+      ],
+      meta: { page: 1, limit: 12, total: 1, totalPages: 1 },
+    });
+    renderPage();
+    expect(await screen.findByText('Prévision Cyclone — 12 communes')).toBeInTheDocument();
+    expect(screen.getByText(/12 communes touchées/)).toBeInTheDocument();
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('« Voir » ouvre l’événement en salle de crise', async () => {
+    const user = userEvent.setup();
+    api.list.mockResolvedValue({
+      data: [
+        {
+          id: 'g1',
+          eventId: '22222222-2222-2222-2222-222222222222',
+          districtId: null,
+          communeId: null,
+          type: 'INONDATION',
+          severity: 'ELEVEE',
+          status: 'PUBLIEE',
+          title: 'Inondation en cours — 5 communes',
+          message: 'Inondation en cours.',
+          isAutomatic: true,
+          basis: 'OBSERVATION',
+          createdBy: null,
+          publishedAt: '2026-10-01T00:00:00.000Z',
+          expiresAt: null,
+          createdAt: '2026-10-01T00:00:00.000Z',
+          updatedAt: '2026-10-01T00:00:00.000Z',
+          eventName: 'Crue Test',
+          districtName: null,
+          communeName: null,
+          groupIds: ['g1', 'g2', 'g3', 'g4', 'g5'],
+          alertCount: 5,
+          communeCount: 5,
+        },
+      ],
+      meta: { page: 1, limit: 12, total: 1, totalPages: 1 },
+    });
+    renderPage();
+    const voirButton = await screen.findByRole('button', { name: /Voir/ });
+    await user.click(voirButton);
+    await waitFor(() =>
+      expect(useCrisisStore.getState().activeEventId).toBe(
+        '22222222-2222-2222-2222-222222222222',
+      ),
+    );
+  });
+
+  it('publie toutes les alertes du groupe', async () => {
+    const user = userEvent.setup();
+    api.list.mockResolvedValue({
+      data: [
+        {
+          id: 'rep',
+          eventId: '33333333-3333-3333-3333-333333333333',
+          districtId: null,
+          communeId: '30000000-0000-0000-0000-000000000001',
+          type: 'VENT_VIOLENT',
+          severity: 'ELEVEE',
+          status: 'BROUILLON',
+          title: 'Prévision Vent violent — 2 communes',
+          message: 'Vent violent prévu.',
+          isAutomatic: true,
+          basis: 'PREVISION',
+          createdBy: null,
+          publishedAt: null,
+          expiresAt: null,
+          createdAt: '2026-10-01T00:00:00.000Z',
+          updatedAt: '2026-10-01T00:00:00.000Z',
+          eventName: 'Vent Test',
+          districtName: null,
+          communeName: 'A',
+          groupIds: ['a', 'b'],
+          alertCount: 2,
+          communeCount: 2,
+        },
+      ],
+      meta: { page: 1, limit: 12, total: 1, totalPages: 1 },
+    });
+    renderPage();
+    const card = (await screen.findByText('Prévision Vent violent — 2 communes')).closest(
+      'li',
+    ) as HTMLElement;
+    await user.click(within(card).getByRole('button', { name: /Intervention administrative/ }));
+    await user.click(within(card).getByRole('button', { name: 'Publier' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Confirmer la publication' }),
+    );
+    await waitFor(() => expect(api.publish).toHaveBeenCalledWith('a'));
+    expect(api.publish).toHaveBeenCalledWith('b');
+    expect(api.publish).toHaveBeenCalledTimes(2);
   });
 });

@@ -1,9 +1,11 @@
 import { useState, type FormEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Radio } from 'lucide-react';
+import { Eye, Plus, Radio } from 'lucide-react';
 import { alertsApi } from '@/api';
-import type { AlertStatus, AlertType, SeverityLevel } from '@/types';
+import type { AlertListRow, AlertStatus, AlertType, SeverityLevel } from '@/types';
 import { ApiClientError } from '@/api/client';
+import { useCrisisStore } from '@/stores/crisisStore';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -60,6 +62,8 @@ function statusTone(s: AlertStatus) {
 export function AlertesPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
@@ -87,6 +91,7 @@ export function AlertesPage() {
         status: status || undefined,
         type: type || undefined,
         automatic: origine || undefined,
+        group: 'event',
       }),
   });
 
@@ -130,7 +135,7 @@ export function AlertesPage() {
   });
 
   const publishM = useMutation({
-    mutationFn: (id: string) => alertsApi.publish(id),
+    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => alertsApi.publish(id))),
     onSuccess: () => {
       toast('Alerte publiée', 'success');
       void qc.invalidateQueries({ queryKey: ['alerts'] });
@@ -144,7 +149,7 @@ export function AlertesPage() {
   });
 
   const archiveM = useMutation({
-    mutationFn: (id: string) => alertsApi.archive(id),
+    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => alertsApi.archive(id))),
     onSuccess: () => {
       toast('Alerte archivée', 'success');
       void qc.invalidateQueries({ queryKey: ['alerts'] });
@@ -157,23 +162,32 @@ export function AlertesPage() {
     },
   });
 
-  const publishAlert = (id: string) => {
+  const groupIdsOf = (alert: AlertListRow): string[] => alert.groupIds ?? [alert.id];
+
+  const openInCrisisRoom = (alert: AlertListRow) => {
+    if (!alert.eventId) return;
+    setActiveEventId(alert.eventId);
+    toast('Événement actif en salle de crise', 'info');
+    navigate('/');
+  };
+
+  const publishAlert = (ids: string[]) => {
     setConfirmState({
       open: true,
       title: 'Publier cette alerte\u00a0?',
       variant: 'warning',
       actionLabel: 'Confirmer la publication',
-      onConfirm: () => publishM.mutate(id),
+      onConfirm: () => publishM.mutate(ids),
     });
   };
 
-  const archiveAlert = (id: string) => {
+  const archiveAlert = (ids: string[]) => {
     setConfirmState({
       open: true,
       title: 'Archiver cette alerte\u00a0?',
       variant: 'destructive',
       actionLabel: "Confirmer l'archivage",
-      onConfirm: () => archiveM.mutate(id),
+      onConfirm: () => archiveM.mutate(ids),
     });
   };
 
@@ -322,10 +336,22 @@ export function AlertesPage() {
                       </div>
                       <p className="mt-1 text-sm text-muted">{a.message}</p>
                       <p className="mt-2 text-xs text-muted">
-                        {a.communeName || a.districtName || 'Territoire non précisé'} ·{' '}
-                        {formatDate(a.publishedAt || a.createdAt)}
+                        {a.communeCount != null && a.communeCount > 1
+                          ? `${a.communeCount} communes touchées`
+                          : a.communeName || a.districtName || 'Territoire non précisé'}{' '}
+                        · {formatDate(a.publishedAt || a.createdAt)}
                       </p>
                     </div>
+                    {a.eventId ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => openInCrisisRoom(a)}
+                        title="Voir l'état de l'événement en salle de crise"
+                      >
+                        <Eye className="size-4" /> Voir
+                      </Button>
+                    ) : null}
                   </div>
                   <AdministrativeInterventionPanel compact className="mt-2">
                     <div className="flex gap-2">
@@ -333,7 +359,7 @@ export function AlertesPage() {
                         <Button
                           size="sm"
                           loading={publishM.isPending}
-                          onClick={() => publishAlert(a.id)}
+                          onClick={() => publishAlert(groupIdsOf(a))}
                         >
                           Publier
                         </Button>
@@ -343,7 +369,7 @@ export function AlertesPage() {
                           size="sm"
                           variant="outline"
                           loading={archiveM.isPending}
-                          onClick={() => archiveAlert(a.id)}
+                          onClick={() => archiveAlert(groupIdsOf(a))}
                         >
                           Archiver
                         </Button>
