@@ -178,9 +178,9 @@ Le fichier `.env.example` liste toutes les variables. Les plus importantes :
 | `UPLOAD_DIR` / `MAX_FILE_SIZE_MB` | `uploads` / `50` | Dossier racine des uploads et taille max |
 | `IMPORTS_DIR` / `REPORTS_DIR` | `uploads/imports` / `uploads/reports` | Sous-répertoires des fichiers SIG et rapports |
 | `ENABLE_SCHEDULED_JOBS` | `false` | Activer les tâches planifiées |
-| `WEATHER_OBSERVATION_CRON` / `WEATHER_FORECAST_CRON` | `0 * * * *` / `0 */3 * * *` | Synchronisations météo : observations (60 min) et prévisions (3 h) |
-| `WEATHER_REFRESH_CRON` | `0 */4 * * *` | Rétrocompatibilité (défaut de `WEATHER_OBSERVATION_CRON` si non défini) |
-| `WEATHER_OBSERVATION_STALE_MINUTES` / `WEATHER_FORECAST_STALE_HOURS` | `150` / `6` | Seuils de fraîcheur exposés par `/weather/monitoring` |
+| `WEATHER_OBSERVATION_CRON` / `WEATHER_FORECAST_CRON` | `0 6 * * *` / `20 12 * * *` | Synchronisations météo : observations (1×/jour, 06 h) et prévisions (1×/jour, 12 h 20) |
+| `WEATHER_REFRESH_CRON` | `0 6 * * *` | Rétrocompatibilité (défaut de `WEATHER_OBSERVATION_CRON` si non défini) |
+| `WEATHER_OBSERVATION_STALE_MINUTES` / `WEATHER_FORECAST_STALE_HOURS` | `1500` / `26` | Seuils de fraîcheur exposés par `/weather/monitoring` (période du cron + 1 h) |
 | `RISK_RECALCULATION_CRON` | `10 * * * *` | Planning crontab (risques) |
 | `DETECTION_NORMAL_CYCLES_BEFORE_MONITORING` / `DETECTION_MONITORING_HOURS` / `DETECTION_DEDUPE_HOURS` | `3` / `24` / `48` | Moteur de détection : cycles avant suivi, durée de suivi, fenêtre anti-doublon |
 | `ALERTS_AUTO_PUBLISH` | `false` | `true` = les alertes automatiques sont publiées directement (`PUBLIEE`) au lieu de rester en brouillon |

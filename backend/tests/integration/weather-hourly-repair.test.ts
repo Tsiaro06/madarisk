@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '../../src/config/database';
 import { weatherRepository } from '../../src/repositories/weather.repository';
@@ -11,10 +12,17 @@ import type { WeatherHourlyInsertData } from '../../src/repositories/weather.rep
  * Sans elle, un créneau perdu (lot tronqué, 429) reste vide définitivement — c'est
  * ce qui produisait une courbe sautant de 02h à 17h en pleine journée.
  *
- * Deux fenêtres de travail, placées dans le passé et restaurées à l'identique :
- * elles ne peuvent pas être confondues avec la fenêtre glissante du
- * fournisseur, donc le test reste déterministe même si un run planifié
- * s'exécute pendant ce temps.
+ * Le jeu travaille sur une source dédiée, créée puis supprimée ici : la
+ * couverture nationale de la fenêtre NEAR y est construite d'un seul traît,
+ * hors les 3 communes cibles, et la fenêtre FAR y reste vide. Rien ne dépend
+ * donc des runs réels du poste — c'est exactement ce qui manquait : les
+ * fenêtres du passé ne sont plus réécrites par les runs, donc les créneaux
+ * perdus pendant l'épuisement de quota du 07/10 restaient troués et
+ * « rien ne manque » devenait faux pour toujours.
+ *
+ * Deux fenêtres de travail, placées dans le passé, hors de la fenêtre
+ * glissante du fournisseur : un run planifié qui s'exécute pendant le test ne
+ * peut pas les toucher, puisqu'il écrit sous la source OPEN_METEO.
  */
 
 const HOUR_MS = 3_600_000;
@@ -28,8 +36,6 @@ function windowHoursAgo(hoursAgoEnd: number, length: number): { start: string; e
 const NEAR = windowHoursAgo(30, 3);
 const FAR = windowHoursAgo(50, 3);
 
-const WORKING_WINDOWS = [NEAR, FAR];
-
 interface Target {
   id: string;
   latitude: number;
@@ -38,16 +44,6 @@ interface Target {
 
 let sourceId: string;
 let targets: Target[] = [];
-let backup: Record<string, unknown>[] = [];
-
-function clearWindow(ids: string[], win: { start: string; end: string }): Promise<unknown> {
-  return db.query(
-    `DELETE FROM weather_hourly
-     WHERE weather_source_id = $1 AND commune_id = ANY($2::uuid[])
-       AND hour_at >= $3 AND hour_at < $4`,
-    [sourceId, ids, win.start, win.end],
-  );
-}
 
 function rowsFor(target: Target, win: { start: string; end: string }): WeatherHourlyInsertData[] {
   const startMs = Date.parse(win.start);
@@ -72,7 +68,14 @@ function rowsFor(target: Target, win: { start: string; end: string }): WeatherHo
 
 describe('weather_hourly : sélection des communes à réparer', () => {
   beforeAll(async () => {
-    sourceId = await weatherRepository.getSourceId();
+    const created = await db.query<{ id: string }>(
+      `INSERT INTO weather_sources (name, provider_type)
+       VALUES ($1, 'OPEN_METEO')
+       RETURNING id`,
+      [`hourly-repair-test-${randomUUID()}`],
+    );
+    sourceId = created.rows[0].id;
+
     const communes = await db.query<Target>(
       `SELECT c.id,
               ST_Y(c.centroid)::float8 AS latitude,
@@ -83,54 +86,30 @@ describe('weather_hourly : sélection des communes à réparer', () => {
     );
     targets = communes.rows;
 
-    const ids = targets.map((t) => t.id);
-    for (const win of WORKING_WINDOWS) {
-      const existing = await db.query<Record<string, unknown>>(
-        `SELECT * FROM weather_hourly
-         WHERE weather_source_id = $1 AND commune_id = ANY($2::uuid[])
-           AND hour_at >= $3 AND hour_at < $4`,
-        [sourceId, ids, win.start, win.end],
-      );
-      backup.push(...existing.rows);
-      await clearWindow(ids, win);
-    }
+    // Fenêtre NEAR complète pour toutes les communes sauf les 3 cibles : la
+    // sélection ne peut alors retomber que sur celles-ci, quel que soit l'état
+    // réel de la base.
+    await db.query(
+      `INSERT INTO weather_hourly
+         (weather_source_id, commune_id, hour_at, latitude, longitude, temperature_c,
+          humidity_percent, precipitation_mm, rain_mm, wind_speed_kmh, wind_gusts_kmh,
+          wind_direction_deg, pressure_hpa, weather_code, is_forecast, geom)
+       SELECT $1, c.id, h, ST_Y(c.centroid), ST_X(c.centroid), 20, 50, 0, 0, 10, 20, 180,
+              1010, '1', false,
+              ST_SetSRID(ST_MakePoint(ST_X(c.centroid), ST_Y(c.centroid)), 4326)
+       FROM communes c
+       CROSS JOIN generate_series(
+         $2::timestamptz, $3::timestamptz - interval '1 hour', interval '1 hour'
+       ) AS h
+       WHERE NOT (c.id = ANY($4::uuid[]))`,
+      [sourceId, NEAR.start, NEAR.end, targets.map((t) => t.id)],
+    );
   });
 
   afterAll(async () => {
-    const ids = targets.map((t) => t.id);
-    for (const win of WORKING_WINDOWS) await clearWindow(ids, win);
-
-    for (const row of backup) {
-      await db.query(
-        `INSERT INTO weather_hourly
-           (id, weather_source_id, commune_id, hour_at, latitude, longitude,
-            temperature_c, humidity_percent, precipitation_mm, rain_mm,
-            wind_speed_kmh, wind_gusts_kmh, wind_direction_deg, pressure_hpa,
-            weather_code, is_forecast, raw_data, geom, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17,
-                 ST_SetSRID(ST_MakePoint($6::numeric, $5::numeric), 4326), $18)`,
-        [
-          row.id,
-          row.weather_source_id,
-          row.commune_id,
-          row.hour_at,
-          row.latitude,
-          row.longitude,
-          row.temperature_c,
-          row.humidity_percent,
-          row.precipitation_mm,
-          row.rain_mm,
-          row.wind_speed_kmh,
-          row.wind_gusts_kmh,
-          row.wind_direction_deg,
-          row.pressure_hpa,
-          row.weather_code,
-          row.is_forecast,
-          row.raw_data ?? null,
-          row.created_at,
-        ],
-      );
-    }
+    // La source ne sert qu'à ce jeu : la cascade repart avec ses lignes, sans
+    // toucher à la source OPEN_METEO ni aux données réelles.
+    await db.query('DELETE FROM weather_sources WHERE id = $1', [sourceId]);
   });
 
   it('retient une commune dont un seul créneau manque', async () => {

@@ -4,8 +4,12 @@ import { pruneForecastCache } from '../../src/services/openmeteo.provider';
 import {
   classifyRateLimit,
   dailyResetRetryAfter,
+  hourlyResetRetryAfter,
   nextDailyReset,
+  nextHourlyReset,
   quotaCostOfBatch,
+  rateLimitMessage,
+  CoordinateRateLimiter,
 } from '../../src/services/weather-quota';
 
 /**
@@ -142,6 +146,37 @@ describe('plafonds Open-Meteo : ne pas confondre journalier et rafale', () => {
     expect(retryAfter).toBeGreaterThan(60);
     expect(retryAfter).toBeLessThanOrEqual(24 * 3600);
   });
+
+  /**
+   * Reset horaire : le 08/10, un 429 « hourly » à 08:48 a fermé le circuit
+   * jusqu'à 09:48 (« environ une heure ») alors que le compteur du fournisseur
+   * repart à 09:00. Attendre au-delà du reset réel coûte des dizaines de
+   * minutes de données pour rien.
+   */
+  it('programme le reset horaire en début d’heure UTC suivante', () => {
+    expect(nextHourlyReset(new Date('2026-10-02T08:48:33Z')).toISOString()).toBe(
+      '2026-10-02T09:01:00.000Z',
+    );
+    expect(nextHourlyReset(new Date('2026-10-02T08:59:59Z')).toISOString()).toBe(
+      '2026-10-02T09:01:00.000Z',
+    );
+    expect(nextHourlyReset(new Date('2026-10-02T23:30:00Z')).toISOString()).toBe(
+      '2026-10-03T00:01:00.000Z',
+    );
+  });
+
+  it('limite le Retry-After horaire au reset réel', () => {
+    const retryAfter = hourlyResetRetryAfter(new Date('2026-10-02T08:48:33Z'));
+    // 12 min 27 s jusqu'à 09:01, pas une heure.
+    expect(retryAfter).toBeGreaterThan(60);
+    expect(retryAfter).toBeLessThanOrEqual(15 * 60);
+  });
+
+  it('date l’heure de reset dans le message horaire', () => {
+    const message = rateLimitMessage('hourly', new Date('2026-10-02T09:01:00Z'));
+    expect(message).toContain('2026-10-02T09:01:00.000Z');
+    expect(message).toContain("début d'heure UTC");
+  });
 });
 
 describe('seuils de péremption : cohérents avec la période des crons', () => {
@@ -169,6 +204,66 @@ describe('seuils de péremption : cohérents avec la période des crons', () => 
     expect(env.WEATHER_FORECAST_STALE_HOURS).toBeLessThan(
       2 * (periodMinutes(env.WEATHER_FORECAST_CRON) / 60),
     );
+  });
+});
+
+/**
+ * Limiteur de rafale : 600 coordonnées par minute.
+ *
+ * Le 08/10 09:22, les lots de 400 partaient sans discontinuer : 800 coordonnées
+ * en 90 secondes, donc 429 « minutely » et 779 communes rejetées sur 1579 alors
+ * que le budget journalier n'était qu'à 12 %. Ces tests verrouillent l'attente
+ * entre deux lots.
+ */
+describe('limiteur de rafale : un lot par fenêtre, pas deux', () => {
+  // Fenêtre glissante du limiteur : 65 s, 5 s de marge sous la fenêtre fixe
+  // d'Open-Meteo (60 s) dont l'effacement peut être retardé côté serveur.
+  const WINDOW = 65_000;
+
+  it('laisse passer le premier lot sans attendre', () => {
+    expect(new CoordinateRateLimiter().reserve(400, 1_000_000)).toBe(0);
+  });
+
+  it('fait attendre un second lot dans la même fenêtre', () => {
+    const limiter = new CoordinateRateLimiter();
+    limiter.reserve(400, 1_000_000);
+
+    const wait = limiter.reserve(400, 1_001_000);
+
+    expect(wait).toBeGreaterThan(0);
+    expect(wait).toBeLessThanOrEqual(WINDOW - 1_000);
+  });
+
+  it('rend la main une fois la fenêtre glissante passée', () => {
+    const limiter = new CoordinateRateLimiter();
+    limiter.reserve(400, 1_000_000);
+
+    expect(limiter.reserve(400, 1_000_000 + WINDOW)).toBe(0);
+  });
+
+  it('accepte une coordonnée isolée dès que la place est libre', () => {
+    const limiter = new CoordinateRateLimiter();
+    limiter.reserve(499, 1_000_000);
+
+    expect(limiter.reserve(1, 1_000_001)).toBe(0);
+    expect(limiter.reserve(1, 1_000_002)).toBeGreaterThan(0);
+  });
+
+  it('ne bloque jamais un lot plus large que la fenêtre', () => {
+    // Une attente infinie figerait le cron : on préfère dépasser la limite.
+    expect(new CoordinateRateLimiter().reserve(501, 1_000_000)).toBe(0);
+  });
+
+  it('partage le budget entre lots successifs', () => {
+    const limiter = new CoordinateRateLimiter();
+    limiter.reserve(400, 1_000_000);
+    limiter.reserve(400, 1_000_000 + WINDOW);
+    limiter.reserve(400, 1_000_000 + 2 * WINDOW);
+
+    // Trois lots espacés de la fenêtre : le troisième ne peut pas partir dans
+    // la fenêtre glissante du deuxième.
+    expect(limiter.reserve(400, 1_000_000 + 2 * WINDOW - 1)).toBeGreaterThan(0);
+    expect(limiter.reserve(400, 1_000_000 + 3 * WINDOW)).toBe(0);
   });
 });
 

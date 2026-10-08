@@ -54,6 +54,74 @@ export function quotaCostOfBatch(locations: number): number {
 }
 
 /**
+ * Limiteur de rafale : Open-Meteo refuse au-delà de 600 coordonnées par minute.
+ *
+ * Un run national empile les lots de 400 sans discontinuer : les deux premiers
+ * lots (800 coordonnées) tombent en moins de deux minutes, et le fournisseur
+ * répond 429 « minutely » alors que le budget journalier n'en est qu'à son
+ * début — c'est exactement le run du 08/10 09:22 (800 communes traitées, 779
+ * rejetées). Réserver une part de la minute avant chaque lot rend le run lent
+ * mais complet.
+ *
+ * La fenêtre est glissante et partagée par tous les batchs du processus : une
+ * carte ouverte pendant le cron consomme le même budget que le cron.
+ *
+ * La fenêtre retenue ici fait 65 s et non 60 s : celle d'Open-Meteo est FIXE
+ * et son effacement est déclenché par un callback côté serveur, parfois
+ * retardé. Le 08/10 11:35, deux lots espacés de 60,000 s ont été comptés dans
+ * la même fenêtre du fournisseur (429 « minutely » à 800 coordonnées, alors
+ * que le plafond en est à 600). Cinq secondes de marge coûtent 5 s de run et
+ * rendent cet overlap improbable.
+ */
+export class CoordinateRateLimiter {
+  private readonly window: { at: number; count: number }[] = [];
+
+  constructor(
+    private readonly limit = 500,
+    private readonly windowMs = 65_000,
+  ) {}
+
+  /** Coordonnées déjà émises depuis `now - windowMs`. */
+  private used(now: number): number {
+    const cutoff = now - this.windowMs;
+    while (this.window.length > 0 && this.window[0].at <= cutoff) this.window.shift();
+    return this.window.reduce((sum, entry) => sum + entry.count, 0);
+  }
+
+  /**
+   * Réserve `count` coordonnées et renvoie l'attente (ms) avant envoi.
+   *
+   * `0` signifie « enviable immédiatement ». Une réservation plus large que la
+   * fenêtre elle-même est acceptée sans attente : bloquer serait un deadlock.
+   */
+  reserve(count: number, now = Date.now()): number {
+    const used = this.used(now);
+    if (used + count <= this.limit || this.window.length === 0) {
+      this.window.push({ at: now, count });
+      return 0;
+    }
+    return Math.max(1, this.window[0].at + this.windowMs - now);
+  }
+
+  /** Attend que la fenêtre laisse la place, puis réserve. */
+  async acquire(count: number): Promise<void> {
+    for (;;) {
+      const wait = this.reserve(count);
+      if (wait === 0) return;
+      await new Promise((resolve) => setTimeout(resolve, wait));
+    }
+  }
+
+  /** Purge la fenêtre : réservé aux tests, qui simuleraient sinon une minute entière. */
+  reset(): void {
+    this.window.length = 0;
+  }
+}
+
+/** Instance unique du processus : les trois batchs partagent la même minute. */
+export const openMeteoCoordinateLimiter = new CoordinateRateLimiter();
+
+/**
  * Classement du `reason` d'un 429 Open-Meteo.
  *
  * `null` si le motif ne correspond à aucun plafond connu : on laisse alors la
@@ -82,12 +150,38 @@ export function dailyResetRetryAfter(now: Date = new Date()): number {
   return Math.max(60, Math.ceil((nextDailyReset(now).getTime() - now.getTime()) / 1000));
 }
 
+/**
+ * Instant du prochain reset horaire : Open-Meteo rebat son compteur en début
+ * d'heure UTC, avec la même minute de marge que le reset journalier (l'efface
+ * du compteur est un callback, pas une horloge exacte).
+ *
+ * Annoncer « environ une heure » alors que le reset arrive dans 10 minutes
+ * coûte 50 minutes de données météo périmées pour rien.
+ */
+export function nextHourlyReset(from: Date = new Date()): Date {
+  const next = Date.UTC(
+    from.getUTCFullYear(),
+    from.getUTCMonth(),
+    from.getUTCDate(),
+    from.getUTCHours() + 1,
+  );
+  return new Date(next + 60_000);
+}
+
+/** Secondes avant le prochain reset horaire, au format d'un en-tête `Retry-After`. */
+export function hourlyResetRetryAfter(now: Date = new Date()): number {
+  return Math.max(60, Math.ceil((nextHourlyReset(now).getTime() - now.getTime()) / 1000));
+}
+
 /** Message unique pour les deux limites « il va falloir attendre ». */
 export function rateLimitMessage(kind: RateLimitKind, resetAt: Date): string {
   if (kind === 'daily') {
     return `Quota journalier Open-Meteo épuisé. Le compteur repart à 00:00 UTC (03:00 heure Madagascar), vers ${resetAt.toISOString()}.`;
   }
-  return 'Limite de requêtes Open-Meteo atteinte. Réessayez dans environ une heure.';
+  if (kind === 'minutely') {
+    return 'Limite de rafale Open-Meteo atteinte (600 coordonnées par minute). Réessayez dans une minute.';
+  }
+  return `Limite horaire Open-Meteo atteinte (5 000 par heure). Le compteur repart en début d'heure UTC, vers ${resetAt.toISOString()}.`;
 }
 
 export interface QuotaSnapshot {

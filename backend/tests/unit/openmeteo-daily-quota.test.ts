@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterAll } from 'vites
 import axios from 'axios';
 import { db } from '../../src/config/database';
 import { OpenMeteoProvider } from '../../src/services/openmeteo.provider';
-import { OPEN_METEO_PROVIDER } from '../../src/services/weather-quota';
+import { OPEN_METEO_PROVIDER, openMeteoCoordinateLimiter } from '../../src/services/weather-quota';
 import { weatherRepository } from '../../src/repositories/weather.repository';
 
 /**
@@ -54,6 +54,9 @@ describe('plafond journalier : le premier 429 doit être actionnable', () => {
   });
 
   beforeEach(async () => {
+    // Le limiteur de rafale est partagé par le processus : sans remise à zéro,
+    // le lot du test précédent ferait attendre celui-ci une minute entière.
+    openMeteoCoordinateLimiter.reset();
     await db.query('DELETE FROM weather_provider_quota WHERE provider = $1', [
       OPEN_METEO_PROVIDER,
     ]);

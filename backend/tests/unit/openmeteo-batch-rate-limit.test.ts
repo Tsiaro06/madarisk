@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AxiosError, AxiosHeaders } from 'axios';
 import { OpenMeteoProvider } from '../../src/services/openmeteo.provider';
+import { openMeteoCoordinateLimiter } from '../../src/services/weather-quota';
 import { AppError } from '../../src/utils/app-error';
 import type { BatchCommuneInput } from '../../src/types/weather.types';
 
@@ -78,6 +79,9 @@ function stubClient(
 describe('Open-Meteo : 429 en cours de batch', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    // Le limiteur de rafale est partagé par le processus : sans remise à zéro,
+    // un lot précédent ferait attendre le suivant une minute entière.
+    openMeteoCoordinateLimiter.reset();
   });
 
   it('conserve les points déjà récupérés quand un lot suivant est rate-limité', async () => {

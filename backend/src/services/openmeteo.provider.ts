@@ -16,6 +16,8 @@ import {
   classifyRateLimit,
   dailyResetRetryAfter,
   nextDailyReset,
+  nextHourlyReset,
+  openMeteoCoordinateLimiter,
   rateLimitMessage,
   reserveQuota,
   type RateLimitKind,
@@ -188,8 +190,6 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 const BATCH_MAX_PASSES = 5;
 const BATCH_RETRY_BACKOFF_MS = [5_000, 15_000, 30_000, 60_000];
 
-const RATE_LIMIT_RESET_MS = 60 * 60 * 1000;
-
 async function runPool<T>(
   items: T[],
   worker: (item: T) => Promise<void>,
@@ -255,6 +255,27 @@ export class OpenMeteoProvider implements WeatherProvider {
     );
   }
 
+  /**
+   * Refuse l'envoi tant que le circuit est fermé.
+   *
+   * Appelé avant la réservation de quota et avant la cadence par minute : une
+   * requête que le circuit va de toute façon refuser ne doit ni facturer le
+   * budget journalier, ni faire attendre son lot une minute entière pour rien.
+   */
+  private assertCircuitOpen(): void {
+    if (Date.now() >= this.rateLimitedUntil) return;
+    const resetAt = new Date(this.rateLimitedUntil);
+    const retryAfter = Math.max(60, Math.ceil((resetAt.getTime() - Date.now()) / 1000));
+    logger.warn(
+      { until: resetAt.toISOString(), kind: this.rateLimitKind },
+      'Open-Meteo : circuit couvert activé, requête court-circuitée',
+    );
+    throw AppError.tooManyRequests(
+      rateLimitMessage(this.rateLimitKind ?? 'hourly', resetAt),
+      retryAfter,
+    );
+  }
+
   private enqueue<T>(task: () => Promise<T>): Promise<T> {
     // `then(task, task)` : un appel précédent en échec ne doit pas bloquer la
     // file, sinon un 429 monterait en tête et paralyserait les runs suivants.
@@ -286,17 +307,7 @@ export class OpenMeteoProvider implements WeatherProvider {
   }
 
   private async requestNow<T>(params: Record<string, unknown>, retries: number): Promise<T> {
-    if (Date.now() < this.rateLimitedUntil) {
-      const resetAt = new Date(this.rateLimitedUntil);
-      logger.warn(
-        { until: resetAt.toISOString(), kind: this.rateLimitKind },
-        'Open-Meteo : circuit couvert activé, requête court-circuitée',
-      );
-      throw AppError.tooManyRequests(
-        rateLimitMessage(this.rateLimitKind ?? 'hourly', resetAt),
-        this.rateLimitKind === 'daily' ? dailyResetRetryAfter() : undefined,
-      );
-    }
+    this.assertCircuitOpen();
 
     let lastError: unknown;
     for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -337,25 +348,45 @@ export class OpenMeteoProvider implements WeatherProvider {
           }
 
           if (kind === 'hourly') {
+            // Le compteur horaire se rebat en début d'heure UTC, pas une heure
+            // après le 429 : attendre `RATE_LIMIT_RESET_MS` (ancien défaut)
+            // faisait ouvrir le circuit jusqu'à 09:48 UTC pour un reset à
+            // 09:00 (constaté le 08/10). La prochaine heure borne l'attente
+            // par le reset réel ; le header reste prioritaire quand il existe,
+            // plafonné lui aussi à ce reset pour ne pas attendre au-delà.
             const retryAfter = Number(axiosErr?.response?.headers?.['retry-after']);
+            const untilNextHour = nextHourlyReset().getTime() - Date.now();
             const waitMs =
               Number.isFinite(retryAfter) && retryAfter > 0
-                ? retryAfter * 1000
-                : RATE_LIMIT_RESET_MS;
+                ? Math.min(retryAfter * 1000, untilNextHour)
+                : untilNextHour;
             this.rateLimitKind = 'hourly';
             this.rateLimitedUntil = Date.now() + Math.max(waitMs, 60 * 1000);
+            const resetAt = new Date(this.rateLimitedUntil);
             logger.warn(
-              { until: new Date(this.rateLimitedUntil).toISOString() },
-              'Open-Meteo : limite horaire atteinte, circuit couvert activé',
+              { until: resetAt.toISOString() },
+              'Open-Meteo : limite horaire atteinte, circuit couvert jusqu au reset horaire',
             );
-            break;
+            // Même raisonnement que le plafond journalier ci-dessus : lever
+            // ICI conserve l'heure de reset dans le message que l'utilisateur
+            // voit, là où `toApiError` reconstruirait un 429 générique.
+            throw AppError.tooManyRequests(
+              rateLimitMessage('hourly', resetAt),
+              Math.max(60, Math.ceil((resetAt.getTime() - Date.now()) / 1000)),
+            );
           }
           logger.warn(
             { reason },
             'Open-Meteo : limite de rafale atteinte, patientage puis nouvelle tentative',
           );
           if (attempt >= retries) break;
-          const burstBackoff = [3000, 10000, 25000][attempt] ?? 30000;
+          // Chaque retry doit traverser une minute entière. Les anciens délais
+          // (3 s, 10 s, 25 s) retombaient dans la même fenêtre FIXE du
+          // fournisseur et brûlaient les tentatives pour rien : c'est ce qui a
+          // fait échouer le run du 08/10 11:35 (38 s d'attente cumulée, puis
+          // 429 « minutely » définitif) alors que le fournisseur lui-même
+          // demande « please try again in one minute ».
+          const burstBackoff = [70_000, 65_000, 65_000][attempt] ?? 65_000;
           await sleep(burstBackoff);
           continue;
         }
@@ -509,7 +540,9 @@ export class OpenMeteoProvider implements WeatherProvider {
         const lats = chunk.map((c) => c.latitude.toFixed(3));
         const lons = chunk.map((c) => c.longitude.toFixed(3));
 
+        this.assertCircuitOpen();
         await reserveQuota(chunk.length);
+        await openMeteoCoordinateLimiter.acquire(chunk.length);
 
         const data = await this.request<OpenMeteoResponse | OpenMeteoResponse[]>(
           {
@@ -648,7 +681,9 @@ export class OpenMeteoProvider implements WeatherProvider {
         const lats = chunk.map((c) => c.latitude.toFixed(3));
         const lons = chunk.map((c) => c.longitude.toFixed(3));
 
+        this.assertCircuitOpen();
         await reserveQuota(chunk.length);
+        await openMeteoCoordinateLimiter.acquire(chunk.length);
 
         const data = await this.request<OpenMeteoResponse | OpenMeteoResponse[]>(
           {
@@ -811,7 +846,9 @@ export class OpenMeteoProvider implements WeatherProvider {
         const lats = chunk.map((c) => c.latitude.toFixed(3));
         const lons = chunk.map((c) => c.longitude.toFixed(3));
 
+        this.assertCircuitOpen();
         await reserveQuota(chunk.length);
+        await openMeteoCoordinateLimiter.acquire(chunk.length);
 
         const data = await this.request<OpenMeteoResponse | OpenMeteoResponse[]>(
           {
