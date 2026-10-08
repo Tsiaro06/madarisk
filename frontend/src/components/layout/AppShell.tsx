@@ -109,10 +109,9 @@ export function AppShell() {
   const location = useLocation();
   const [open, setOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(true);
-  const [sidebarVisible, setSidebarVisible] = useState(true);
   // Même valeur que le breakpoint `lg` de Tailwind, qui n'est pas exposé au
-  // JS : c'est la seule façon de brancher le clic de l'icône du navbar sur le
-  // tiroir mobile ou sur la colonne desktop.
+  // JS : c'est la seule façon de brancher le hamburger du navbar sur le tiroir
+  // mobile (le sidebar desktop gère déjà lui-même son affichage).
   const isDesktop = useMediaQuery('(min-width: 1024px)');
 
   const fullBleed =
@@ -132,23 +131,8 @@ export function AppShell() {
     navigate('/login', { replace: true });
   };
 
-  // Une seule icône, deux comportements selon la largeur : tiroir hors écran
-  // en dessous de `lg`, colonne de grille au-dessus.
-  const sidebarExpanded = isDesktop ? sidebarVisible : open;
-  const menuLabel = isDesktop
-    ? sidebarVisible
-      ? 'Masquer le menu latéral'
-      : 'Afficher le menu latéral'
-    : 'Ouvrir le menu';
-
   // Le sidebar est en `fixed` : la colonne de contenu se décale d'autant.
-  const reserved = isDesktop
-    ? !sidebarVisible
-      ? 0
-      : collapsed
-        ? SIDEBAR_RAIL_WIDTH
-        : SIDEBAR_WIDTH
-    : 0;
+  const reserved = isDesktop ? (collapsed ? SIDEBAR_RAIL_WIDTH : SIDEBAR_WIDTH) : 0;
 
   if (!user) return <Spinner label="Chargement de la session…" />;
 
@@ -158,7 +142,7 @@ export function AppShell() {
       style={{ '--sidebar-offset': `${reserved}px` } as CSSProperties}
     >
       <Sidebar
-        visible={sidebarVisible}
+        visible
         open={open}
         onOpenChange={setOpen}
         collapsed={collapsed}
@@ -172,23 +156,26 @@ export function AppShell() {
       >
         <header className="sticky top-0 z-20 flex h-16 items-center justify-between gap-3 border-b border-line/80 bg-surface/85 px-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] backdrop-blur-xl sm:px-5">
           <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
-            <button
-              type="button"
-              className={cn(
-                'grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-surface text-muted transition',
-                'hover:border-brand/35 hover:bg-brand-soft hover:text-brand-deep',
-                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
-                sidebarExpanded && 'border-brand/40 bg-brand-soft text-brand-deep',
-              )}
-              onClick={() => (isDesktop ? setSidebarVisible((v) => !v) : setOpen(true))}
-              aria-controls="sidebar-principal"
-              aria-expanded={sidebarExpanded}
-              aria-label={menuLabel}
-              title={menuLabel}
-            >
-              <Menu className="size-5" />
-            </button>
-            <span aria-hidden className="hidden h-8 w-px shrink-0 bg-line/70 sm:block" />
+            {/* Le sidebar desktop a ses propres boutons de réduction : le
+                hamburger ne sert plus qu'au tiroir mobile. */}
+            {!isDesktop ? (
+              <button
+                type="button"
+                className={cn(
+                  'grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-surface text-muted transition',
+                  'hover:border-brand/35 hover:bg-brand-soft hover:text-brand-deep',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40',
+                  open && 'border-brand/40 bg-brand-soft text-brand-deep',
+                )}
+                onClick={() => setOpen(true)}
+                aria-controls="sidebar-principal"
+                aria-expanded={open}
+                aria-label="Ouvrir le menu"
+                title="Ouvrir le menu"
+              >
+                <Menu className="size-5" />
+              </button>
+            ) : null}
             {/* Pastille d'icône de la page courante, reprenant celle du menu
                 latéral : renforce la lisibilité de la localisation. */}
             <span aria-hidden className="hidden size-10 shrink-0 place-items-center rounded-xl border border-brand/15 bg-brand-soft text-brand-deep sm:grid">

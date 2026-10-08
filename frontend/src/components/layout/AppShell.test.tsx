@@ -56,38 +56,16 @@ beforeEach(() => {
 });
 
 describe('AppShell — icône du navbar', () => {
-  it('démarre sur le rail d’icônes, puis se masque et réapparaît au clic sur desktop', async () => {
-    const user = userEvent.setup();
+  it('démarre sur le rail d’icônes sur desktop, sans bouton dans le navbar', () => {
     const { container } = renderShell();
     const aside = container.querySelector('aside');
 
-    // Par défaut : rail d'icônes visible (72px), colonne hors écran non appliquée.
+    // Le sidebar desktop est toujours visible et pilote seul son état :
+    // plus de bouton « Masquer le menu latéral » dans la barre.
     expect(aside).toHaveClass('translate-x-0');
     expect(aside).toHaveClass('w-[72px]');
     expect(aside).not.toHaveAttribute('inert');
-    expect(screen.getByRole('button', { name: 'Masquer le menu latéral' })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Masquer le menu latéral' }));
-
-    // Masqué : colonne hors écran, liens neutralisés.
-    expect(aside).toHaveClass('-translate-x-full');
-    expect(aside).toHaveAttribute('inert');
-    expect(screen.getByRole('button', { name: 'Afficher le menu latéral' })).toHaveAttribute(
-      'aria-expanded',
-      'false',
-    );
-
-    await user.click(screen.getByRole('button', { name: 'Afficher le menu latéral' }));
-
-    expect(aside).toHaveClass('translate-x-0');
-    expect(aside).not.toHaveAttribute('inert');
-    expect(screen.getByRole('button', { name: 'Masquer le menu latéral' })).toHaveAttribute(
-      'aria-expanded',
-      'true',
-    );
+    expect(screen.queryByRole('button', { name: 'Ouvrir le menu' })).not.toBeInTheDocument();
   });
 
   it('ouvre le tiroir du sidebar en dessous de lg', async () => {
