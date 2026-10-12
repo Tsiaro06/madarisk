@@ -39,6 +39,17 @@ export type TrackType = 'OBSERVEE' | 'PREVUE';
 
 export const TRACK_TYPES: TrackType[] = ['OBSERVEE', 'PREVUE'];
 
+export type ImpactState =
+  | 'NOT_REACHED'
+  | 'CENTER_CROSSED'
+  | 'WIND_IMPACT'
+  | 'RAIN_IMPACT'
+  | 'FLOOD_IMPACT'
+  | 'IMPACT_ESTIMATED'
+  | 'UNKNOWN';
+
+export type ObservedRiskLevel = 'FAIBLE' | 'MODERE' | 'ELEVE' | 'TRES_ELEVE' | 'INCONNU';
+
 export type RiskPhase = 'AVANT' | 'PENDANT' | 'APRES' | 'RETABLISSEMENT';
 
 export const RISK_PHASES: RiskPhase[] = ['AVANT', 'PENDANT', 'APRES', 'RETABLISSEMENT'];
@@ -135,6 +146,61 @@ export interface EventTrack {
   movementDirection: string | null;
   movementSpeedKmh: number | null;
   createdAt: string;
+}
+
+export interface TrackStatePoint extends EventTrack {
+  radius34ktKm: number | null;
+  radius50ktKm: number | null;
+  radius64ktKm: number | null;
+  radiusMaxKm: number | null;
+  radiusSource: string | null;
+  radiusMeasureType: string | null;
+  radiusQuality: string | null;
+  dataQuality: string | null;
+  confidence: number | null;
+}
+
+export interface TrackState {
+  eventId: string;
+  at: string;
+  hasRadiusData: boolean;
+  radiusSource: string | null;
+  radiusMeasureType: string | null;
+  radiusMaxKm: number | null;
+  currentPoint: TrackStatePoint | null;
+  previousPoints: TrackStatePoint[];
+  upToAtCount: number;
+  totalPoints: number;
+  method: string;
+}
+
+export interface EventCommuneImpactRow {
+  communeId: string;
+  communeName: string;
+  communeCode: string | null;
+  districtId: string | null;
+  districtName: string | null;
+  firstAffectedAt: string | null;
+  lastAffectedAt: string | null;
+  impactState: ImpactState;
+  observedRiskLevel: ObservedRiskLevel;
+  forecastRiskLevel: string | null;
+  sourceName: string | null;
+  sourceUrl: string | null;
+  confidence: number | null;
+  method: string | null;
+  notes: string | null;
+}
+
+export interface CommuneImpactsResult {
+  eventId: string;
+  at: string;
+  count: number;
+  hasRadiusData: boolean;
+  radiusKm: number | null;
+  radiusSource: string | null;
+  method: string;
+  communes: EventCommuneImpactRow[];
 }
 
 export interface TrackGeoJson {

@@ -43,23 +43,22 @@ interface EventRow {
   updated_at: string;
 }
 
-function mapEvent(row: EventRow): EventListItem {
+function mapTrackRow(r: any): import('../types/event.types').EventTrack {
   return {
-    id: row.id,
-    eventCode: row.event_code,
-    name: row.name,
-    type: row.type as EventListItem['type'],
-    status: row.status as EventListItem['status'],
-    severity: row.severity as SeverityLevel,
-    description: row.description,
-    sourceName: row.source_name,
-    sourceUrl: row.source_url,
-    startedAt: row.started_at,
-    expectedEndAt: row.expected_end_at,
-    endedAt: row.ended_at,
-    createdBy: row.created_by,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    id: r.id,
+    eventId: r.event_id,
+    observedAt: r.observed_at,
+    forecastFor: r.forecast_for,
+    trackType: r.track_type as import('../types/event.types').EventTrack['trackType'],
+    latitude: parseFloat(r.latitude),
+    longitude: parseFloat(r.longitude),
+    windSpeedKmh: r.wind_speed_kmh !== null ? parseFloat(r.wind_speed_kmh) : null,
+    gustSpeedKmh: r.gust_speed_kmh !== null ? parseFloat(r.gust_speed_kmh) : null,
+    pressureHpa: r.pressure_hpa !== null ? parseFloat(r.pressure_hpa) : null,
+    precipitationMm: r.precipitation_mm !== null ? parseFloat(r.precipitation_mm) : null,
+    movementDirection: r.movement_direction,
+    movementSpeedKmh: r.movement_speed_kmh !== null ? parseFloat(r.movement_speed_kmh) : null,
+    createdAt: r.created_at,
   };
 }
 
@@ -80,6 +79,26 @@ const EVENT_BASE_COLUMNS = `
   e.created_at,
   e.updated_at
 `;
+
+function mapEvent(row: EventRow): EventListItem {
+  return {
+    id: row.id,
+    eventCode: row.event_code,
+    name: row.name,
+    type: row.type as EventListItem['type'],
+    status: row.status as EventListItem['status'],
+    severity: row.severity as SeverityLevel,
+    description: row.description,
+    sourceName: row.source_name,
+    sourceUrl: row.source_url,
+    startedAt: row.started_at,
+    expectedEndAt: row.expected_end_at,
+    endedAt: row.ended_at,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
 
 export const eventsRepository = {
   async create(data: {
@@ -474,47 +493,34 @@ export const eventsRepository = {
       where += ` AND et.track_type = $2`;
       values.push(trackType);
     }
-    const result = await db.query<{
-      id: string;
-      event_id: string;
-      observed_at: string;
-      forecast_for: string | null;
-      track_type: string;
-      latitude: string;
-      longitude: string;
-      wind_speed_kmh: string | null;
-      gust_speed_kmh: string | null;
-      pressure_hpa: string | null;
-      precipitation_mm: string | null;
-      movement_direction: string | null;
-      movement_speed_kmh: string | null;
-      created_at: string;
-    }>(
+    const result = await db.query<any>(
       `SELECT
          id, event_id, observed_at, forecast_for, track_type, latitude, longitude,
          wind_speed_kmh, gust_speed_kmh, pressure_hpa, precipitation_mm,
-         movement_direction, movement_speed_kmh, created_at
+         movement_direction, movement_speed_kmh,
+         radius_34kt_km, radius_50kt_km, radius_64kt_km, radius_max_km,
+         radius_source, radius_measure_type, radius_quality, data_quality, confidence,
+         created_at
        FROM event_tracks et
        ${where}
        ORDER BY et.observed_at ASC`,
       values,
     );
-    return result.rows.map((r) => ({
-      id: r.id,
-      eventId: r.event_id,
-      observedAt: r.observed_at,
-      forecastFor: r.forecast_for,
-      trackType: r.track_type as EventTrack['trackType'],
-      latitude: parseFloat(r.latitude),
-      longitude: parseFloat(r.longitude),
-      windSpeedKmh: r.wind_speed_kmh !== null ? parseFloat(r.wind_speed_kmh) : null,
-      gustSpeedKmh: r.gust_speed_kmh !== null ? parseFloat(r.gust_speed_kmh) : null,
-      pressureHpa: r.pressure_hpa !== null ? parseFloat(r.pressure_hpa) : null,
-      precipitationMm: r.precipitation_mm !== null ? parseFloat(r.precipitation_mm) : null,
-      movementDirection: r.movement_direction,
-      movementSpeedKmh: r.movement_speed_kmh !== null ? parseFloat(r.movement_speed_kmh) : null,
-      createdAt: r.created_at,
-    }));
+    return result.rows.map((r) => {
+      const base = mapTrackRow(r) as import('../types/event.types').TrackStatePoint;
+      return {
+        ...base,
+        radius34ktKm: r.radius_34kt_km !== null ? parseFloat(r.radius_34kt_km) : null,
+        radius50ktKm: r.radius_50kt_km !== null ? parseFloat(r.radius_50kt_km) : null,
+        radius64ktKm: r.radius_64kt_km !== null ? parseFloat(r.radius_64kt_km) : null,
+        radiusMaxKm: r.radius_max_km !== null ? parseFloat(r.radius_max_km) : null,
+        radiusSource: r.radius_source,
+        radiusMeasureType: r.radius_measure_type,
+        radiusQuality: r.radius_quality,
+        dataQuality: r.data_quality,
+        confidence: r.confidence !== null ? parseFloat(r.confidence) : null,
+      };
+    });
   },
 
   async trackGeoJson(eventId: string): Promise<TrackGeoJson> {
