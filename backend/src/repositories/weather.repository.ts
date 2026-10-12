@@ -1047,11 +1047,29 @@ export const weatherRepository = {
   },
 
   async findLatest(communeId: string): Promise<WeatherObservation | null> {
+    // Même garde-fou que `mapPoints` et `getRiskContexts` : la DGM ne publie
+    // qu'un cumul de pluie décennal, horodaté à la FIN de la décade — donc
+    // jusqu'à 9 jours dans le futur (du 11 au 20, `lastCompletedDekadEnd` rend
+    // le 20). Un simple `ORDER BY observed_at DESC` la ferait gagner sur
+    // Open-Meteo, seule source des indicateurs courants (température, humidité,
+    // vent, pression), et `/latest` renverrait une ligne sans aucun de ces
+    // champs. On retient donc, dans l'ordre :
+    //   1. les lignes « riches » (au moins un indicateur réel) ;
+    //   2. à égalité, la source d'observation horaire plutôt que la DGM ;
+    //   3. puis la plus récente.
     const result = await db.query<ObservationRow>(
       `SELECT ${OBSERVATION_COLUMNS}
        FROM weather_observations w
        WHERE w.commune_id = $1
-       ORDER BY w.observed_at DESC
+       ORDER BY
+         (w.temperature_c IS NOT NULL
+           OR w.humidity_percent IS NOT NULL
+           OR w.wind_speed_kmh IS NOT NULL
+           OR w.pressure_hpa IS NOT NULL) DESC,
+         (w.weather_source_id = (
+            SELECT id FROM weather_sources WHERE provider_type = 'DGM_MAPROOM' LIMIT 1
+          )) ASC,
+         w.observed_at DESC
        LIMIT 1`,
       [communeId],
     );

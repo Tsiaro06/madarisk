@@ -331,8 +331,10 @@ describe('Météo - endpoints données', () => {
     expect(first.body.meta.limit).toBe(1);
     expect(first.body.meta.total).toBeGreaterThanOrEqual(2);
     expect(first.body.meta.totalPages).toBe(first.body.meta.total);
-    // Le plus récent d'abord, avec les valeurs du fournisseur simulé.
-    expect(first.body.data[0].windSpeedKmh).toBe(110);
+    // L'historique est purement chronologique : entre le 11 et le 20 du mois, la
+    // ligne décennale DGM — horodatée à la fin de la décade, donc dans le futur —
+    // précède légitimement celle du fournisseur simulé. On ne peut donc pas
+    // asserter que la première ligne porte les valeurs du mock.
 
     const second = await request(app)
       .get(`/api/v1/weather/communes/${communeId}/history?limit=1&page=2`)
@@ -342,6 +344,18 @@ describe('Météo - endpoints données', () => {
     expect(second.body.meta.total).toBe(first.body.meta.total);
     expect(second.body.data[0].id).not.toBe(first.body.data[0].id);
     expect(second.body.data[0].observedAt < first.body.data[0].observedAt).toBe(true);
+
+    // L'observation du fournisseur simulé est bien historisée, avec ses valeurs.
+    const all = await request(app)
+      .get(`/api/v1/weather/communes/${communeId}/history?limit=100&page=1`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(all.status).toBe(200);
+    expect(
+      all.body.data.some(
+        (o: { precipitationMm: number | null; windSpeedKmh: number | null }) =>
+          o.precipitationMm === 120 && o.windSpeedKmh === 110,
+      ),
+    ).toBe(true);
   });
 
   it('renvoie une couche cartographique en GeoJSON', async () => {
