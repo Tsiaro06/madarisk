@@ -33,6 +33,7 @@ interface AlertRow {
   basis: string | null;
   valid_from: string | null;
   is_automatic: boolean;
+  is_historique: boolean;
   update_count: number;
   created_by: string | null;
   published_at: string | null;
@@ -89,6 +90,7 @@ function mapAlert(row: AlertRow): Alert {
     basis: row.basis as AlertBasis | null,
     validFrom: row.valid_from,
     isAutomatic: row.is_automatic,
+    isHistorique: row.is_historique,
     updateCount: row.update_count,
     createdBy: row.created_by,
     publishedAt: row.published_at,
@@ -157,14 +159,14 @@ function mapUpdateEntry(row: UpdateEntryRow): AlertUpdateEntry {
 const ALERT_COLUMNS = `
   a.id, a.event_id, a.district_id, a.commune_id, a.region_id, a.type, a.severity,
   a.status, a.title, a.message, a.source, a.basis, a.valid_from,
-  a.is_automatic, a.update_count,
+  a.is_automatic, a.is_historique, a.update_count,
   a.created_by, a.published_at, a.expires_at, a.created_at, a.updated_at
 `;
 
 const ALERT_COLUMNS_RETURNING = `
   id, event_id, district_id, commune_id, region_id, type, severity,
   status, title, message, source, basis, valid_from,
-  is_automatic, update_count,
+  is_automatic, is_historique, update_count,
   created_by, published_at, expires_at, created_at, updated_at
 `;
 
@@ -187,6 +189,7 @@ export interface AlertListQuery {
   activeOnly: boolean;
   clientOnly: boolean;
   automatic?: boolean;
+  historique?: boolean;
   basis?: AlertBasis;
   group?: 'event';
 }
@@ -218,6 +221,7 @@ export const alertsRepository = {
     basis?: AlertBasis | null;
     validFrom?: string | null;
     isAutomatic?: boolean;
+    isHistorique?: boolean;
     updateCount?: number;
     createdBy?: string | null;
     expiresAt?: string | null;
@@ -228,8 +232,8 @@ export const alertsRepository = {
          (event_id, district_id, commune_id, region_id, type, severity, status,
           title, message, source, basis, valid_from,
           is_automatic, update_count,
-          created_by, expires_at, published_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+          created_by, expires_at, published_at, is_historique)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
        RETURNING ${ALERT_COLUMNS_RETURNING}`,
       [
         data.eventId ?? null,
@@ -249,6 +253,7 @@ export const alertsRepository = {
         data.createdBy ?? null,
         data.expiresAt ?? null,
         data.publishedAt ?? null,
+        data.isHistorique ?? false,
       ],
     );
     return mapAlert(result.rows[0]);
@@ -294,6 +299,10 @@ export const alertsRepository = {
       if (query.automatic !== undefined) {
         conditions.push(`a.is_automatic = $${idx++}`);
         values.push(query.automatic);
+      }
+      if (query.historique !== undefined) {
+        conditions.push(`a.is_historique = $${idx++}`);
+        values.push(query.historique);
       }
       if (query.basis) {
         conditions.push(`a.basis = $${idx++}`);

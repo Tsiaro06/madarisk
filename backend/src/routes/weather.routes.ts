@@ -8,6 +8,7 @@ import {
   refreshWeatherSchema,
   communeIdParamsSchema,
   refreshIdParamsSchema,
+  weatherBulletinsQuerySchema,
   weatherHistoryQuerySchema,
   weatherHourlyLayerQuerySchema,
   weatherHourlyQuerySchema,
@@ -20,6 +21,13 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/monitoring', asyncHandler(weatherController.monitoring));
+
+// Bulletins météo historiques (données passées, sourcées et datées).
+router.get(
+  '/bulletins',
+  validate({ query: weatherBulletinsQuerySchema }),
+  asyncHandler(weatherController.bulletins),
+);
 
 router.post(
   '/sync/run',

@@ -7,6 +7,7 @@ import { dgmMaproomProvider } from './weather-maproom.provider';
 import { getWeatherProvider, setWeatherProvider } from './weather-provider';
 import { detectAfterSync } from './weather-sync.service';
 import {
+  WeatherBulletin,
   WeatherCurrent,
   WeatherDgmIngestResult,
   WeatherForecast,
@@ -368,6 +369,24 @@ export const weatherService = {
       throw AppError.notFound('Commune introuvable');
     }
     return getWeatherProvider().getForecast(coordinates.latitude, coordinates.longitude);
+  },
+
+  /**
+   * Bulletins météorologiques historiques (ex. bulletins cycloniques officiels).
+   * Aucune donnée temps réel : lecture seule.
+   */
+  async listBulletins(query: {
+    eventId?: string;
+    dateFrom?: Date;
+    dateTo?: Date;
+    limit: number;
+  }): Promise<WeatherBulletin[]> {
+    return weatherRepository.listBulletins({
+      eventId: query.eventId,
+      dateFrom: query.dateFrom ?? null,
+      dateTo: query.dateTo ?? null,
+      limit: query.limit,
+    });
   },
 
   async history(

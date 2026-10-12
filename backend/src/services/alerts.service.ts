@@ -85,7 +85,9 @@ export const alertsService = {
       ipAddress: getIp(req),
     });
 
-    realtimeService.publish('alert.created', { alertId: alert.id, status: alert.status });
+    if (!alert.isHistorique) {
+      realtimeService.publish('alert.created', { alertId: alert.id, status: alert.status });
+    }
 
     return alert;
   },
@@ -102,6 +104,7 @@ export const alertsService = {
       communeId?: string;
       activeOnly: boolean;
       automatic?: boolean;
+      historique?: boolean;
       basis?: AlertBasis;
       group?: 'event';
     },
@@ -119,6 +122,7 @@ export const alertsService = {
       communeId: query.communeId,
       activeOnly: query.activeOnly,
       automatic: query.automatic,
+      historique: query.historique,
       basis: query.basis,
       group: query.group,
       clientOnly,
@@ -218,6 +222,10 @@ export const alertsService = {
     const existing = await alertsRepository.findById(id);
     if (!existing) {
       throw AppError.notFound('Alerte introuvable');
+    }
+
+    if (existing.isHistorique) {
+      throw AppError.badRequest('Une alerte historique archivée ne peut pas être publiée');
     }
 
     if (!existing.title || !existing.message || !existing.type || !existing.severity) {

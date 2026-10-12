@@ -53,6 +53,23 @@ export const weatherMetricSchema = z.enum([
   'wind_speed_10m',
 ]);
 
+/**
+ * Requête des bulletins météorologiques historiques (lecture seule). Ces
+ * données décrivent des situations passées et ne sont jamais servies comme
+ * météo temps réel.
+ */
+export const weatherBulletinsQuerySchema = z
+  .object({
+    eventId: z.string().uuid("Identifiant d'événement invalide").optional(),
+    dateFrom: z.coerce.date().optional(),
+    dateTo: z.coerce.date().optional(),
+    limit: z.coerce.number().int().min(1).max(200).default(100),
+  })
+  .refine((data) => !data.dateFrom || !data.dateTo || data.dateTo >= data.dateFrom, {
+    message: 'dateTo doit être postérieur ou égal à dateFrom',
+    path: ['dateTo'],
+  });
+
 export const weatherMapQuerySchema = z
   .object({
     districtId: z.string().uuid('Identifiant de district invalide').optional(),
@@ -77,6 +94,7 @@ export type WeatherMetric = z.infer<typeof weatherMetricSchema>;
 export type WeatherSyncTriggerInput = z.infer<typeof weatherSyncTriggerSchema>;
 export type WeatherHourlyQuery = z.infer<typeof weatherHourlyQuerySchema>;
 export type WeatherHourlyLayerQuery = z.infer<typeof weatherHourlyLayerQuerySchema>;
+export type WeatherBulletinsQuery = z.infer<typeof weatherBulletinsQuerySchema>;
 
 export const weatherSyncTriggerSchema = z.object({
   scope: z

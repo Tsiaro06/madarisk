@@ -27,6 +27,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useCrisisStore } from '@/stores/crisisStore';
 import { useActiveEvent } from '@/stores/activeEvent';
 import { EventChronologieTab } from '@/components/events/EventChronologieTab';
+import { EventBulletinsTab } from '@/components/events/EventBulletinsTab';
 import { EventBilanTab } from '@/components/events/EventBilanTab';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
@@ -107,7 +108,9 @@ export function EvenementDetailPage() {
   const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
   const { activeEventId } = useActiveEvent();
   const [trackPoint, setTrackPoint] = useState({ lat: '', lng: '', trackType: 'PREVUE' });
-  const [activeTab, setActiveTab] = useState<'operations' | 'chronologie' | 'bilan'>('operations');
+  const [activeTab, setActiveTab] = useState<'operations' | 'chronologie' | 'bulletins' | 'bilan'>(
+    'operations',
+  );
   const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
   const [exposedPhase, setExposedPhase] = useState('');
   const [polyForm, setPolyForm] = useState<{ phase: RiskPhase; riskLevel: RiskLevel }>({
@@ -382,7 +385,7 @@ export function EvenementDetailPage() {
       </div>
 
       <div className="flex flex-wrap gap-1 border-b border-line">
-        {(['operations', 'chronologie', 'bilan'] as const).map((t) => (
+        {(['operations', 'chronologie', 'bulletins', 'bilan'] as const).map((t) => (
           <button
             key={t}
             type="button"
@@ -398,7 +401,9 @@ export function EvenementDetailPage() {
               ? 'Opérations'
               : t === 'chronologie'
                 ? 'Chronologie'
-                : 'Bilan · Évaluation'}
+                : t === 'bulletins'
+                  ? 'Bulletins historiques'
+                  : 'Bilan · Évaluation'}
           </button>
         ))}
       </div>
@@ -1047,6 +1052,8 @@ export function EvenementDetailPage() {
         </>
       ) : activeTab === 'chronologie' ? (
         <EventChronologieTab eventId={ev.id} />
+      ) : activeTab === 'bulletins' ? (
+        <EventBulletinsTab eventId={ev.id} />
       ) : (
         <EventBilanTab eventId={ev.id} />
       )}

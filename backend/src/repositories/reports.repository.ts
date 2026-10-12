@@ -28,6 +28,10 @@ export interface Report {
   periodEnd: string | null;
   filePath: string | null;
   parameters: Record<string, unknown>;
+  /** Source documentaire du rapport (ex. UNICEF, ONU/OCHA). */
+  source: string | null;
+  /** Rapport de situation historique : donnée passée, datée et sourcée. */
+  isHistorique: boolean;
   generatedAt: string;
 }
 
@@ -57,6 +61,8 @@ export interface SaveReportInput {
   periodEnd?: Date | null;
   filePath: string | null;
   parameters: Record<string, unknown>;
+  source?: string | null;
+  isHistorique?: boolean;
 }
 
 interface CountRow {
@@ -76,6 +82,8 @@ interface ReportRawRow {
   period_end: string | null;
   file_path: string | null;
   parameters: unknown;
+  source: string | null;
+  is_historique: boolean;
   generated_at: string;
 }
 
@@ -90,7 +98,7 @@ interface GeoRow {
   geometry: unknown;
 }
 
-const REPORT_COLUMNS = `id, generated_by, event_id, district_id, commune_id, title, report_type, format, period_start, period_end, file_path, parameters, generated_at`;
+const REPORT_COLUMNS = `id, generated_by, event_id, district_id, commune_id, title, report_type, format, period_start, period_end, file_path, parameters, source, is_historique, generated_at`;
 
 function mapReport(row: ReportRawRow): Report {
   return {
@@ -106,6 +114,8 @@ function mapReport(row: ReportRawRow): Report {
     periodEnd: row.period_end,
     filePath: row.file_path,
     parameters: (row.parameters ?? {}) as Record<string, unknown>,
+    source: row.source,
+    isHistorique: row.is_historique,
     generatedAt: row.generated_at,
   };
 }
@@ -124,8 +134,8 @@ export const reportsRepository = {
     const result = await db.query<ReportRawRow>(
       `INSERT INTO reports
          (generated_by, event_id, district_id, commune_id, title, report_type, format,
-          period_start, period_end, file_path, parameters, generated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+          period_start, period_end, file_path, parameters, source, is_historique, generated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
        RETURNING ${REPORT_COLUMNS}`,
       [
         input.generatedBy,
@@ -139,6 +149,8 @@ export const reportsRepository = {
         input.periodEnd ?? null,
         input.filePath,
         input.parameters ?? {},
+        input.source ?? null,
+        input.isHistorique ?? false,
       ],
     );
     return mapReport(result.rows[0]);
@@ -150,6 +162,7 @@ export const reportsRepository = {
     format?: ReportFormat;
     reportType?: string;
     eventId?: string;
+    historique?: boolean;
   }): Promise<PaginatedResult<ReportListRow>> {
     const conditions: string[] = [];
     const values: unknown[] = [];
@@ -167,6 +180,10 @@ export const reportsRepository = {
       conditions.push(`r.event_id = $${idx++}`);
       values.push(query.eventId);
     }
+    if (query.historique !== undefined) {
+      conditions.push(`r.is_historique = $${idx++}`);
+      values.push(query.historique);
+    }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -180,7 +197,7 @@ export const reportsRepository = {
       `SELECT
          r.id, r.generated_by, r.event_id, r.district_id, r.commune_id,
          r.title, r.report_type, r.format, r.period_start, r.period_end,
-         r.file_path, r.parameters, r.generated_at,
+         r.file_path, r.parameters, r.source, r.is_historique, r.generated_at,
          COALESCE(he.name, NULL::text) AS "event_name",
          COALESCE(d.name, NULL::text) AS "district_name",
          COALESCE(cm.name, NULL::text) AS "commune_name"
@@ -207,7 +224,7 @@ export const reportsRepository = {
       `SELECT
          r.id, r.generated_by, r.event_id, r.district_id, r.commune_id,
          r.title, r.report_type, r.format, r.period_start, r.period_end,
-         r.file_path, r.parameters, r.generated_at,
+         r.file_path, r.parameters, r.source, r.is_historique, r.generated_at,
          COALESCE(he.name, NULL::text) AS "event_name",
          COALESCE(d.name, NULL::text) AS "district_name",
          COALESCE(cm.name, NULL::text) AS "commune_name"

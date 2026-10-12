@@ -5,6 +5,7 @@ import { ApiClientError } from '@/api/client';
 import { Card } from '@/components/ui/Card';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
@@ -16,9 +17,15 @@ import { useAuthStore } from '@/stores/authStore';
 
 interface ReportRow {
   id: string;
-  name?: string;
-  type?: string;
-  createdAt?: string;
+  title?: string;
+  reportType?: string;
+  format?: string;
+  source?: string | null;
+  isHistorique?: boolean;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  generatedAt?: string;
+  eventName?: string | null;
   [key: string]: unknown;
 }
 
@@ -108,6 +115,7 @@ export function RapportsPage() {
                   <tr>
                     <th className="px-3 py-2.5">Nom</th>
                     <th className="px-3 py-2.5">Type</th>
+                    <th className="px-3 py-2.5">Source</th>
                     <th className="px-3 py-2.5">Date</th>
                     <th className="px-3 py-2.5" />
                   </tr>
@@ -115,9 +123,22 @@ export function RapportsPage() {
                 <tbody>
                   {rows.map((r) => (
                     <tr key={r.id} className="border-b border-brand/5">
-                      <td className="px-3 py-2.5 font-medium">{String(r.name ?? r.id)}</td>
-                      <td className="px-3 py-2.5">{String(r.type ?? '—')}</td>
-                      <td className="px-3 py-2.5">{formatDate(r.createdAt)}</td>
+                      <td className="px-3 py-2.5 font-medium">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span>{String(r.title ?? r.id)}</span>
+                          {r.isHistorique ? <Badge tone="neutral">Historique</Badge> : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {String(r.reportType ?? '—')}
+                        {r.format ? (
+                          <span className="text-xs text-muted"> · {String(r.format)}</span>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2.5">{r.source ? String(r.source) : '—'}</td>
+                      <td className="px-3 py-2.5">
+                        {formatDate(r.periodEnd ?? r.generatedAt)}
+                      </td>
                       <td className="px-3 py-2.5 text-right">
                         <Button
                           size="sm"
@@ -125,7 +146,7 @@ export function RapportsPage() {
                           onClick={async () => {
                             try {
                               const blob = await reportsApi.download(r.id);
-                              downloadBlob(blob, `${String(r.name ?? r.id)}.bin`);
+                              downloadBlob(blob, `${String(r.title ?? r.id)}.bin`);
                             } catch (err) {
                               const msg = err instanceof ApiClientError ? err.message : 'Erreur téléchargement';
                               toast(msg, 'error');

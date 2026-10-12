@@ -192,6 +192,9 @@ export const automaticAlertService = {
       };
     }
 
+    // Un evenement clos (CLOTURE, cas des donnees historiques importees comme
+    // le cyclone Batsirai 2022) ou en brouillon ne genere jamais d'alerte
+    // automatique : aucune notification ne peut donc etre emise a son sujet.
     if (event.status === 'CLOTURE' || event.status === 'BROUILLON') {
       return {
         eventId: opts.eventId,

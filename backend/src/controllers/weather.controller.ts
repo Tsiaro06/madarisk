@@ -5,6 +5,7 @@ import { successResponse, paginate } from '../utils/api-response';
 import { AppError } from '../utils/app-error';
 import {
   RefreshWeatherInput,
+  WeatherBulletinsQuery,
   WeatherHistoryQuery,
   WeatherHourlyLayerQuery,
   WeatherHourlyQuery,
@@ -43,6 +44,18 @@ refresh: async (req: Request, res: Response): Promise<void> => {
     const { communeId } = req.validatedParams as CommuneIdParams;
     const observation = await weatherService.latest(communeId);
     res.status(200).json(successResponse(observation, 'Dernière observation météo'));
+  },
+
+  /**
+   * Bulletins météorologiques historiques (bulletin du 4 février 2022 pour le
+   * cyclone Batsirai, etc.). Données passées, explicitement marquées historiques.
+   */
+  bulletins: async (req: Request, res: Response): Promise<void> => {
+    const query = req.validatedQuery as WeatherBulletinsQuery;
+    const bulletins = await weatherService.listBulletins(query);
+    res
+      .status(200)
+      .json(successResponse(bulletins, 'Bulletins météo historiques'));
   },
 
   forecast: async (req: Request, res: Response): Promise<void> => {

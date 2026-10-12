@@ -172,6 +172,35 @@ export interface WeatherMonitoring {
   };
 }
 
+/**
+ * Bulletin météorologique historique (ex. bulletin cyclonique officiel, comme
+ * celui du cyclone Batsirai de février 2022). Donnée passée, datée et sourcée :
+ * elle ne représente JAMAIS une situation temps réel.
+ */
+export interface WeatherBulletin {
+  id: string;
+  eventId: string | null;
+  sourceName: string;
+  sourceUrl: string | null;
+  bulletinRef: string | null;
+  title: string;
+  publishedAt: string;
+  observedAt: string | null;
+  positionDescription: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  windKmh: number | null;
+  gustKmh: number | null;
+  pressureHpa: number | null;
+  movementDirection: string | null;
+  movementSpeedKmh: number | null;
+  alertLevel: string | null;
+  alertLevels: Record<string, unknown> | null;
+  content: string | null;
+  createdAt: string;
+  isHistorique: true;
+}
+
 const percipitationStart = "#d6d6d6";
 const coldBlue = "#2b7ce8";
 const mediumBlue = "#2f80ed";

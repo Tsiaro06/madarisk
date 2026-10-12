@@ -244,3 +244,36 @@ export interface WeatherMonitoringInfo {
     };
   };
 }
+
+/**
+ * Bulletin meteorologique historique (ex. bulletin cyclonique officiel).
+ * Ces enregistrements decrivent toujours une situation passe : ils ne sont
+ * jamais des observations temps reel et ne doivent jamais alimenter la carte
+ * meteo courante.
+ */
+export interface WeatherBulletin {
+  id: string;
+  eventId: string | null;
+  sourceName: string;
+  sourceUrl: string | null;
+  bulletinRef: string | null;
+  title: string;
+  /** Date et heure d'emission du bulletin (donnee source). */
+  publishedAt: string;
+  /** Date et heure de validite/observation decrite par le bulletin. */
+  observedAt: string | null;
+  positionDescription: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  windKmh: number | null;
+  gustKmh: number | null;
+  pressureHpa: number | null;
+  movementDirection: string | null;
+  movementSpeedKmh: number | null;
+  alertLevel: string | null;
+  alertLevels: Record<string, unknown> | null;
+  content: string | null;
+  createdAt: string;
+  /** Toujours vrai : un bulletin de cette table est par nature historique. */
+  isHistorique: true;
+}

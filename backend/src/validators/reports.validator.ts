@@ -72,6 +72,12 @@ export const reportListQuerySchema = z.object({
   format: z.enum(['PDF', 'CSV', 'XLSX', 'GEOJSON', 'PNG']).optional(),
   reportType: z.string().trim().min(1).max(100).optional(),
   eventId: uuidSchema.optional(),
+  historique: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v === 'true' || v === '1' ? true : v === 'false' || v === '0' ? false : undefined,
+    ),
 });
 
 export const reportIdParamsSchema = z.object({

@@ -94,6 +94,12 @@ export const listAlertsQuerySchema = z.object({
     .transform((v) =>
       v === 'true' || v === '1' ? true : v === 'false' || v === '0' ? false : undefined,
     ),
+  historique: z
+    .string()
+    .optional()
+    .transform((v) =>
+      v === 'true' || v === '1' ? true : v === 'false' || v === '0' ? false : undefined,
+    ),
   basis: basisEnum.optional(),
   group: z
     .enum(['event'])

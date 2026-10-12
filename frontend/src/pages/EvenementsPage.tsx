@@ -247,6 +247,11 @@ export function EvenementsPage() {
                           <Link className="font-medium text-brand hover:underline" to={`/evenements/${ev.id}`}>
                             {ev.name}
                           </Link>
+                          {ev.status === 'CLOTURE' ? (
+                            <Badge tone="neutral" className="shrink-0">
+                              Historique
+                            </Badge>
+                          ) : null}
                         </span>
                       </td>
                       <td className="px-3 py-2.5">{ev.type}</td>

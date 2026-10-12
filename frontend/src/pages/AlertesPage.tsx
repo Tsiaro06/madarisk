@@ -66,6 +66,7 @@ export function AlertesPage() {
   const [status, setStatus] = useState('');
   const [type, setType] = useState('');
   const [origine, setOrigine] = useState('');
+  const [historique, setHistorique] = useState('');
   const [open, setOpen] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
@@ -81,7 +82,7 @@ export function AlertesPage() {
   const [form, setForm] = useState(EMPTY_ALERT_FORM);
 
   const listQ = useQuery({
-    queryKey: ['alerts', page, status, type, origine],
+    queryKey: ['alerts', page, status, type, origine, historique],
     queryFn: () =>
       alertsApi.list({
         page,
@@ -89,6 +90,7 @@ export function AlertesPage() {
         status: status || undefined,
         type: type || undefined,
         automatic: origine || undefined,
+        historique: historique || undefined,
         group: 'event',
       }),
   });
@@ -292,6 +294,19 @@ export function AlertesPage() {
             { value: 'false', label: 'Manuelle' },
           ]}
         />
+        <Select
+          label="Période"
+          value={historique}
+          placeholder="Toutes"
+          onChange={(e) => {
+            setHistorique(e.target.value);
+            setPage(1);
+          }}
+          options={[
+            { value: 'false', label: 'Actuelles' },
+            { value: 'true', label: 'Historiques (bulletins archivés)' },
+          ]}
+        />
       </div>
 
       <Card>
@@ -318,7 +333,12 @@ export function AlertesPage() {
                         <Badge tone={statusTone(a.status)}>{a.status}</Badge>
                         <Badge tone="warning">{a.severity}</Badge>
                         <Badge tone="brand">{a.type}</Badge>
-                        {a.isAutomatic ? (
+                        {a.isHistorique ? (
+                          <Badge tone="neutral">
+                            Historique · bulletin du{' '}
+                            {formatDate(a.publishedAt || a.createdAt)}
+                          </Badge>
+                        ) : a.isAutomatic ? (
                           <Badge tone="info">
                             Automatique
                             {a.basis === 'PREVISION'

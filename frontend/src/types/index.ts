@@ -289,6 +289,8 @@ export interface AlertListRow {
   source?: string | null;
   basis?: AlertBasis | null;
   isAutomatic?: boolean;
+  /** Alerte importée depuis un bulletin archivé : jamais active, jamais notifiée. */
+  isHistorique?: boolean;
   updateCount?: number;
   createdBy: string | null;
   publishedAt: string | null;

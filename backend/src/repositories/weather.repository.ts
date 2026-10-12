@@ -2,6 +2,7 @@ import { db } from '../config/database';
 import { env } from '../config/env';
 import {
   CommuneInfo,
+  WeatherBulletin,
   WeatherMapGeoJson,
   WeatherMapPoint,
   WeatherObservation,
@@ -188,6 +189,59 @@ function mapObservation(row: ObservationRow): WeatherObservation {
     pressureHpa: row.pressure_hpa !== null ? parseFloat(row.pressure_hpa) : null,
     weatherCode: row.weather_code,
     createdAt: row.created_at,
+  };
+}
+
+interface BulletinRow {
+  id: string;
+  event_id: string | null;
+  source_name: string;
+  source_url: string | null;
+  bulletin_ref: string | null;
+  title: string;
+  published_at: string;
+  observed_at: string | null;
+  position_description: string | null;
+  latitude: string | null;
+  longitude: string | null;
+  wind_kmh: string | null;
+  gust_kmh: string | null;
+  pressure_hpa: string | null;
+  movement_direction: string | null;
+  movement_speed_kmh: string | null;
+  alert_level: string | null;
+  alert_levels: unknown;
+  content: string | null;
+  created_at: string;
+}
+
+function toNullableFloat(value: string | null): number | null {
+  return value === null ? null : parseFloat(value);
+}
+
+function mapBulletin(row: BulletinRow): WeatherBulletin {
+  return {
+    id: row.id,
+    eventId: row.event_id,
+    sourceName: row.source_name,
+    sourceUrl: row.source_url,
+    bulletinRef: row.bulletin_ref,
+    title: row.title,
+    publishedAt: row.published_at,
+    observedAt: row.observed_at,
+    positionDescription: row.position_description,
+    latitude: toNullableFloat(row.latitude),
+    longitude: toNullableFloat(row.longitude),
+    windKmh: toNullableFloat(row.wind_kmh),
+    gustKmh: toNullableFloat(row.gust_kmh),
+    pressureHpa: toNullableFloat(row.pressure_hpa),
+    movementDirection: row.movement_direction,
+    movementSpeedKmh: toNullableFloat(row.movement_speed_kmh),
+    alertLevel: row.alert_level,
+    alertLevels: (row.alert_levels ?? null) as Record<string, unknown> | null,
+    content: row.content,
+    createdAt: row.created_at,
+    isHistorique: true,
   };
 }
 
@@ -575,6 +629,50 @@ export const weatherRepository = {
       [communeId],
     );
     return parseCount(result.rows[0]) > 0;
+  },
+
+  /**
+   * Bulletins meteorologiques historiques (ex. bulletins cycloniques officiels).
+   * Lecture seule : ces bulletins ne participent jamais a la carte temps reel.
+   */
+  async listBulletins(query: {
+    eventId?: string;
+    dateFrom?: Date | null;
+    dateTo?: Date | null;
+    limit?: number;
+  }): Promise<WeatherBulletin[]> {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+
+    if (query.eventId) {
+      conditions.push(`event_id = $${idx++}`);
+      values.push(query.eventId);
+    }
+    if (query.dateFrom) {
+      conditions.push(`published_at >= $${idx++}`);
+      values.push(query.dateFrom);
+    }
+    if (query.dateTo) {
+      conditions.push(`published_at <= $${idx++}`);
+      values.push(query.dateTo);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const limit = query.limit ?? 100;
+
+    const result = await db.query<BulletinRow>(
+      `SELECT id, event_id, source_name, source_url, bulletin_ref, title,
+              published_at, observed_at, position_description, latitude, longitude,
+              wind_kmh, gust_kmh, pressure_hpa, movement_direction, movement_speed_kmh,
+              alert_level, alert_levels, content, created_at
+         FROM weather_bulletins
+         ${where}
+         ORDER BY published_at DESC, created_at DESC
+         LIMIT $${idx++}`,
+      [...values, limit],
+    );
+    return result.rows.map(mapBulletin);
   },
 
   async getProviderQuota(provider: string): Promise<{ day: string; consumed: number }> {

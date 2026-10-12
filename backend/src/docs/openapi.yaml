@@ -2263,6 +2263,49 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /weather/bulletins:
+    get:
+      tags: [Météo]
+      summary: Bulletins météorologiques historiques (données passées, sourcées)
+      description: >
+        Bulletins archivés (ex. bulletins cycloniques officiels du cyclone Batsirai de
+        février 2022). Données historiques datées et sourcées : elles ne représentent
+        jamais une situation temps réel et n'alimentent pas la carte météo courante.
+      security:
+        - bearerAuth: []
+      operationId: weatherBulletins
+      parameters:
+        - in: query
+          name: eventId
+          schema: { type: string, format: uuid }
+          description: Filtrer sur un événement historique.
+        - in: query
+          name: dateFrom
+          schema: { type: string, format: date-time }
+        - in: query
+          name: dateTo
+          schema: { type: string, format: date-time }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 1, maximum: 200, default: 100 }
+      responses:
+        '200':
+          description: Liste des bulletins historiques
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/WeatherBulletin' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /weather/sync/run:
     post:
       tags: [Météo]
@@ -3122,6 +3165,13 @@ paths:
             schema: { type: boolean },
             description: Alertes générées automatiquement uniquement ("true"/"false"),
           }
+        - name: historique
+          in: query
+          required: false
+          schema: { type: boolean }
+          description: >
+            Alertes historiques uniquement ("true"/"false"). Une alerte historique
+            est archivée, non active et ne déclenche aucune notification.
         - {
             name: basis,
             in: query,
@@ -3715,6 +3765,13 @@ paths:
           }
         - { name: reportType, in: query, required: false, schema: { type: string } }
         - { name: eventId, in: query, required: false, schema: { type: string, format: uuid } }
+        - {
+            name: historique,
+            in: query,
+            required: false,
+            schema: { type: boolean },
+            description: Rapports de situation historiques uniquement ("true"/"false"),
+          }
       responses:
         '200':
           description: Liste des rapports
@@ -4657,6 +4714,39 @@ components:
               $ref: '#/components/schemas/WeatherSyncStatusSnapshot'
             forecasts:
               $ref: '#/components/schemas/WeatherSyncStatusSnapshot'
+    WeatherBulletin:
+      type: object
+      description: >-
+        Bulletin météorologique historique (ex. bulletin cyclonique officiel). Donnée
+        passée, datée et sourcée : jamais une observation temps réel, jamais publiée
+        comme alerte active.
+      properties:
+        id: { type: string, format: uuid }
+        eventId: { type: string, format: uuid, nullable: true }
+        sourceName: { type: string, description: Émetteur du bulletin (ex. Météo Madagascar) }
+        sourceUrl: { type: string, nullable: true }
+        bulletinRef: { type: string, nullable: true, description: Référence/titre du bulletin }
+        title: { type: string }
+        publishedAt: { type: string, format: date-time, description: Date et heure d'émission }
+        observedAt: { type: string, format: date-time, nullable: true }
+        positionDescription:
+          type: string
+          nullable: true
+          description: >-
+            Position en clair lorsque le bulletin ne fournit pas de coordonnée. Aucune
+            coordonnée n'est inventée.
+        latitude: { type: number, nullable: true }
+        longitude: { type: number, nullable: true }
+        windKmh: { type: number, nullable: true }
+        gustKmh: { type: number, nullable: true }
+        pressureHpa: { type: number, nullable: true }
+        movementDirection: { type: string, nullable: true }
+        movementSpeedKmh: { type: number, nullable: true }
+        alertLevel: { type: string, nullable: true, description: Niveau global du bulletin (VERTE, JAUNE, ROUGE…) }
+        alertLevels: { type: object, nullable: true, description: Niveaux détaillés par zone }
+        content: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        isHistorique: { type: boolean, description: Toujours vrai pour cette ressource }
     WeatherQuota:
       type: object
       description: >-
@@ -4978,6 +5068,11 @@ components:
         basis: { $ref: '#/components/schemas/AlertBasis' }
         validFrom: { type: string, format: date-time, nullable: true }
         isAutomatic: { type: boolean, description: Alerte générée automatiquement (événements/risques) }
+        isHistorique:
+          type: boolean
+          description: >
+            Alerte importée depuis un bulletin archivé (donnée historique). Jamais active,
+            jamais notifiée ; affichée avec la mention « Historique — bulletin du [date] ».
         updateCount: { type: integer, description: Nombre de mises à jour automatiques appliquées }
         name: { type: string, nullable: true, description: Nom de la zone cible (commune, district, région ou événement) }
         publishedAt: { type: string, format: date-time, nullable: true }
@@ -5155,6 +5250,15 @@ components:
         downloadUrl: { type: string }
         createdBy: { type: string, format: uuid }
         createdAt: { type: string, format: date-time }
+        source:
+          type: string
+          nullable: true
+          description: Source documentaire du rapport (ex. UNICEF — SitRep No.1, ONU/OCHA)
+        isHistorique:
+          type: boolean
+          description: >
+            Rapport de situation historique : données passées, datées et sourcées.
+            Les indicateurs portent chacun leur propre source et date.
     AiConversation:
       type: object
       description: Conversation IA (entête)

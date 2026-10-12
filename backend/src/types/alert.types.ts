@@ -42,6 +42,8 @@ export interface Alert {
   basis: AlertBasis | null;
   validFrom: string | null;
   isAutomatic: boolean;
+  /** Alerte importée depuis un bulletin archivé : jamais active ni notifiée. */
+  isHistorique: boolean;
   updateCount: number;
   createdBy: string | null;
   publishedAt: string | null;

@@ -600,6 +600,7 @@ export const reportsService = {
       format?: ReportFormat;
       reportType?: string;
       eventId?: string;
+      historique?: boolean;
     },
     actor: { id: string; role: UserRole },
   ): Promise<ReturnType<typeof reportsRepository.list>> {

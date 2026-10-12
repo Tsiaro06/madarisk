@@ -28,6 +28,7 @@ import type {
   WeatherObservation,
 } from "@/types";
 import type {
+  WeatherBulletin,
   WeatherHourPoint,
   WeatherMapLayerMeta,
   WeatherMonitoring,
@@ -79,9 +80,15 @@ export interface RiskConfiguration {
 
 export interface ReportListItem {
   id: string;
-  name?: string;
-  type?: string;
-  createdAt?: string;
+  title: string;
+  reportType: string;
+  format: string;
+  periodStart?: string | null;
+  periodEnd?: string | null;
+  source?: string | null;
+  isHistorique?: boolean;
+  generatedAt: string;
+  eventName?: string | null;
 }
 
 export const authApi = {
@@ -253,6 +260,9 @@ export const weatherApi = {
   refreshStatus: (refreshId: string) =>
     apiGet<WeatherRefreshState>(`/weather/refresh/${refreshId}`),
   monitoring: () => apiGet<WeatherMonitoring>("/weather/monitoring"),
+  // Bulletins météo historiques (passés, sourcés et datés).
+  bulletins: (params?: Record<string, string | number | undefined>) =>
+    apiGet<WeatherBulletin[]>("/weather/bulletins", { params }),
 };
 
 export const risksApi = {

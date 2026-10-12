@@ -37,6 +37,7 @@ export type ToolName =
   | 'getEventExposedCommunes'
   | 'getLatestWeather'
   | 'getPublishedAlerts'
+  | 'getHistoricalEvents'
   | 'getDashboardSummary';
 
 const SKIP = Symbol('skip');
@@ -50,6 +51,7 @@ Règles fondamentales :
 4. Les prévisions météorologiques ou de trajectoire sont des estimations susceptibles d'évoluer : précise-le dans ta réponse.
 5. Structure chaque réponse ainsi : un résumé clair ; les données utilisées (avec leur outil source) ; la date des données si elle est connue ; les limites ou données manquantes ; des actions suggérées non impératives.
 6. Sois concis, factuel et prudent. Ne donne jamais d'ordre absolu d'évacuation ni de conseil médical.
+7. Les données HISTORIQUES (événements clos, bulletins et bilans datés) décrivent une situation PASSÉE : ne les présente jamais comme une situation en temps réel ni comme une alerte active, et cite toujours leur source et leur date.
 
 Outils exécutés côté serveur (résultats dans les DONNÉES AUTORISÉES) :
 - searchTerritories : recherche de districts et de communes par nom
@@ -61,6 +63,7 @@ Outils exécutés côté serveur (résultats dans les DONNÉES AUTORISÉES) :
 - getEventExposedCommunes : communes exposées d'un événement
 - getLatestWeather : dernières observations météorologiques d'une commune
 - getPublishedAlerts : alertes publiées et encore actives
+- getHistoricalEvents : événements historiques clos (ex. cyclone Batsirai 2022) et leurs bulletins/bilans sourcés
 - getDashboardSummary : synthèse globale de la plateforme`;
 
 const searchParamsSchema = z
@@ -102,6 +105,12 @@ const alertFiltersSchema = z
     eventId: z.string().uuid().optional(),
     districtId: z.string().uuid().optional(),
     communeId: z.string().uuid().optional(),
+  })
+  .strict();
+
+const historicalEventsParamsSchema = z
+  .object({
+    eventId: z.string().uuid().optional(),
   })
   .strict();
 
@@ -207,6 +216,27 @@ const AI_TOOLS: AITool[] = [
     },
   },
   {
+    name: 'getHistoricalEvents',
+    description:
+      "Événements historiques clos (ex. cyclone Batsirai 2022) : données passées, datées et sourcées, avec leurs bulletins météo et bilans. Jamais une situation temps réel.",
+    execute: async (parameters, _user) => {
+      const params = historicalEventsParamsSchema.parse(parameters);
+      const listed = await eventsRepository.list({ page: 1, limit: 50, status: 'CLOTURE' });
+      const events = params.eventId
+        ? listed.items.filter((event) => event.id === params.eventId)
+        : listed.items;
+      const bulletins = await weatherRepository.listBulletins({
+        eventId: params.eventId,
+        limit: 50,
+      });
+      return {
+        note: 'Données historiques : elles décrivent une situation passée et ne correspondent jamais à un temps réel ni à une alerte active.',
+        events,
+        bulletins,
+      };
+    },
+  },
+  {
     name: 'getDashboardSummary',
     description:
       'Synthèse globale de la plateforme (événements, alertes, communes à risque, population exposée).',
@@ -284,6 +314,20 @@ const TOOL_SELECTORS: Array<{ name: ToolName; keywords: string[] }> = [
     keywords: ['meteo', 'pluie', 'precipitations', 'vent', 'temperature', 'humidite'],
   },
   {
+    name: 'getHistoricalEvents',
+    keywords: [
+      'historique',
+      'historiques',
+      'batsirai',
+      'passe',
+      'passee',
+      'passees',
+      'archive',
+      'archives',
+      'retour d experience',
+    ],
+  },
+  {
     name: 'getDashboardSummary',
     keywords: [
       'tableau de bord',
@@ -303,6 +347,7 @@ const EXECUTION_ORDER: ToolName[] = [
   'getActiveEvents',
   'getDashboardSummary',
   'getPublishedAlerts',
+  'getHistoricalEvents',
   'getPriorityCommunes',
   'getCommuneDetails',
   'getCommuneLatestRisk',

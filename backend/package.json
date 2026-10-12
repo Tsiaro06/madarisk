@@ -20,6 +20,7 @@
     "test:coverage": "vitest run --coverage",
     "db:migrate": "tsx database/scripts/migrate.ts",
     "db:seed": "tsx database/scripts/seed.ts",
+    "db:seed:batsirai": "tsx database/scripts/seed-batsirai.ts",
     "db:check": "tsx database/scripts/check-database.ts",
     "db:import-population": "tsx database/scripts/import-commune-population.ts",
     "db:backfill-weather-hourly": "tsx database/scripts/backfill-weather-hourly.ts"
