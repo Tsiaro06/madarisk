@@ -1,5 +1,10 @@
 # Rapport Phase E2 — Implémentation du mode démonstration (soutenance)
 
+> ⚠️ **Archive** — le mode démonstration décrit dans ce document a été **supprimé
+> le 12 octobre 2026**. Ce rapport est conservé uniquement comme trace
+> historique de la Phase E2 ; il ne décrit plus le fonctionnement actuel du
+> projet.
+
 Date : 17 septembre 2026
 Périmètre : **implémentation** du mode démonstration isolé (Option A) — backend,
 scripts de base de données, API, frontend et tests. Aucune migration de schéma,

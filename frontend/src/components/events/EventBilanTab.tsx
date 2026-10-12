@@ -14,8 +14,6 @@ import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatNumber } from '@/lib/utils';
 import { canManageOps } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
-import { SimulatedBadge } from '@/components/demo/SimulatedBadge';
-import { isSimulatedEvent } from '@/config/demo';
 
 const RISK_LEVELS: RiskLevel[] = ['FAIBLE', 'MODERE', 'ELEVE', 'EXTREME'];
 
@@ -174,7 +172,6 @@ export function EventBilanTab({ eventId }: { eventId: string }) {
           {ev.sourceName ? (
             <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
               <span>Source : {ev.sourceName}</span>
-              {isSimulatedEvent(ev) ? <SimulatedBadge /> : null}
             </p>
           ) : null}
         </Card>

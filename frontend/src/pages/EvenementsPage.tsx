@@ -22,8 +22,6 @@ import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
 import { RefreshDataButton } from '@/components/ui/RefreshDataButton';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
-import { SimulatedBadge } from '@/components/demo/SimulatedBadge';
-import { isSimulatedEvent } from '@/config/demo';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/lib/utils';
 import { useCrisisStore } from '@/stores/crisisStore';
@@ -249,7 +247,6 @@ export function EvenementsPage() {
                           <Link className="font-medium text-brand hover:underline" to={`/evenements/${ev.id}`}>
                             {ev.name}
                           </Link>
-                          {isSimulatedEvent(ev) ? <SimulatedBadge /> : null}
                         </span>
                       </td>
                       <td className="px-3 py-2.5">{ev.type}</td>

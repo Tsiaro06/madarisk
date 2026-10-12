@@ -34,7 +34,6 @@ import type {
   WeatherRefreshStart,
   WeatherRefreshState,
 } from "@/types/weather";
-import type { DemoScenarioState, DemoStep } from "@/types/demo";
 import type { FeatureCollection } from "geojson";
 
 export interface ImportListItem {
@@ -212,13 +211,6 @@ export const alertsApi = {
     apiPatch<AlertListRow>(`/alerts/${id}`, body),
   publish: (id: string) => apiPost(`/alerts/${id}/publish`),
   archive: (id: string) => apiPost(`/alerts/${id}/archive`),
-};
-
-export const demoApi = {
-  scenario: () => apiGet<DemoScenarioState>("/demo/scenario"),
-  setStep: (step: DemoStep) =>
-    apiPost<DemoScenarioState>("/demo/step", { step }),
-  reset: () => apiPost<DemoScenarioState>("/demo/reset"),
 };
 
 export const weatherApi = {

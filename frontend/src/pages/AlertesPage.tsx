@@ -19,8 +19,6 @@ import { RefreshDataButton } from '@/components/ui/RefreshDataButton';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
-import { SimulatedBadge } from '@/components/demo/SimulatedBadge';
-import { isSimulatedSource } from '@/config/demo';
 import { cn, formatDate } from '@/lib/utils';
 
 const STATUS_GROUPS = [
@@ -332,7 +330,6 @@ export function AlertesPage() {
                         ) : (
                           <Badge tone="neutral">Manuelle</Badge>
                         )}
-                        {isSimulatedSource(a.source) ? <SimulatedBadge /> : null}
                       </div>
                       <p className="mt-1 text-sm text-muted">{a.message}</p>
                       <p className="mt-2 text-xs text-muted">

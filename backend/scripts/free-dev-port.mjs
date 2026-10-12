@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Garde-fou anti-`EADDRINUSE` pour le démarrage de l'API (`npm run dev` / `demo:dev`).
+ * Garde-fou anti-`EADDRINUSE` pour le démarrage de l'API (`npm run dev`).
  *
  * `tsx watch` relance le serveur à chaque sauvegarde ; l'ancienne instance met
  * plusieurs secondes à libérer le port 5000 (fermeture du pool PostgreSQL). Si la
@@ -19,7 +19,7 @@ const PORT = Number(process.env.PORT ?? 5000);
 const isWindows = process.platform === 'win32';
 
 // Motifs identifiant les watchers tsx de ce projet.
-const WATCHER_MARKERS = ['src/server.ts', 'dev-demo.ts'];
+const WATCHER_MARKERS = ['src/server.ts'];
 
 function run(command, args) {
   try {

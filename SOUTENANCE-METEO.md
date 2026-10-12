@@ -34,7 +34,6 @@ Conditions nécessaires, déjà vérifiées dans `backend/.env` :
 
 ```
 ENABLE_SCHEDULED_JOBS=true      ← sinon AUCUNE synchro automatique
-DEMO_MODE non défini             ← sinon données simulées, à proscrire
 NODE_ENV=development
 ```
 
@@ -46,7 +45,6 @@ Portez attention : un seul de ces deux réglages faux suffit à tout casser.
 
 | ❌ Interdit | Pourquoi |
 |---|---|
-| Activer `DEMO_MODE=true` | Les données deviennent **simulées** (`raw_data.simulation = true`, source `SIMULATION`). Un jury qui ouvre l'API le voit. |
 | Relancer la synchronisation nationale « pour être sûr » | Coûte 1 579 appels sur 9 000. Le rattrapage automatique fait le même travail. |
 | Lancer une synchronisation à 07h55 | Elle dure 3 à 4 min. Si elle échoue, vous présentez avec une carte vide. |
 | Modifier `OPEN_METEO_DAILY_BUDGET` | Le maximum est 10 000 (limite du service gratuit). Ne pas le monter au-delà. |
@@ -198,7 +196,7 @@ expliquant le fonctionnement — c'est un contenu de soutenance valide.
 
 **« Les données sont-elles réelles ou simulées ? »**
 
-Réelles, sauf si `DEMO_MODE=true` (à proscrire). Elles proviennent d'Open-Meteo,
+Réelles. Elles proviennent d'Open-Meteo,
 qui sert l'analyse du modèle européen ECMWF. **Attention à la nuance** : ce ne
 sont pas les relevés des pluviomètres de Météo Madagascar, et la résolution
 spatiale est d'environ 9 à 11 km. Une commune peut afficher 12 mm alors qu'un

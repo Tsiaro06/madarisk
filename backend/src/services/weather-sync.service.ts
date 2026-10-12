@@ -628,10 +628,10 @@ export async function detectAfterSync(
     logger.warn({ err }, 'Détection d aléas post-synchronisation ignorée (échec)');
   }
 
-  // Sous vitest, la base partagée contient des événements de démonstration à
-  // forte exposition : ces deux étapes coûteraient ~20 s par rafraîchissement.
-  // Elles sont couvertes individuellement par exposure.test.ts et
-  // automatic-alerts.test.ts.
+  // Sous vitest, la base partagée contient des événements à forte exposition
+  // (plusieurs milliers de communes exposées) : ces deux étapes coûteraient
+  // ~20 s par rafraîchissement. Elles sont couvertes individuellement par
+  // exposure.test.ts et automatic-alerts.test.ts.
   if (process.env.VITEST === 'true') return;
 
   // Après une nouvelle synchronisation : recalcule automatique (idempotent)

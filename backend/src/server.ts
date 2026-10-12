@@ -8,13 +8,6 @@ import { startWeatherHourlyPurgeJob } from './jobs/weather-hourly-purge.job';
 import { startRiskRecalculationJob } from './jobs/risk-recalculation.job';
 import { startDgmMaproomIngestJob } from './jobs/dgm-maproom-ingest.job';
 
-const DEMO_BANNER = [
-  '============================================================',
-  'MODE DÉMONSTRATION ACTIF — base isolée utilisée, appels externes désactivés.',
-  'Données simulées pour la soutenance : ne pas utiliser pour une décision réelle.',
-  '============================================================',
-].join('\n');
-
 let httpServer: Server | undefined;
 let shuttingDown = false;
 
@@ -77,23 +70,11 @@ async function main(): Promise<void> {
   logger.info(`🚀 MadaRisk API démarrée sur http://localhost:${env.PORT}`);
   logger.info(`📡 Environnement : ${env.NODE_ENV}`);
   logger.info(`📊 Base de données : ${dbOk ? 'connectée' : 'indisponible'}`);
-  if (env.DEMO_MODE) {
-    logger.warn('🧪 Mode démonstration : jobs planifiés et appels externes neutralisés.');
-  }
 
-  if (env.DEMO_MODE) {
-    console.warn(`\n${DEMO_BANNER}\n`);
-    logger.warn(
-      { database: env.DB_NAME },
-      'MODE DÉMONSTRATION ACTIF — base isolée utilisée, appels externes désactivés.',
-    );
-  } else {
-    // Les jobs planifiés restent strictement désactivés en mode démonstration.
-    startWeatherSyncJobs();
-    startWeatherHourlyPurgeJob();
-    startRiskRecalculationJob();
-    startDgmMaproomIngestJob();
-  }
+  startWeatherSyncJobs();
+  startWeatherHourlyPurgeJob();
+  startRiskRecalculationJob();
+  startDgmMaproomIngestJob();
 }
 
 process.on('SIGINT', () => void shutdown('SIGINT'));
