@@ -351,6 +351,38 @@ export const eventsService = {
     return eventsRepository.trackGeoJson(id);
   },
 
+  async getTrackState(id: string, atIso: string): Promise<import('../types/event.types').TrackState> {
+    await this.ensureExists(id);
+    const d = new Date(atIso);
+    if (Number.isNaN(d.getTime())) throw AppError.badRequest('Paramètre at invalide (ISO8601 requis)');
+    const repoRes = await eventsRepository.getTrackStateAt(id, d);
+    const cur = repoRes.current as any;
+    return {
+      eventId: id,
+      at: atIso,
+      hasRadiusData: repoRes.radius.has,
+      radiusSource: repoRes.radius.src,
+      radiusMeasureType: repoRes.radius.mtype,
+      radiusMaxKm: repoRes.radius.rmax,
+      currentPoint: cur,
+      previousPoints: repoRes.previous as any,
+      upToAtCount: repoRes.previous.length,
+      totalPoints: repoRes.total,
+      method: cur
+        ? repoRes.radius.has && repoRes.radius.rmax !== null
+          ? `Point observé le plus proche (<= ${atIso}) avec rayon documenté`
+          : `Point observé le plus proche (<= ${atIso}) — rayon non documenté`
+        : 'Aucun point observé jusqu’à cette date/heure',
+    };
+  },
+
+  async getCommuneImpactsAt(id: string, atIso: string): Promise<import('../types/event.types').CommuneImpactsResult> {
+    await this.ensureExists(id);
+    const d = new Date(atIso);
+    if (Number.isNaN(d.getTime())) throw AppError.badRequest('Paramètre at invalide (ISO8601 requis)');
+    return eventsRepository.listCommuneImpactsAt(id, d);
+  },
+
   async calculateArea(
     id: string,
     input: CalculateAreaInput,

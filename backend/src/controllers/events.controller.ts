@@ -79,10 +79,18 @@ export const eventsController = {
     res.status(200).json(successResponse(tracks, 'Points de trajectoire'));
   },
 
-  getTrackGeoJson: async (req: Request, res: Response): Promise<void> => {
+  getTrackState: async (req: Request, res: Response): Promise<void> => {
     const { id } = req.validatedParams as EventIdParams;
-    const geojson = await eventsService.getTrackGeoJson(id);
-    res.status(200).json(successResponse(geojson, 'Trajectoires GeoJSON'));
+    const at = (req.query.at as string) || new Date().toISOString();
+    const st = await eventsService.getTrackState(id, at);
+    res.status(200).json(successResponse(st, 'État de la trajectoire au temps choisi'));
+  },
+
+  getCommuneImpactsAt: async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.validatedParams as EventIdParams;
+    const at = (req.query.at as string) || new Date().toISOString();
+    const r = await eventsService.getCommuneImpactsAt(id, at);
+    res.status(200).json(successResponse(r, 'Impacts communaux au temps choisi'));
   },
 
   calculateArea: async (req: Request, res: Response): Promise<void> => {

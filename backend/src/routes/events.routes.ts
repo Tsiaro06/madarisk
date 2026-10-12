@@ -84,9 +84,27 @@ router.get(
 );
 
 router.get(
-  '/:id/track-geojson',
+  '/:id/track-state',
   validate({ params: eventIdParamsSchema }),
-  asyncHandler(eventsController.getTrackGeoJson),
+  asyncHandler(eventsController.getTrackState),
+);
+
+router.get(
+  '/:id/commune-impacts',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(eventsController.getCommuneImpactsAt),
+);
+
+router.get(
+  '/:id/track-state',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(eventsController.getTrackState),
+);
+
+router.get(
+  '/:id/commune-impacts',
+  validate({ params: eventIdParamsSchema }),
+  asyncHandler(eventsController.getCommuneImpactsAt),
 );
 
 router.post(
