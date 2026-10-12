@@ -5,6 +5,8 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "predev": "node scripts/free-dev-port.mjs",
+    "free-port": "node scripts/free-dev-port.mjs",
     "build": "tsc && node -e \"const fs=require('fs');const p=require('path');fs.mkdirSync(p.join('dist','docs'),{recursive:true});fs.copyFileSync(p.join('src','docs','openapi.yaml'),p.join('dist','docs','openapi.yaml'));\"",
     "start": "node dist/server.js",
     "lint": "eslint \"src/**/*.ts\" --max-warnings 0",
@@ -22,6 +24,7 @@
     "db:import-population": "tsx database/scripts/import-commune-population.ts",
     "db:backfill-weather-hourly": "tsx database/scripts/backfill-weather-hourly.ts",
     "demo:dev": "tsx watch database/scripts/demo/dev-demo.ts",
+    "predemo:dev": "node scripts/free-dev-port.mjs",
     "db:demo:create": "tsx database/scripts/demo/create-demo-db.ts",
     "db:demo:migrate": "tsx database/scripts/demo/migrate-demo.ts",
     "db:demo:init": "tsx database/scripts/demo/init-demo-geography.ts",
