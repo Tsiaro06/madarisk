@@ -89,7 +89,6 @@ const defaultProps = {
   weatherLayer: null as FeatureCollection | null,
   trackLayer: null,
   trackPoints: [] as TrackStatePoint[],
-  areasLayer: null,
   exposedCommuneIds: new Set<string>(),
   activeEvent,
   selectedCommuneId: null,

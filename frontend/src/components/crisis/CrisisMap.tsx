@@ -47,7 +47,6 @@ interface CrisisMapProps {
   weatherLayer: FeatureCollection | null;
   trackLayer: FeatureCollection | null;
   trackPoints: TrackStatePoint[];
-  areasLayer: FeatureCollection | null;
   exposedCommuneIds: Set<string>;
   activeEvent: EventListItem | null;
   selectedCommuneId: string | null;
@@ -176,10 +175,6 @@ function Legend({ hasDocumentedRadius }: { hasDocumentedRadius: boolean }) {
               <li className="flex items-center gap-2">
                 <span className="inline-block h-0.5 w-4 rounded border-t-2 border-dashed border-[#c47d4a]" />
                 Trajectoire prévue
-              </li>
-              <li className="flex items-center gap-2">
-                <span className="inline-block size-3 rounded-sm border-2 border-[#b07070] bg-[#b07070]/20" />
-                Zone d&apos;influence (polygone)
               </li>
               {hasDocumentedRadius ? (
                 <li className="flex items-center gap-2">
@@ -393,7 +388,6 @@ export function CrisisMap({
   weatherLayer,
   trackLayer,
   trackPoints,
-  areasLayer,
   exposedCommuneIds,
   activeEvent,
   selectedCommuneId,
@@ -449,19 +443,18 @@ export function CrisisMap({
   };
 
   // Le repli administratif ne compte pas comme une donnée d'exposition : un
-  // événement sans exposition ni zone reste signalé comme tel, même si ses
-  // limites communales sont dessinées en arrière-plan.
+  // événement sans exposition reste signalé comme tel, même si ses limites
+  // communales sont dessinées en arrière-plan.
   const exposedCommuneFeatureCount = communesAreExposed
     ? (communeLayer?.features?.length ?? 0)
     : 0;
 
+  // Les zones de vigilance (contours régionaux) ne sont plus dessinées en salle
+  // de crise : elles ne comptent donc pas comme une donnée affichée ici.
   const eventWithoutData =
     Boolean(activeEvent) &&
     !hasDocumentedRadius &&
-    (riskLayer?.features?.length ?? 0) +
-      exposedCommuneFeatureCount +
-      (areasLayer?.features?.length ?? 0) ===
-      0;
+    (riskLayer?.features?.length ?? 0) + exposedCommuneFeatureCount === 0;
 
   return (
     <MapContainer
@@ -602,17 +595,6 @@ export function CrisisMap({
 
       {showEvent && activeEvent ? (
         <>
-          {areasLayer ? (
-            <GeoJSON
-              data={areasLayer}
-              style={() => ({
-                color: '#b07070',
-                weight: 1.5,
-                fillColor: '#b07070',
-                fillOpacity: 0.1,
-              })}
-            />
-          ) : null}
           {trackLayer ? (
             <GeoJSON data={trackLayer} style={trackStyle} />
           ) : null}

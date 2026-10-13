@@ -160,13 +160,6 @@ function CrisisRoomView() {
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
-  const areasQ = useQuery({
-    queryKey: ["event", "areas", activeEventId],
-    queryFn: () => (activeEventId ? eventsApi.areas(activeEventId) : null),
-    enabled: Boolean(activeEventId),
-    refetchInterval: REFRESH_INTERVAL_MS,
-  });
-
   const exposureQ = useQuery({
     queryKey: ["event", "exposure", activeEventId],
     queryFn: () =>
@@ -296,7 +289,6 @@ function CrisisRoomView() {
             weatherLayer={weatherQ.data ?? null}
             trackLayer={trackQ.data ?? null}
             trackPoints={trackPointsQ.data ?? []}
-            areasLayer={areasQ.data ?? null}
             exposedCommuneIds={exposureIndex.exposedIds}
             activeEvent={activeEvent}
             selectedCommuneId={selectedCommuneId}
