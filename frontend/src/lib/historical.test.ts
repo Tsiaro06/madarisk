@@ -1,9 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  availableWindRadiusKm,
+  clockBounds,
   deriveRiskFromWind,
+  describeMovementDirection,
   filterImpactsAt,
   formatAntananarivo,
   formatAntananarivoShort,
+  formatMeasure,
+  frameAt,
+  framePosition,
   isAffectedAt,
   observedSteps,
   toAntananarivoTime,
@@ -122,5 +128,142 @@ describe('observedSteps', () => {
       '2022-02-05T12:00:00.000Z',
       '2022-02-05T18:00:00.000Z',
     ]);
+  });
+});
+
+describe('cadre temporel du marqueur cyclone (aucune donnée inventée)', () => {
+  const track = (
+    observedAt: string,
+    latitude: number,
+    longitude: number,
+  ) => ({
+    id: observedAt,
+    eventId: 'evt',
+    observedAt,
+    forecastFor: null,
+    trackType: 'OBSERVEE' as const,
+    latitude,
+    longitude,
+    windSpeedKmh: null,
+    gustSpeedKmh: null,
+    pressureHpa: null,
+    precipitationMm: null,
+    movementDirection: null,
+    movementSpeedKmh: null,
+    createdAt: observedAt,
+    radius34ktKm: null,
+    radius50ktKm: null,
+    radius64ktKm: null,
+    radiusMaxKm: null,
+    radiusSource: null,
+    radiusMeasureType: null,
+    radiusQuality: null,
+    dataQuality: null,
+    confidence: null,
+  });
+
+  const steps = [
+    track('2022-02-05T12:00:00.000Z', -20, 50),
+    track('2022-02-05T18:00:00.000Z', -21, 48),
+  ];
+
+  it('borne le curseur sur la première/dernière observation', () => {
+    expect(clockBounds(steps)).toEqual({
+      startMs: new Date('2022-02-05T12:00:00.000Z').getTime(),
+      endMs: new Date('2022-02-05T18:00:00.000Z').getTime(),
+      spanMinutes: 360,
+    });
+    expect(clockBounds([])).toBeNull();
+  });
+
+  it('retrouve exactement le point quand l’instant coïncide', () => {
+    const frame = frameAt(steps, new Date('2022-02-05T12:00:00.000Z').getTime());
+    expect(frame?.exact).toBe(true);
+    expect(frame?.progress).toBe(0);
+    expect(frame?.from.id).toBe('2022-02-05T12:00:00.000Z');
+    expect(framePosition(frame!)).toEqual([-20, 50]);
+  });
+
+  it('interpole la POSITION entre les deux points vérifiés (50 %)', () => {
+    const at = new Date('2022-02-05T15:00:00.000Z').getTime();
+    const frame = frameAt(steps, at);
+    expect(frame?.exact).toBe(false);
+    expect(frame?.progress).toBeCloseTo(0.5, 6);
+    expect(framePosition(frame!)).toEqual([-20.5, 49]);
+    // Les valeurs affichées restent celles du point source `from`.
+    expect(frame?.from.observedAt).toBe('2022-02-05T12:00:00.000Z');
+  });
+
+  it('reste sur le dernier point au-delà de la trajectoire', () => {
+    const frame = frameAt(steps, new Date('2022-03-01T00:00:00.000Z').getTime());
+    expect(frame?.index).toBe(1);
+    expect(frame?.to).toBeNull();
+    expect(framePosition(frame!)).toEqual([-21, 48]);
+  });
+
+  it('clockBounds résume plusieurs points', () => {
+    expect(clockBounds([steps[0]])?.spanMinutes).toBe(0);
+    expect(clockBounds(steps)?.spanMinutes).toBe(360);
+  });
+});
+
+describe('describeMovementDirection (rose des vents)', () => {
+  it.each([
+    ['220°', 'Sud-Ouest (220°)'],
+    ['0°', 'Nord (0°)'],
+    ['90°', 'Est (90°)'],
+    ['265°', 'Ouest (265°)'],
+  ])('convertit %s en %s', (raw, expected) => {
+    expect(describeMovementDirection(raw)).toBe(expected);
+  });
+
+  it('retourne null sans donnée et préserve une valeur non numérique', () => {
+    expect(describeMovementDirection(null)).toBeNull();
+    expect(describeMovementDirection('   ')).toBeNull();
+    expect(describeMovementDirection('stationnaire')).toBe('stationnaire');
+  });
+});
+
+describe('rayon de vent et mesures manquantes', () => {
+  const base = {
+    id: 'p',
+    eventId: 'evt',
+    observedAt: '2022-02-05T12:00:00.000Z',
+    forecastFor: null,
+    trackType: 'OBSERVEE' as const,
+    latitude: -20,
+    longitude: 48,
+    windSpeedKmh: 185,
+    gustSpeedKmh: null,
+    pressureHpa: 955,
+    precipitationMm: null,
+    movementDirection: null,
+    movementSpeedKmh: null,
+    createdAt: '2022-02-05T12:00:00.000Z',
+    radius34ktKm: null,
+    radius50ktKm: null,
+    radius64ktKm: null,
+    radiusMaxKm: null,
+    radiusSource: null,
+    radiusMeasureType: null,
+    radiusQuality: null,
+    dataQuality: null,
+    confidence: null,
+  };
+
+  it('n’utilise aucun rayon quand la source n’en fournit pas', () => {
+    expect(availableWindRadiusKm(base)).toBeNull();
+    expect(availableWindRadiusKm(null)).toBeNull();
+  });
+
+  it('privilégie le rayon documenté', () => {
+    expect(availableWindRadiusKm({ ...base, radiusMaxKm: 250, radius34ktKm: 400 })).toBe(250);
+    expect(availableWindRadiusKm({ ...base, radius34ktKm: 400 })).toBe(400);
+  });
+
+  it('affiche « non disponible » plutôt que zéro', () => {
+    expect(formatMeasure(null, 'km/h')).toBe('non disponible');
+    expect(formatMeasure(undefined, 'km/h')).toBe('non disponible');
+    expect(formatMeasure(185.4, 'km/h')).toBe('185,4 km/h');
   });
 });

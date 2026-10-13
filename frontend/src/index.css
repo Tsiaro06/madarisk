@@ -208,6 +208,49 @@ h3 {
 }
 
 /* ------------------------------------------------------------------
+   Marqueur cyclone (carte historique Batsirai) : pastille violette
+   ancrée sur le centre observé, spirale interne en rotation lente.
+   La position vient de la trajectoire importée (best track) ; seule
+   la rotation est décorative.
+   ------------------------------------------------------------------ */
+@keyframes madarisk-cyclone-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.madarisk-cyclone-icon {
+  background: transparent;
+  border: 0;
+}
+
+.madarisk-cyclone-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 32% 26%, #a78bfa 0%, #7c3aed 58%, #6d28d9 100%);
+  border: 2px solid #5b21b6;
+  box-shadow:
+    0 0 0 6px rgba(124, 58, 237, 0.25),
+    0 6px 14px -4px rgba(49, 22, 96, 0.55);
+}
+
+.madarisk-cyclone-marker__spin {
+  width: 68%;
+  height: 68%;
+  transform-origin: center;
+  transform-box: fill-box;
+  animation: madarisk-cyclone-spin 6s linear infinite;
+  will-change: transform;
+}
+
+/* ------------------------------------------------------------------
    Chrome « soft UI » — sidebar et navbar partagent les mêmes variables.
    Le thème est piloté par l'attribut `data-theme` posé sur le conteneur,
    lui-même alimenté par le store global `themeStore` (donc identique à
@@ -414,6 +457,7 @@ h3 {
   .login-sweep,
   .login-beacon,
   .madarisk-commune-pulse,
+  .madarisk-cyclone-marker__spin,
   .navbar-menu,
   .account-menu,
   .dash-rise,

@@ -35,6 +35,17 @@ export const IMPACT_STATE_LABELS: Record<ImpactState, string> = {
 /** Commune jamais affectée au temps courant : gris neutre transparent. */
 export const NOT_AFFECTED_FILL = '#94a3b8';
 
+/** Violet du marqueur cyclone (historique) — distinct du navy MadaRisk. */
+export const CYCLONE_VIOLET = '#7c3aed';
+export const CYCLONE_VIOLET_DEEP = '#5b21b6';
+
+/** Durée de traversée complète de la trajectoire en lecture (par vitesse). */
+export const PLAYBACK_TRAVERSAL_MS: Record<'1x' | '2x' | '4x', number> = {
+  '1x': 45_000,
+  '2x': 22_500,
+  '4x': 11_250,
+};
+
 /** Seuil des vents soutenus (ge) ; en dessous : MODERE. */
 export const TRES_ELEVE_WIND_THRESHOLD_KMH = 118;
 export const ELEVE_WIND_THRESHOLD_KMH = 89;
@@ -131,4 +142,132 @@ export function observedSteps(points: TrackStatePoint[]): TrackStatePoint[] {
 /** Coordonnées [lon, lat] GeoJSON à partir d'un point observé. */
 export function pointCoords(p: TrackStatePoint): [number, number] {
   return [p.longitude, p.latitude];
+}
+
+/* --------------------------------------------------------------------------
+ * Lecture temporelle de la trajectoire historique.
+ *
+ * Le marqueur cyclone n'est PAS une simulation : à l'instant demandé, on
+ * retrouve le point observé réel qui précède l'instant (`from`) et le suivant
+ * (`to`). Le déplacement visuel interpole uniquement la POSITION entre ces deux
+ * points vérifiés ; les valeurs météo affichées restent celles du point source
+ * `from`, avec son horodatage. Aucune grandeur n'est fabriquée.
+ * ------------------------------------------------------------------------ */
+
+/** Instant d'un point (ISO-8601 UTC côté API). */
+export function pointTimeMs(p: { observedAt: string }): number {
+  return new Date(p.observedAt).getTime();
+}
+
+/** Bornes temporelles d'une trajectoire observée, en minutes (0 min si 1 point). */
+export interface TrackClockBounds {
+  startMs: number;
+  endMs: number;
+  spanMinutes: number;
+}
+
+export function clockBounds(steps: TrackStatePoint[]): TrackClockBounds | null {
+  if (steps.length === 0) return null;
+  const startMs = pointTimeMs(steps[0]);
+  const endMs = pointTimeMs(steps[steps.length - 1]);
+  return { startMs, endMs, spanMinutes: Math.max(0, (endMs - startMs) / 60_000) };
+}
+
+/** Encadrement d'un instant par deux points observés. */
+export interface ActiveTrackFrame {
+  /** Index de `from` dans la liste triée. */
+  index: number;
+  /** Dernier point observé dont l'horodatage est ≤ l'instant demandé. */
+  from: TrackStatePoint;
+  /** Point observé suivant, ou `null` en fin de trajectoire. */
+  to: TrackStatePoint | null;
+  /** Progression de `from` vers `to` (0 = sur `from`, 1 = sur `to`). */
+  progress: number;
+  /** Vrai lorsque l'instant coïncide exactement avec un point observé. */
+  exact: boolean;
+}
+
+export function frameAt(steps: TrackStatePoint[], atMs: number): ActiveTrackFrame | null {
+  if (steps.length === 0) return null;
+  let index = 0;
+  for (let i = 1; i < steps.length; i += 1) {
+    if (pointTimeMs(steps[i]) <= atMs) index = i;
+    else break;
+  }
+  const from = steps[index];
+  const to = steps[index + 1] ?? null;
+  const fromMs = pointTimeMs(from);
+  const toMs = to ? pointTimeMs(to) : null;
+  const span = toMs != null && toMs > fromMs ? toMs - fromMs : 0;
+  const raw = span > 0 ? (atMs - fromMs) / span : 0;
+  const progress = Math.min(1, Math.max(0, raw));
+  return { index, from, to, progress, exact: atMs <= fromMs };
+}
+
+/**
+ * Position [lat, lng] à afficher : le point `from` exactement, ou une position
+ * interpolée linéairement vers `to` (déplacement visuel uniquement).
+ */
+export function framePosition(frame: ActiveTrackFrame): [number, number] {
+  const { from, to, progress } = frame;
+  if (!to || progress <= 0) return [from.latitude, from.longitude];
+  return [
+    from.latitude + (to.latitude - from.latitude) * progress,
+    from.longitude + (to.longitude - from.longitude) * progress,
+  ];
+}
+
+const COMPASS_16 = [
+  'Nord',
+  'Nord-Nord-Est',
+  'Nord-Est',
+  'Est-Nord-Est',
+  'Est',
+  'Est-Sud-Est',
+  'Sud-Est',
+  'Sud-Sud-Est',
+  'Sud',
+  'Sud-Sud-Ouest',
+  'Sud-Ouest',
+  'Ouest-Sud-Ouest',
+  'Ouest',
+  'Ouest-Nord-Ouest',
+  'Nord-Ouest',
+  'Nord-Nord-Ouest',
+] as const;
+
+/**
+ * Direction de déplacement lisible (« 220° » → « Sud-Ouest (220°) »). Purement
+ * déterministe : c'est la même information, convertie en rose des vents.
+ * Retourne la valeur brute si elle n'est pas un azimut numérique.
+ */
+export function describeMovementDirection(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return null;
+  const match = trimmed.match(/-?\d+(?:[.,]\d+)?/);
+  if (!match) return trimmed;
+  const value = Number(match[0].replace(',', '.'));
+  if (!Number.isFinite(value)) return trimmed;
+  const deg = ((value % 360) + 360) % 360;
+  return `${COMPASS_16[Math.round(deg / 22.5) % 16]} (${trimmed})`;
+}
+
+/**
+ * Rayon de vent (km) réellement documenté, sinon `null`. On n'assimile jamais
+ * une absence à zéro et on ne parle pas de « diamètre » sans définition.
+ */
+export function availableWindRadiusKm(point: TrackStatePoint | null | undefined): number | null {
+  if (!point) return null;
+  const values = [point.radiusMaxKm, point.radius34ktKm, point.radius50ktKm, point.radius64ktKm];
+  for (const value of values) {
+    if (value != null && Number.isFinite(value)) return value;
+  }
+  return null;
+}
+
+/** Mesure avec unité, ou « non disponible » quand la source ne la fournit pas. */
+export function formatMeasure(value: number | null | undefined, unit: string): string {
+  if (value == null || Number.isNaN(value)) return 'non disponible';
+  return `${value.toLocaleString('fr-FR')} ${unit}`;
 }

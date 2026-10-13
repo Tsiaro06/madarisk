@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -23,10 +23,34 @@ vi.mock('react-leaflet', async () => {
       }),
     CircleMarker: () => React.createElement('div', { 'data-testid': 'track-point' }),
     Polyline: () => React.createElement('div', { 'data-testid': 'polyline' }),
+    Circle: () => React.createElement('div', { 'data-testid': 'radius-circle' }),
+    Marker: ({
+      position,
+      children,
+    }: {
+      position: [number, number];
+      children?: React.ReactNode;
+    }) =>
+      React.createElement(
+        'div',
+        {
+          'data-testid': 'cyclone-marker',
+          'data-lat': String(position[0]),
+          'data-lng': String(position[1]),
+        },
+        children,
+      ),
+    Popup: ({ children }: { children: React.ReactNode }) =>
+      React.createElement('div', { 'data-testid': 'popup' }, children),
     Tooltip: ({ children }: { children: React.ReactNode }) =>
-      React.createElement('span', null, children),
+      React.createElement('div', { 'data-testid': 'tooltip' }, children),
     ZoomControl: () => null,
-    useMap: () => ({}),
+    useMap: () => ({
+      on: () => undefined,
+      off: () => undefined,
+      getZoom: () => 6,
+      fitBounds: () => undefined,
+    }),
   };
 });
 
@@ -289,5 +313,61 @@ describe('EventHistoricalMapTab', () => {
       expect(screen.getByTitle('Mettre en pause')).toBeTruthy();
     });
     expect(screen.getByRole('slider', { name: /Position temporelle/ })).toHaveProperty('disabled', false);
+  });
+
+  it('affiche le marqueur cyclone ancré sur le point observé courant', async () => {
+    renderTab();
+    const marker = await waitFor(() => screen.getByTestId('cyclone-marker'));
+    expect(marker.getAttribute('data-lat')).toBe('-20.5');
+    expect(marker.getAttribute('data-lng')).toBe('49.2');
+  });
+
+  it('interpole la position du marqueur entre deux points (50 %)', async () => {
+    renderTab();
+    const marker = await waitFor(() => screen.getByTestId('cyclone-marker'));
+    const slider = screen.getByRole('slider', { name: /Position temporelle/ });
+    fireEvent.change(slider, { target: { value: '180' } });
+    await waitFor(() => {
+      expect(marker.getAttribute('data-lat')).toBe('-20.9');
+      expect(marker.getAttribute('data-lng')).toBe('48.75');
+    });
+    // Les requêtes restent cadencées sur le point observé de référence (12:00Z).
+    await waitFor(() => {
+      expect(api.trackState).toHaveBeenCalledWith('evt-batsirai', {
+        at: '2022-02-05T12:00:00.000Z',
+      });
+    });
+    expect(api.communeImpacts).not.toHaveBeenCalledWith('evt-batsirai', {
+      at: '2022-02-05T15:00:00.000Z',
+    });
+  });
+
+  it('affiche les vents du point observé et « non disponible » pour une rafale absente', async () => {
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId('tooltip').length).toBeGreaterThan(0);
+    });
+    // p1 n'a ni rafale ni pression : la valeur absente est explicite, jamais zéro.
+    expect(screen.getAllByText('Rafales').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('non disponible').length).toBeGreaterThan(0);
+  });
+
+  it('ne dessine aucun rayon de vent sans donnée source', async () => {
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getByTestId('cyclone-marker')).toBeTruthy();
+    });
+    expect(screen.queryByTestId('radius-circle')).toBeNull();
+  });
+
+  it('affiche « non disponible » sans trajectoire observée', async () => {
+    api.tracks.mockResolvedValue([]);
+    renderTab();
+    await waitFor(() => {
+      expect(
+        screen.getByText(/Trajectoire historique détaillée non disponible/),
+      ).toBeTruthy();
+    });
+    expect(screen.queryByTestId('cyclone-marker')).toBeNull();
   });
 });

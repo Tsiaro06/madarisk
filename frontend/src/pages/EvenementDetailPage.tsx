@@ -1061,7 +1061,13 @@ export function EvenementDetailPage() {
       ) : activeTab === 'bulletins' ? (
         <EventBulletinsTab eventId={ev.id} />
       ) : activeTab === 'historique' ? (
-        <EventHistoricalMapTab eventId={ev.id} />
+        <EventHistoricalMapTab
+          key={ev.id}
+          eventId={ev.id}
+          eventName={ev.name}
+          sourceName={ev.sourceName}
+          sourceUrl={ev.sourceUrl}
+        />
       ) : (
         <EventBilanTab eventId={ev.id} />
       )}
