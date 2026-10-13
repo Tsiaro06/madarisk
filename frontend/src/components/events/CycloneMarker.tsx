@@ -169,10 +169,16 @@ export function CycloneMarker({
         vigilance, tout en gardant un contour pointillé qui la distingue des
         zones administratives pleines. Aucune donnée inventée : le cercle
         n'existe que lorsqu'une source publie le rayon.
+
+        L'anneau est centré sur la position AFFICHÉE (`position`, éventuellement
+        interpolée entre deux points vérifiés) et suit donc le déplacement de
+        l'œil au lieu de sauter d'un point observé au suivant. Son RAYON, lui,
+        reste celui publié pour le point observé de référence : il n'est jamais
+        interpolé, la taille ne change donc qu'à l'arrivée sur un point daté.
       */}
       {radiusKm != null ? (
         <Circle
-          center={[point.latitude, point.longitude]}
+          center={position}
           radius={radiusKm * 1000}
           pathOptions={{
             color: CYCLONE_VIOLET_DEEP,
