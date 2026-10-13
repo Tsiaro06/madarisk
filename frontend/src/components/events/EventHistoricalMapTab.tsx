@@ -9,6 +9,7 @@ import {
   availableWindRadiusKm,
   CYCLONE_VIOLET,
   CYCLONE_VIOLET_DEEP,
+  documentedWindCircles,
   formatAntananarivo,
   IMPACT_STATE_LABELS,
   OBSERVED_RISK_COLORS,
@@ -33,6 +34,7 @@ import {
   DetailRow,
 } from '@/components/events/CycloneInformationPanel';
 import { CycloneMarker } from '@/components/events/CycloneMarker';
+import { CycloneWindSwath } from '@/components/events/CycloneWindSwath';
 import { EventTrackLayer } from '@/components/events/EventTrackLayer';
 import { VigilanceZoneLayer } from '@/components/events/VigilanceZoneLayer';
 import {
@@ -137,6 +139,8 @@ export function EventHistoricalMapTab({
   const [speed, setSpeed] = useState<TimelineSpeed>('1x');
   const [selected, setSelected] = useState<{ id: string; name: string } | null>(null);
   const [showVigilance, setShowVigilance] = useState(true);
+  // Emprise documentée des vents : couche d'ensemble, affichée par défaut.
+  const [showSwath, setShowSwath] = useState(true);
 
   const tracksQ = useQuery({
     queryKey: ['event', eventId, 'tracks'],
@@ -230,6 +234,7 @@ export function EventHistoricalMapTab({
   }, [frame, steps, currentPosition]);
 
   const radiusKm = availableWindRadiusKm(activePoint);
+  const swathCount = useMemo(() => documentedWindCircles(steps).length, [steps]);
   const eventTitle = eventName?.trim() || 'Événement historique';
 
   if (tracksQ.isLoading || communesQ.isLoading) return <Spinner />;
@@ -297,6 +302,26 @@ export function EventHistoricalMapTab({
         </label>
       ) : null}
 
+      {swathCount > 0 ? (
+        <label className="mb-3 flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-line bg-canvas px-3 py-2 text-xs text-ink">
+          <input
+            type="checkbox"
+            className="size-3.5 accent-brand"
+            checked={showSwath}
+            onChange={(event) => setShowSwath(event.target.checked)}
+          />
+          <span className="font-medium">
+            Emprise documentée des vents ({swathCount} points)
+          </span>
+          <span className="text-muted">
+            — union des rayons de vent publiés par le RSMC, point par point, du premier au dernier
+            point documenté (le plus large documenté est retenu quand plusieurs seuils existent). Ce
+            n&apos;est pas un cône d&apos;incertitude : aucune incertitude de position n&apos;est
+            publiée pour un événement observé.
+          </span>
+        </label>
+      ) : null}
+
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="relative h-[26rem] overflow-hidden rounded-xl border border-line">
           <MapContainer
@@ -313,6 +338,8 @@ export function EventHistoricalMapTab({
             />
             <ZoomControl position="bottomright" />
             <FitBounds data={communesQ.data ?? null} />
+
+            {showSwath ? <CycloneWindSwath points={steps} /> : null}
 
             {showVigilance && vigilanceCount > 0 ? (
               <VigilanceZoneLayer data={vigilanceZones} />
@@ -357,6 +384,15 @@ export function EventHistoricalMapTab({
                   />
                   Centre du cyclone (observé)
                 </li>
+                {showSwath && swathCount > 0 ? (
+                  <li className="flex items-center gap-2">
+                    <span
+                      className="inline-block size-3 rounded-sm"
+                      style={{ background: `${CYCLONE_VIOLET}1f` }}
+                    />
+                    Emprise documentée des vents
+                  </li>
+                ) : null}
                 <li className="flex items-center gap-2 text-muted">
                   <span
                     className="inline-block size-3 rounded-full border border-dashed"

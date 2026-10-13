@@ -4,6 +4,7 @@ import {
   clockBounds,
   deriveRiskFromWind,
   describeMovementDirection,
+  documentedWindCircles,
   documentedWindRadius,
   filterImpactsAt,
   formatAntananarivo,
@@ -287,6 +288,35 @@ describe('rayon de vent et mesures manquantes', () => {
     expect(windRadiusShortLabel(34)).toBe('R34');
     expect(windRadiusLongLabel(34)).toBe('Rayon du vent ≥ 34 nœuds (R34)');
     expect(windRadiusLongLabel('max')).toBe('Rayon des vents maximaux (RMW)');
+  });
+
+  it('ne construit l’emprise des vents qu’avec les rayons réellement publiés', () => {
+    // Aucun rayon publié : aucune emprise, jamais un cercle de rayon zéro.
+    expect(documentedWindCircles([base, { ...base, id: 'p2' }])).toEqual([]);
+
+    const circles = documentedWindCircles([
+      { ...base, id: 'p1', radius34ktKm: 368.5, latitude: -21.0, longitude: 48.0 },
+      { ...base, id: 'p2', radius34ktKm: null, radius50ktKm: null },
+      { ...base, id: 'p3', radius50ktKm: 164.8, latitude: -22.5, longitude: 46.5 },
+    ]);
+
+    // Le point muet (p2) est ignoré : une absence n'est pas un zéro.
+    expect(circles).toHaveLength(2);
+    expect(circles[0]).toMatchObject({
+      id: 'p1',
+      radiusKm: 368.5,
+      kind: 34,
+      latitude: -21.0,
+      longitude: 48.0,
+    });
+    expect(circles[1]).toMatchObject({ id: 'p3', radiusKm: 164.8, kind: 50 });
+  });
+
+  it('ne retient que la valeur publiée du seuil le plus large (aucune interpolation)', () => {
+    const [circle] = documentedWindCircles([
+      { ...base, id: 'p1', radiusMaxKm: 250, radius34ktKm: 400, radius50ktKm: 164.8 },
+    ]);
+    expect(circle).toMatchObject({ radiusKm: 250, kind: 'max' });
   });
 
   it('affiche « non disponible » plutôt que zéro', () => {

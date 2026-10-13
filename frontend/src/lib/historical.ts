@@ -337,6 +337,45 @@ export function windRadiusLongLabel(kind: WindRadiusKind): string {
   return `Rayon du vent ≥ ${kind} nœuds (R${kind})`;
 }
 
+/** Cercle d'emprise : un point daté et le rayon de vent publié pour lui. */
+export interface DocumentedWindCircle {
+  id: string;
+  observedAt: string;
+  latitude: number;
+  longitude: number;
+  radiusKm: number;
+  kind: WindRadiusKind;
+}
+
+/**
+ * Emprise documentée des vents : un cercle par point dont la source publie un
+ * rayon. Aucun cercle n'est créé pour un point muet — une absence n'est pas un
+ * zéro — et aucun rayon n'est interpolé entre deux mesures : la forme se déduit
+ * uniquement de ce qui est publié, point par point.
+ *
+ * C'est l'UNION de ces cercles qui donne l'aspect d'entonnoir le long de la
+ * trajectoire. Ce n'est pas un cône d'incertitude : pour un événement observé
+ * (best track), aucune incertitude de position n'est publiée.
+ */
+export function documentedWindCircles(
+  points: readonly TrackStatePoint[],
+): DocumentedWindCircle[] {
+  const circles: DocumentedWindCircle[] = [];
+  for (const point of points) {
+    const radius = documentedWindRadius(point);
+    if (!radius || radius.km <= 0) continue;
+    circles.push({
+      id: point.id,
+      observedAt: point.observedAt,
+      latitude: point.latitude,
+      longitude: point.longitude,
+      radiusKm: radius.km,
+      kind: radius.kind,
+    });
+  }
+  return circles;
+}
+
 /** Mesure avec unité, ou « non disponible » quand la source ne la fournit pas. */
 export function formatMeasure(value: number | null | undefined, unit: string): string {
   if (value == null || Number.isNaN(value)) return 'non disponible';

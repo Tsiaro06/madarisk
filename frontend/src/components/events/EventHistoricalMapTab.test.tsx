@@ -23,7 +23,13 @@ vi.mock('react-leaflet', async () => {
       }),
     CircleMarker: () => React.createElement('div', { 'data-testid': 'track-point' }),
     Polyline: () => React.createElement('div', { 'data-testid': 'polyline' }),
-    Circle: () => React.createElement('div', { 'data-testid': 'radius-circle' }),
+    // L'anneau de la lecture animée porte un contour ; les cercles de l'emprise
+    // documentée n'en ont pas (className dédiée) : on les distingue ici.
+    Circle: ({ pathOptions }: { pathOptions?: { className?: string } }) =>
+      React.createElement('div', {
+        'data-testid':
+          pathOptions?.className === 'madarisk-wind-swath' ? 'wind-swath-circle' : 'radius-circle',
+      }),
     Marker: ({
       position,
       children,
@@ -483,10 +489,65 @@ describe('EventHistoricalMapTab', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('geojson')).toHaveLength(2);
     });
-    await user.click(screen.getByRole('checkbox'));
+    await user.click(
+      screen.getByRole('checkbox', { name: /Zones de vigilance du bulletin prévisionnel/ }),
+    );
     await waitFor(() => {
       expect(screen.getAllByTestId('geojson')).toHaveLength(1);
     });
     expect(screen.queryByText('Zones de vigilance (prévision)')).toBeNull();
+  });
+
+  it("superpose l'emprise documentée des vents : un cercle par point publié, aucun pour un point muet", async () => {
+    api.tracks.mockResolvedValue([
+      point({
+        id: 'p1',
+        observedAt: '2022-02-05T12:00:00.000Z',
+        latitude: -20.5,
+        longitude: 49.2,
+        radius34ktKm: 368.5,
+      }),
+      // Point sans rayon publié : une absence n'est pas un zéro, donc pas de cercle.
+      point({ id: 'p2', observedAt: '2022-02-05T18:00:00.000Z', latitude: -21.3, longitude: 48.3 }),
+      point({
+        id: 'p3',
+        observedAt: '2022-02-06T00:00:00.000Z',
+        latitude: -22.0,
+        longitude: 47.5,
+        radius50ktKm: 164.8,
+      }),
+    ]);
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('wind-swath-circle')).toHaveLength(2);
+    });
+    expect(screen.getByText(/Emprise documentée des vents \(2 points\)/)).toBeTruthy();
+  });
+
+  it("masque l'emprise des vents sans toucher à la lecture animée", async () => {
+    const user = userEvent.setup();
+    api.tracks.mockResolvedValue([
+      point({
+        id: 'p1',
+        observedAt: '2022-02-05T12:00:00.000Z',
+        latitude: -20.5,
+        longitude: 49.2,
+        radius34ktKm: 368.5,
+      }),
+    ]);
+    renderTab();
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('wind-swath-circle').length).toBeGreaterThan(0);
+    });
+
+    await user.click(screen.getByRole('checkbox', { name: /Emprise documentée des vents/ }));
+
+    await waitFor(() => {
+      expect(screen.queryAllByTestId('wind-swath-circle')).toHaveLength(0);
+    });
+    // Le marqueur du cyclone reste affiché : seule l'emprise est retirée.
+    expect(screen.getByTestId('cyclone-marker')).toBeTruthy();
   });
 });

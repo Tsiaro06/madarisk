@@ -60,13 +60,19 @@ vi.mock('react-leaflet', async () => {
     Circle: ({
       pathOptions,
     }: {
-      pathOptions?: { fillOpacity?: number; dashArray?: string };
-    }) =>
-      React.createElement('div', {
+      pathOptions?: { fillOpacity?: number; dashArray?: string; className?: string };
+    }) => {
+      // Deux familles de cercles : l'anneau de la lecture animée (contour
+      // pointillé) et les cercles de l'emprise documentée (sans contour).
+      if (pathOptions?.className === 'madarisk-wind-swath') {
+        return React.createElement('div', { 'data-testid': 'wind-swath-circle' });
+      }
+      return React.createElement('div', {
         'data-testid': 'cyclone-radius',
         'data-fill-opacity': String(pathOptions?.fillOpacity ?? ''),
         'data-dash-array': pathOptions?.dashArray ?? '',
-      }),
+      });
+    },
     Popup: ({ children }: { children: React.ReactNode }) =>
       React.createElement('div', { 'data-testid': 'popup' }, children),
     Tooltip: ({ children }: { children: React.ReactNode }) =>
@@ -340,6 +346,64 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
     });
 
     expect(screen.queryByTestId('cyclone-radius')).toBeNull();
+  });
+
+  it("dessine l'emprise des vents avec les seuls points qui publient un rayon", () => {
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2, {
+          radius34ktKm: 368.5,
+        }),
+        // Point muet : aucune emprise inventée pour lui.
+        makeTrackPoint('p2', 'OBSERVEE', '2026-04-01T06:00:00.000Z', -20.9, 48.4),
+        makeTrackPoint('p3', 'OBSERVEE', '2026-04-01T12:00:00.000Z', -21.4, 47.6, {
+          radius50ktKm: 164.8,
+        }),
+      ],
+    });
+
+    // Une emprise d'ensemble (2 cercles documentés) + l'anneau de la lecture animée.
+    expect(screen.getAllByTestId('wind-swath-circle')).toHaveLength(2);
+    expect(screen.getAllByTestId('cyclone-radius')).toHaveLength(1);
+  });
+
+  it("masque l'emprise des vents et la retire de la légende", async () => {
+    const user = userEvent.setup();
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2, {
+          radius34ktKm: 368.5,
+        }),
+      ],
+    });
+
+    expect(screen.getByText(/Emprise documentée des vents/)).toBeTruthy();
+    expect(screen.getAllByTestId('wind-swath-circle')).toHaveLength(1);
+
+    await user.click(screen.getByRole('button', { name: 'Afficher les couches' }));
+    await user.click(
+      screen.getByRole('checkbox', { name: /Emprise des vents/ }) as HTMLInputElement,
+    );
+
+    expect(screen.queryAllByTestId('wind-swath-circle')).toHaveLength(0);
+    expect(screen.queryByText(/Emprise documentée des vents/)).toBeNull();
+    // L'anneau de la lecture animée reste affiché : seule l'emprise d'ensemble part.
+    expect(screen.getByTestId('cyclone-radius')).toBeTruthy();
+  });
+
+  it("désactive la couche d'emprise quand aucune source ne publie de rayon", async () => {
+    const user = userEvent.setup();
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2),
+      ],
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Afficher les couches' }));
+    expect(
+      screen.getByRole('checkbox', { name: /Emprise des vents/ }) as HTMLInputElement,
+    ).toBeDisabled();
+    expect(screen.queryAllByTestId('wind-swath-circle')).toHaveLength(0);
   });
 
   it('n\'annonce la zone d\'influence en légende que si un rayon est documenté', () => {

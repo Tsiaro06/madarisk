@@ -31,6 +31,7 @@ import {
 import { cn } from '@/lib/utils';
 import { CommuneMapSearch } from '@/components/crisis/CommuneMapSearch';
 import { CycloneMarker } from '@/components/events/CycloneMarker';
+import { CycloneWindSwath } from '@/components/events/CycloneWindSwath';
 
 type CommuneClickHandler = (communeId: string, name: string) => void;
 
@@ -108,7 +109,14 @@ function CrisisMapOverlay({ children, position }: { children: ReactNode; positio
 }
 
 /** Légende repliable : fermée par défaut pour ne pas voler de place à la carte. */
-function Legend({ hasDocumentedRadius }: { hasDocumentedRadius: boolean }) {
+function Legend({
+  hasDocumentedRadius,
+  hasWindSwath,
+}: {
+  hasDocumentedRadius: boolean;
+  /** Emprise réellement visible : la légende ne l'annonce que si elle est dessinée. */
+  hasWindSwath: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -168,6 +176,15 @@ function Legend({ hasDocumentedRadius }: { hasDocumentedRadius: boolean }) {
                 <span className="inline-block h-0.5 w-4 rounded bg-[#5a7d90]" />
                 Trajectoire observée
               </li>
+              {hasWindSwath ? (
+                <li className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-3 w-4 rounded-sm"
+                    style={{ background: `${CYCLONE_VIOLET}1f` }}
+                  />
+                  Emprise documentée des vents (rayons publiés)
+                </li>
+              ) : null}
               <li className="flex items-center gap-2">
                 <span className="inline-block size-3 rounded-full border-2 border-[#5b21b6] bg-[#7c3aed]" />
                 Centre cyclonique (lecture animée)
@@ -196,6 +213,12 @@ function Legend({ hasDocumentedRadius }: { hasDocumentedRadius: boolean }) {
                 Commune exposée à l&apos;événement sélectionné
               </li>
             </ul>
+            {hasWindSwath ? (
+              <p className="mt-1.5 border-t border-line pt-1.5 text-[10px] leading-snug text-muted">
+                L&apos;emprise des vents est l&apos;union des rayons publiés par la source, point par
+                point : ce n&apos;est pas un cône d&apos;incertitude.
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
@@ -231,8 +254,10 @@ function LayerControls({
   showDistricts,
   showWeather,
   showEvent,
+  showSwath,
   hasEvent,
   communesAreExposed,
+  hasDocumentedRadius,
   onChange,
 }: {
   showRisks: boolean;
@@ -240,10 +265,12 @@ function LayerControls({
   showDistricts: boolean;
   showWeather: boolean;
   showEvent: boolean;
+  showSwath: boolean;
   hasEvent: boolean;
   communesAreExposed: boolean;
+  hasDocumentedRadius: boolean;
   onChange: (
-    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event',
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath',
     value: boolean,
   ) => void;
 }) {
@@ -271,7 +298,7 @@ function LayerControls({
   }, [open]);
 
   const items: Array<{
-    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event';
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath';
     label: string;
     checked: boolean;
     disabled?: boolean;
@@ -285,6 +312,12 @@ function LayerControls({
     { key: 'districts', label: 'Districts', checked: showDistricts },
     { key: 'weather', label: 'Météo', checked: showWeather },
     { key: 'event', label: 'Événement actif', checked: showEvent, disabled: !hasEvent },
+    {
+      key: 'swath',
+      label: 'Emprise des vents',
+      checked: showSwath,
+      disabled: !hasEvent || !hasDocumentedRadius,
+    },
   ];
 
   return (
@@ -405,6 +438,9 @@ export function CrisisMap({
   const [showDistricts, setShowDistricts] = useState(false);
   const [showWeather, setShowWeather] = useState(false);
   const [showEvent, setShowEvent] = useState(true);
+  // Emprise documentée des vents : affichée par défaut (c'est la lecture
+  // d'ensemble du cyclone), masquable pour dégager la carte.
+  const [showSwath, setShowSwath] = useState(true);
 
   // Points observés (jamais les points prévus) : base de la lecture animée.
   const observedTrack = useMemo(() => observedSteps(trackPoints), [trackPoints]);
@@ -428,13 +464,14 @@ export function CrisisMap({
   };
 
   const handleToggle = (
-    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event',
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath',
     value: boolean,
   ) => {
     if (key === 'risks') setShowRisks(value);
     else if (key === 'communes') setShowCommunes(value);
     else if (key === 'districts') setShowDistricts(value);
     else if (key === 'weather') setShowWeather(value);
+    else if (key === 'swath') setShowSwath(value);
     else setShowEvent(value);
   };
 
@@ -475,6 +512,13 @@ export function CrisisMap({
 
       <MapFocus target={focusTarget} />
       <MapReset />
+
+      {/*
+        Emprise documentée des vents, volontairement dessinée en premier : elle
+        passe SOUS la sélection, les risques, les limites communales et la
+        trajectoire, qui restent cliquables.
+      */}
+      {showEvent && showSwath ? <CycloneWindSwath points={observedTrack} /> : null}
 
       {selectedCommuneGeometry ? (
         <GeoJSON
@@ -624,7 +668,10 @@ export function CrisisMap({
       ) : null}
 
       <CrisisMapOverlay position="bottom-left">
-        <Legend hasDocumentedRadius={hasDocumentedRadius} />
+        <Legend
+          hasDocumentedRadius={hasDocumentedRadius}
+          hasWindSwath={hasDocumentedRadius && showEvent && showSwath}
+        />
       </CrisisMapOverlay>
       <CrisisMapOverlay position="top-right">
         {/* Coin haut-droit aligné à droite : actions, bouton Couches repliable
@@ -658,8 +705,10 @@ export function CrisisMap({
             showDistricts={showDistricts}
             showWeather={showWeather}
             showEvent={showEvent}
+            showSwath={showSwath}
             hasEvent={Boolean(activeEvent)}
             communesAreExposed={communesAreExposed}
+            hasDocumentedRadius={hasDocumentedRadius}
             onChange={handleToggle}
           />
           {activeEvent ? (
