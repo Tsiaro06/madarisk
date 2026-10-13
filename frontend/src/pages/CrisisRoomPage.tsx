@@ -100,17 +100,36 @@ function CrisisRoomView() {
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
+  const hasEventCommunes = Boolean(communesQ.data?.features?.length);
+
+  /**
+   * Repli administratif : certains événements n'ont aucune commune exposée en
+   * base (aucun calcul d'exposition n'a été lancé). On dessine alors les limites
+   * administratives réelles plutôt qu'une carte vide — ce sont des géométries
+   * officielles, pas une exposition déguisée. La requête est désactivée dès que
+   * l'exposition existe et volontairement non rafraîchie en boucle : la couche
+   * complète pèse ~2 Mo et ne bouge qu'à l'import des territoires.
+   */
+  const communeLimitsQ = useQuery({
+    queryKey: ["communes", "map-limits", districtId],
+    queryFn: () => territoriesApi.mapCommunes(districtId ? { districtId } : {}),
+    enabled: communesQ.isSuccess && !hasEventCommunes,
+  });
+
   const districtsQ = useQuery({
     queryKey: ["territories", "map-districts"],
     queryFn: () => territoriesApi.mapDistricts({}),
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
-  const hasEventCommunes = Boolean(communesQ.data?.features?.length);
   const riskLayer = risksQ.data?.features?.length
     ? (risksQ.data ?? null)
     : null;
-  const communeLayer = hasEventCommunes ? (communesQ.data ?? null) : null;
+  // Limites administratives en repli quand l'événement n'a pas d'exposition.
+  const communeLayer = hasEventCommunes
+    ? (communesQ.data ?? null)
+    : (communeLimitsQ.data ?? null);
+  const communesAreExposed = Boolean(activeEventId) && hasEventCommunes;
 
   const weatherQ = useQuery({
     queryKey: ["weather", "map-layer", activeEventId, districtId],
@@ -273,6 +292,7 @@ function CrisisRoomView() {
             riskLayer={riskLayer}
             communeLayer={communeLayer}
             districtLayer={districtsQ.data ?? null}
+            communesAreExposed={communesAreExposed}
             weatherLayer={weatherQ.data ?? null}
             trackLayer={trackQ.data ?? null}
             trackPoints={trackPointsQ.data ?? []}

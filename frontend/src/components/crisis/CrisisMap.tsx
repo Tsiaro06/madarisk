@@ -38,6 +38,12 @@ interface CrisisMapProps {
   riskLayer: FeatureCollection | null;
   communeLayer: FeatureCollection | null;
   districtLayer: FeatureCollection | null;
+  /**
+   * Vrai lorsque `communeLayer` porte l'exposition calculée de l'événement.
+   * Faux quand c'est le repli administratif (aucune exposition disponible) :
+   * la légende parle alors de « Limites communales », jamais d'exposition.
+   */
+  communesAreExposed: boolean;
   weatherLayer: FeatureCollection | null;
   trackLayer: FeatureCollection | null;
   trackPoints: TrackStatePoint[];
@@ -231,6 +237,7 @@ function LayerControls({
   showWeather,
   showEvent,
   hasEvent,
+  communesAreExposed,
   onChange,
 }: {
   showRisks: boolean;
@@ -239,6 +246,7 @@ function LayerControls({
   showWeather: boolean;
   showEvent: boolean;
   hasEvent: boolean;
+  communesAreExposed: boolean;
   onChange: (
     key: 'risks' | 'communes' | 'districts' | 'weather' | 'event',
     value: boolean,
@@ -274,7 +282,11 @@ function LayerControls({
     disabled?: boolean;
   }> = [
     { key: 'risks', label: 'Risques', checked: showRisks, disabled: !hasEvent },
-    { key: 'communes', label: hasEvent ? 'Communes exposées' : 'Limites communes', checked: showCommunes },
+    {
+      key: 'communes',
+      label: hasEvent && communesAreExposed ? 'Communes exposées' : 'Limites communales',
+      checked: showCommunes,
+    },
     { key: 'districts', label: 'Districts', checked: showDistricts },
     { key: 'weather', label: 'Météo', checked: showWeather },
     { key: 'event', label: 'Événement actif', checked: showEvent, disabled: !hasEvent },
@@ -377,6 +389,7 @@ export function CrisisMap({
   riskLayer,
   communeLayer,
   districtLayer,
+  communesAreExposed,
   weatherLayer,
   trackLayer,
   trackPoints,
@@ -435,11 +448,18 @@ export function CrisisMap({
     window.dispatchEvent(new Event('madarisk-reset-view'));
   };
 
+  // Le repli administratif ne compte pas comme une donnée d'exposition : un
+  // événement sans exposition ni zone reste signalé comme tel, même si ses
+  // limites communales sont dessinées en arrière-plan.
+  const exposedCommuneFeatureCount = communesAreExposed
+    ? (communeLayer?.features?.length ?? 0)
+    : 0;
+
   const eventWithoutData =
     Boolean(activeEvent) &&
     !hasDocumentedRadius &&
     (riskLayer?.features?.length ?? 0) +
-      (communeLayer?.features?.length ?? 0) +
+      exposedCommuneFeatureCount +
       (areasLayer?.features?.length ?? 0) ===
       0;
 
@@ -539,6 +559,9 @@ export function CrisisMap({
                   : null,
                 !hasEvent && p.windSpeedKmh != null
                   ? `Vent : ${String(p.windSpeedKmh)} km/h`
+                  : null,
+                hasEvent && !communesAreExposed
+                  ? "Aucune exposition calculée pour cet événement"
                   : null,
               ]
                 .filter(Boolean)
@@ -654,6 +677,7 @@ export function CrisisMap({
             showWeather={showWeather}
             showEvent={showEvent}
             hasEvent={Boolean(activeEvent)}
+            communesAreExposed={communesAreExposed}
             onChange={handleToggle}
           />
           {activeEvent ? (

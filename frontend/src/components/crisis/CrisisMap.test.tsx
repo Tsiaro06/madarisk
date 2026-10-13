@@ -82,10 +82,11 @@ const activeEvent = {
 } satisfies EventListItem;
 
 const defaultProps = {
-  riskLayer: null,
-  communeLayer: null,
-  districtLayer: null,
-  weatherLayer: null,
+  riskLayer: null as FeatureCollection | null,
+  communeLayer: null as FeatureCollection | null,
+  districtLayer: null as FeatureCollection | null,
+  communesAreExposed: false,
+  weatherLayer: null as FeatureCollection | null,
   trackLayer: null,
   trackPoints: [] as TrackStatePoint[],
   areasLayer: null,
@@ -217,11 +218,34 @@ describe('CrisisMap', () => {
     );
   });
 
-  it('active le toggle communes exposées par défaut quand il y a un événement', () => {
-    renderMap(defaultProps);
+  it('nomme la couche « Communes exposées » quand l’exposition est calculée', () => {
+    renderMap({ ...defaultProps, communesAreExposed: true });
     const label = screen.getByText('Communes exposées');
     const checkbox = label.closest('label')?.querySelector('input[type="checkbox"]');
     expect(checkbox).toBeChecked();
+  });
+
+  it('retombe sur « Limites communales » sans exposition calculée', () => {
+    renderMap(defaultProps);
+    const label = screen.getByText('Limites communales');
+    const checkbox = label.closest('label')?.querySelector('input[type="checkbox"]');
+    expect(checkbox).toBeChecked();
+  });
+
+  it('dessine les limites communales administratives fournies en repli', () => {
+    const limits: FeatureCollection = {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: { communeId: 'c1', commune: 'Mananjary' },
+          geometry: { type: 'Point', coordinates: [48.0, -20.0] },
+        },
+      ],
+    };
+    renderMap({ ...defaultProps, communeLayer: limits, communesAreExposed: false });
+
+    expect(screen.getByTestId('geojson')).toHaveAttribute('data-features', '1');
   });
 
   it('place le zoom en bas à droite et les actions en haut à droite', () => {
