@@ -9,7 +9,7 @@ import {
   territoriesApi,
   weatherApi,
 } from "@/api";
-import type { CommuneDetail, EventTrack, ExposedCommuneInfo } from "@/types";
+import type { CommuneDetail, ExposedCommuneInfo, TrackStatePoint } from "@/types";
 import { canManageOps } from "@/lib/roles";
 import { useAuthStore } from "@/stores/authStore";
 import { ActiveEventProvider, useActiveEvent } from "@/stores/activeEvent";
@@ -134,7 +134,7 @@ function CrisisRoomView() {
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
-  const trackPointsQ = useQuery<EventTrack[]>({
+  const trackPointsQ = useQuery<TrackStatePoint[]>({
     queryKey: ["event", "track-points", activeEventId],
     queryFn: () => (activeEventId ? eventsApi.tracks(activeEventId) : []),
     enabled: Boolean(activeEventId),

@@ -1,11 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { FeatureCollection } from 'geojson';
 import { CrisisMap } from './CrisisMap';
-import type { EventListItem, EventTrack } from '@/types';
+import type { EventListItem, TrackStatePoint } from '@/types';
 import { trackStyle, riskStyle, communeStyle } from '@/lib/crisisStyles';
 import { RISK_COLORS } from '@/types';
 
@@ -24,6 +24,28 @@ vi.mock('react-leaflet', async () => {
             : 0,
       }),
     CircleMarker: () => React.createElement('div', { 'data-testid': 'track-point' }),
+    Marker: ({
+      children,
+      position,
+      title,
+    }: {
+      children?: React.ReactNode;
+      position?: [number, number];
+      title?: string;
+    }) =>
+      React.createElement(
+        'div',
+        {
+          'data-testid': 'cyclone-marker',
+          'data-lat': position ? String(position[0]) : '',
+          'data-lng': position ? String(position[1]) : '',
+          'data-title': title ?? '',
+        },
+        children,
+      ),
+    Circle: () => React.createElement('div', { 'data-testid': 'cyclone-radius' }),
+    Popup: ({ children }: { children: React.ReactNode }) =>
+      React.createElement('div', { 'data-testid': 'popup' }, children),
     Tooltip: ({ children }: { children: React.ReactNode }) =>
       React.createElement('span', null, children),
     ZoomControl: ({ position }: { position?: string }) =>
@@ -56,7 +78,7 @@ const defaultProps = {
   districtLayer: null,
   weatherLayer: null,
   trackLayer: null,
-  trackPoints: [] as EventTrack[],
+  trackPoints: [] as TrackStatePoint[],
   areasLayer: null,
   exposedCommuneIds: new Set<string>(),
   activeEvent,
@@ -68,6 +90,41 @@ const defaultProps = {
   onRefresh: undefined as (() => void) | undefined,
   refreshing: false,
 };
+
+/** Point de trajectoire complet (tous les champs requis par TrackStatePoint). */
+function makeTrackPoint(
+  id: string,
+  trackType: 'OBSERVEE' | 'PREVUE',
+  observedAt: string,
+  latitude: number,
+  longitude: number,
+): TrackStatePoint {
+  return {
+    id,
+    eventId: 'evt-1',
+    observedAt,
+    forecastFor: null,
+    trackType,
+    latitude,
+    longitude,
+    windSpeedKmh: 140,
+    gustSpeedKmh: null,
+    pressureHpa: 950,
+    precipitationMm: null,
+    movementDirection: '220°',
+    movementSpeedKmh: 20,
+    createdAt: '2026-04-01T00:00:00.000Z',
+    radius34ktKm: null,
+    radius50ktKm: null,
+    radius64ktKm: null,
+    radiusMaxKm: null,
+    radiusSource: null,
+    radiusMeasureType: null,
+    radiusQuality: null,
+    dataQuality: null,
+    confidence: null,
+  };
+}
 
 function renderMap(props: Partial<typeof defaultProps> = {}) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
@@ -174,6 +231,38 @@ describe('CrisisMap', () => {
 
     // Plus rien en bas à droite : ce coin est au zoom.
     expect(container.querySelector('.bottom-3.right-3')).toBeNull();
+  });
+});
+
+describe('marqueur cyclonique animé (trajectoire observée)', () => {
+  beforeEach(() => {
+    // Lecture visuelle désactivée en test : pas de rAF, positions déterministes.
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockReturnValue(0);
+    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => undefined);
+  });
+
+  it('ancre le marqueur sur le premier point observé', () => {
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2),
+        makeTrackPoint('p2', 'OBSERVEE', '2026-04-01T06:00:00.000Z', -20.9, 48.4),
+      ],
+    });
+
+    const marker = screen.getByTestId('cyclone-marker');
+    expect(marker).toHaveAttribute('data-lat', '-20.5');
+    expect(marker).toHaveAttribute('data-lng', '49.2');
+    expect(marker.getAttribute('data-title')).toContain('Cyclone Batsirai');
+  });
+
+  it("n'affiche aucun centre animé sans point observé", () => {
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'PREVUE', '2026-04-02T00:00:00.000Z', -20.5, 49.2),
+      ],
+    });
+
+    expect(screen.queryByTestId('cyclone-marker')).toBeNull();
   });
 });
 

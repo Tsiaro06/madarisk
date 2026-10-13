@@ -45,12 +45,15 @@ export const VIGILANCE_LEVELS: RiskLevel[] = ['FAIBLE', 'MODERE', 'ELEVE', 'EXTR
 export const CYCLONE_VIOLET = '#7c3aed';
 export const CYCLONE_VIOLET_DEEP = '#5b21b6';
 
+/** Vitesses de lecture d'une trajectoire (1× = temps d'animation nominal). */
+export type PlaybackSpeed = '1x' | '2x' | '4x';
+
 /**
  * Lecture visuelle provisoire : chaque segment de la trajectoire est parcouru
  * en 3 s, indépendamment de l'écart d'horodatage réel entre les deux points (le
  * temps réel n'est pas encore pris en compte). Les vitesses multiplient ce pas.
  */
-export const PLAYBACK_SEGMENT_MS: Record<'1x' | '2x' | '4x', number> = {
+export const PLAYBACK_SEGMENT_MS: Record<PlaybackSpeed, number> = {
   '1x': 3_000,
   '2x': 1_500,
   '4x': 750,

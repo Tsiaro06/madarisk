@@ -7,19 +7,15 @@ import { MapPin } from 'lucide-react';
 import { eventsApi, territoriesApi } from '@/api';
 import {
   availableWindRadiusKm,
-  clockBounds,
   CYCLONE_VIOLET,
   CYCLONE_VIOLET_DEEP,
-  frameAt,
-  framePosition,
   formatAntananarivo,
   IMPACT_STATE_LABELS,
   OBSERVED_RISK_COLORS,
   OBSERVED_RISK_LABELS,
-  PLAYBACK_SEGMENT_MS,
-  segmentMinutesAt,
   VIGILANCE_LEVELS,
 } from '@/lib/historical';
+import { useTrackPlayback } from '@/lib/useTrackPlayback';
 import type {
   EventCommuneImpactRow,
   ObservedRiskLevel,
@@ -137,7 +133,6 @@ export function EventHistoricalMapTab({
   sourceName,
   sourceUrl,
 }: EventHistoricalMapTabProps) {
-  const [minute, setMinute] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState<TimelineSpeed>('1x');
   const [selected, setSelected] = useState<{ id: string; name: string } | null>(null);
@@ -164,18 +159,22 @@ export function EventHistoricalMapTab({
   const tracks = useMemo(() => tracksQ.data ?? [], [tracksQ.data]);
   const steps = useMemo(() => observedOnly(tracks), [tracks]);
   const forecast = useMemo(() => forecastOnly(tracks), [tracks]);
-  const bounds = useMemo(() => clockBounds(steps), [steps]);
-  const spanMinutes = bounds?.spanMinutes ?? 0;
-  const startMs = bounds?.startMs ?? 0;
 
-  const frame = useMemo(
-    () => frameAt(steps, startMs + minute * 60_000),
-    [steps, startMs, minute],
-  );
-  const currentPosition = frame ? framePosition(frame) : null;
-  const activePoint = frame?.from ?? null;
-  const nextPoint = frame?.to ?? null;
-  const interpolated = frame != null && !frame.exact;
+  // Lecture visuelle : un segment (point observé → point observé) parcouru en
+  // 3 s puis reprise au premier point — voir useTrackPlayback.
+  const {
+    minute,
+    setMinute,
+    spanMinutes,
+    frame,
+    position,
+    point,
+    nextPoint,
+    interpolated,
+  } = useTrackPlayback(steps, playing, speed);
+
+  const currentPosition = position;
+  const activePoint = point;
   const at = activePoint?.observedAt ?? null;
 
   // Requêtes cadencées sur le point observé courant : la clé ne change qu'au
@@ -232,29 +231,6 @@ export function EventHistoricalMapTab({
 
   const radiusKm = availableWindRadiusKm(activePoint);
   const eventTitle = eventName?.trim() || 'Événement historique';
-
-  // Lecture visuelle provisoire : chaque segment de la trajectoire est parcouru
-  // en 3 s (voir PLAYBACK_SEGMENT_MS), sans tenir compte des horodatages réels,
-  // puis la boucle reprend au premier point — « ainsi de suite ». L'animation est
-  // annulée à la pause comme au démontage ; aucune écriture en base.
-  useEffect(() => {
-    if (!playing || spanMinutes <= 0) return;
-    let raf = 0;
-    let last = performance.now();
-    const segmentMs = PLAYBACK_SEGMENT_MS[speed];
-    const tick = (now: number) => {
-      const elapsed = Math.max(0, now - last);
-      last = now;
-      setMinute((prev) => {
-        const segment = segmentMinutesAt(steps, startMs + prev * 60_000);
-        if (segment <= 0) return 0; // fin de trajectoire → recommence
-        return Math.min(spanMinutes, prev + (elapsed / segmentMs) * segment);
-      });
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [playing, speed, spanMinutes, steps, startMs]);
 
   if (tracksQ.isLoading || communesQ.isLoading) return <Spinner />;
 

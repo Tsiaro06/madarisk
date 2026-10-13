@@ -1,10 +1,15 @@
 import { useMemo } from 'react';
 import { Clock, Pause, Play, SkipBack, SkipForward } from 'lucide-react';
-import { formatAntananarivo, formatAntananarivoShort, pointTimeMs } from '@/lib/historical';
+import {
+  formatAntananarivo,
+  formatAntananarivoShort,
+  pointTimeMs,
+  type PlaybackSpeed,
+} from '@/lib/historical';
 import { cn } from '@/lib/utils';
 import type { TrackStatePoint } from '@/types';
 
-export type TimelineSpeed = '1x' | '2x' | '4x';
+export type TimelineSpeed = PlaybackSpeed;
 
 const SPEEDS: Array<{ key: TimelineSpeed; label: string }> = [
   { key: '1x', label: '1×' },

@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   CircleMarker,
   GeoJSON,
@@ -13,9 +13,11 @@ import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { Layer } from 'leaflet';
 import L from 'leaflet';
 import { BookOpen, ChevronDown, ChevronUp, Layers, LocateFixed, RefreshCw, Snowflake } from 'lucide-react';
-import type { EventListItem, EventTrack } from '@/types';
+import type { EventListItem, TrackStatePoint } from '@/types';
 import { RISK_COLORS, RISK_LABELS } from '@/types';
 import { RISK_LEVELS } from '@/lib/eventMeta';
+import { observedSteps } from '@/lib/historical';
+import { useTrackPlayback } from '@/lib/useTrackPlayback';
 import {
   communeStyle,
   districtStyle,
@@ -28,6 +30,7 @@ import {
 } from '@/lib/crisisStyles';
 import { cn } from '@/lib/utils';
 import { CommuneMapSearch } from '@/components/crisis/CommuneMapSearch';
+import { CycloneMarker } from '@/components/events/CycloneMarker';
 
 type CommuneClickHandler = (communeId: string, name: string) => void;
 
@@ -37,7 +40,7 @@ interface CrisisMapProps {
   districtLayer: FeatureCollection | null;
   weatherLayer: FeatureCollection | null;
   trackLayer: FeatureCollection | null;
-  trackPoints: EventTrack[];
+  trackPoints: TrackStatePoint[];
   areasLayer: FeatureCollection | null;
   exposedCommuneIds: Set<string>;
   activeEvent: EventListItem | null;
@@ -159,6 +162,10 @@ function Legend() {
               <li className="flex items-center gap-2">
                 <span className="inline-block h-0.5 w-4 rounded bg-[#5a7d90]" />
                 Trajectoire observée
+              </li>
+              <li className="flex items-center gap-2">
+                <span className="inline-block size-3 rounded-full border-2 border-[#5b21b6] bg-[#7c3aed]" />
+                Centre cyclonique (lecture animée)
               </li>
               <li className="flex items-center gap-2">
                 <span className="inline-block h-0.5 w-4 rounded border-t-2 border-dashed border-[#c47d4a]" />
@@ -323,6 +330,37 @@ function LayerControls({
   );
 }
 
+/**
+ * Marqueur violet animé du centre cyclonique (salle de crise) : lecture de la
+ * trajectoire OBSERVÉE, un segment parcouru toutes les 3 s puis reprise au
+ * premier point. Seule la position est interpolée entre deux points vérifiés ;
+ * les valeurs affichées restent celles du point observé de référence.
+ */
+function AnimatedCycloneMarker({
+  points,
+  eventName,
+  sourceName,
+  sourceUrl,
+}: {
+  points: TrackStatePoint[];
+  eventName: string;
+  sourceName?: string | null;
+  sourceUrl?: string | null;
+}) {
+  const { position, point, interpolated } = useTrackPlayback(points, true);
+  if (!position || !point) return null;
+  return (
+    <CycloneMarker
+      position={position}
+      point={point}
+      interpolated={interpolated}
+      eventName={eventName}
+      sourceName={sourceName}
+      sourceUrl={sourceUrl}
+    />
+  );
+}
+
 export function CrisisMap({
   riskLayer,
   communeLayer,
@@ -348,6 +386,10 @@ export function CrisisMap({
   const [showDistricts, setShowDistricts] = useState(false);
   const [showWeather, setShowWeather] = useState(false);
   const [showEvent, setShowEvent] = useState(true);
+
+  // Points observés (jamais les points prévus) : base de la lecture animée.
+  const observedTrack = useMemo(() => observedSteps(trackPoints), [trackPoints]);
+
 
   useEffect(() => {
     setShowCommunes(Boolean(activeEvent));
@@ -542,6 +584,14 @@ export function CrisisMap({
                 </Tooltip>
               </CircleMarker>
             ))
+          ) : null}
+          {observedTrack.length > 0 ? (
+            <AnimatedCycloneMarker
+              points={observedTrack}
+              eventName={activeEvent.name}
+              sourceName={activeEvent.sourceName}
+              sourceUrl={activeEvent.sourceUrl}
+            />
           ) : null}
         </>
       ) : null}
