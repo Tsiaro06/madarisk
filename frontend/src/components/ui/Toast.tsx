@@ -2,7 +2,9 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -26,13 +28,27 @@ let toastSeq = 0;
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<ToastItem[]>([]);
+  const timers = useRef(new Set<number>());
 
   const toast = useCallback((message: string, tone: ToastTone = 'info') => {
     const id = ++toastSeq;
     setItems((prev) => [...prev, { id, message, tone }]);
-    window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
+      timers.current.delete(timer);
       setItems((prev) => prev.filter((t) => t.id !== id));
     }, 4200);
+    timers.current.add(timer);
+  }, []);
+
+  // Les minuteurs d'auto-fermeture sont purgés au démontage : sinon le rappel
+  // peut s'exécuter après la disparition du provider (mise à jour d'un composant
+  // démonté, et `window` déjà détruit en fin d'environnement de test).
+  useEffect(() => {
+    const pending = timers.current;
+    return () => {
+      for (const timer of pending) window.clearTimeout(timer);
+      pending.clear();
+    };
   }, []);
 
   const value = useMemo(() => ({ toast }), [toast]);
