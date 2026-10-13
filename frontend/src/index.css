@@ -250,6 +250,59 @@ h3 {
   will-change: transform;
 }
 
+/* Conteneur du `divIcon` de l'étiquette : taille nulle, seul le texte compte. */
+.madarisk-cyclone-radius-icon {
+  width: 0;
+  height: 0;
+  background: transparent;
+  border: 0;
+  pointer-events: none;
+}
+
+/*
+  Étiquette du rayon de vent documenté. Elle est solidaire de l'œil (même
+  position Leaflet) : quand l'anneau change de taille, l'étiquette nomme et date
+  la mesure publiée qui vient d'être atteinte. Décorative au clavier et au
+  survol : les mêmes informations restent dans le popup du marqueur.
+*/
+.madarisk-cyclone-radius-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate(30px, -50%);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px 8px;
+  border: 1px solid rgba(91, 33, 182, 0.35);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1px 6px rgba(15, 23, 42, 0.16);
+  color: #3f3f46;
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.madarisk-cyclone-radius-label__value {
+  font-weight: 600;
+  color: #5b21b6;
+}
+
+.madarisk-cyclone-radius-label__meta,
+.madarisk-cyclone-radius-label__source {
+  font-size: 10px;
+  color: #52525b;
+}
+
+/* Écrans étroits : on garde la valeur et la date, on masque la source abrégée. */
+@media (max-width: 640px) {
+  .madarisk-cyclone-radius-label__source {
+    display: none;
+  }
+}
+
 /* ------------------------------------------------------------------
    Chrome « soft UI » — sidebar et navbar partagent les mêmes variables.
    Le thème est piloté par l'attribut `data-theme` posé sur le conteneur,

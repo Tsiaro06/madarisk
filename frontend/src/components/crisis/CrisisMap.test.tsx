@@ -28,12 +28,25 @@ vi.mock('react-leaflet', async () => {
       children,
       position,
       title,
+      icon,
+      interactive,
     }: {
       children?: React.ReactNode;
       position?: [number, number];
       title?: string;
-    }) =>
-      React.createElement(
+      icon?: { options?: { html?: string } };
+      interactive?: boolean;
+    }) => {
+      const html = typeof icon?.options?.html === 'string' ? icon.options.html : '';
+      // L'étiquette du rayon est le second marqueur (non interactif) du cyclone :
+      // elle est rendue à part pour que les deux marqueurs restent distincts.
+      if (interactive === false) {
+        return React.createElement('div', {
+          'data-testid': 'cyclone-radius-label',
+          dangerouslySetInnerHTML: { __html: html },
+        });
+      }
+      return React.createElement(
         'div',
         {
           'data-testid': 'cyclone-marker',
@@ -42,7 +55,8 @@ vi.mock('react-leaflet', async () => {
           'data-title': title ?? '',
         },
         children,
-      ),
+      );
+    },
     Circle: ({
       pathOptions,
     }: {

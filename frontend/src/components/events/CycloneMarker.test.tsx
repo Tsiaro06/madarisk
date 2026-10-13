@@ -16,11 +16,26 @@ vi.mock('react-leaflet', async () => {
     Marker: ({
       position,
       children,
+      icon,
+      interactive,
     }: {
       position?: [number, number];
       children?: React.ReactNode;
-    }) =>
-      React.createElement(
+      icon?: { options?: { html?: string } };
+      interactive?: boolean;
+    }) => {
+      const html = typeof icon?.options?.html === 'string' ? icon.options.html : '';
+      // L'étiquette du rayon est un second marqueur, non interactif : elle est
+      // rendue à part pour que les tests distinguent les deux marqueurs.
+      if (interactive === false) {
+        return React.createElement('div', {
+          'data-testid': 'cyclone-radius-label',
+          'data-lat': position ? String(position[0]) : '',
+          'data-lng': position ? String(position[1]) : '',
+          dangerouslySetInnerHTML: { __html: html },
+        });
+      }
+      return React.createElement(
         'div',
         {
           'data-testid': 'cyclone-marker',
@@ -28,7 +43,8 @@ vi.mock('react-leaflet', async () => {
           'data-lng': position ? String(position[1]) : '',
         },
         children,
-      ),
+      );
+    },
     Tooltip: ({ children }: { children?: React.ReactNode }) =>
       React.createElement('span', null, children),
     Popup: ({ children }: { children?: React.ReactNode }) =>
@@ -127,5 +143,75 @@ describe('CycloneMarker — zone d\u2019influence', () => {
 
     expect(screen.queryByTestId('cyclone-radius')).toBeNull();
     expect(screen.getByTestId('cyclone-marker')).toBeInTheDocument();
+  });
+});
+
+describe('CycloneMarker — étiquette du rayon documenté', () => {
+  it('nomme, date et source la mesure affichée (aucune valeur inventée)', () => {
+    render(
+      <CycloneMarker
+        position={[-20.5, 49.2]}
+        point={makeTrackPoint()}
+        interpolated
+        eventName="Batsirai — février 2022"
+      />,
+    );
+
+    const label = screen.getByTestId('cyclone-radius-label');
+    expect(label).toHaveTextContent('R34 · 368,5 km');
+    // 5 févr. 12:00 UTC = 15:00 à Madagascar (UTC+3).
+    expect(label).toHaveTextContent('05 févr. 2022, 15:00 (Madagascar)');
+    // Source abrégée : l'autorité, la référence complète restant dans le popup.
+    expect(label).toHaveTextContent('RSMC La Réunion (Météo-France)');
+    expect(label).not.toHaveTextContent('IBTrACS');
+  });
+
+  it("accompagne l'œil : l\u2019étiquette est à la position affichée", () => {
+    render(
+      <CycloneMarker
+        position={[-20.5, 49.2]}
+        point={makeTrackPoint({ latitude: -21.0, longitude: 48.0 })}
+        interpolated
+        eventName="Batsirai — février 2022"
+      />,
+    );
+
+    const label = screen.getByTestId('cyclone-radius-label');
+    const marker = screen.getByTestId('cyclone-marker');
+    expect(label).toHaveAttribute('data-lat', marker.getAttribute('data-lat'));
+    expect(label).toHaveAttribute('data-lng', marker.getAttribute('data-lng'));
+  });
+
+  it('annonce le seuil réellement publié (R50 quand le R34 est absent)', () => {
+    render(
+      <CycloneMarker
+        position={[-20.5, 49.2]}
+        point={makeTrackPoint({ radius34ktKm: null, radius50ktKm: 164.8 })}
+        interpolated={false}
+        eventName="Batsirai — février 2022"
+      />,
+    );
+
+    // Le seuil n'est pas deviné : c'est bien le R50 publié qui est dessiné et nommé.
+    expect(screen.getByTestId('cyclone-radius-label')).toHaveTextContent('R50 · 164,8 km');
+  });
+
+  it("n'affiche aucune étiquette quand aucun rayon n'est publié", () => {
+    render(
+      <CycloneMarker
+        position={[-20.5, 49.2]}
+        point={makeTrackPoint({
+          radius34ktKm: null,
+          radius50ktKm: null,
+          radius64ktKm: null,
+          radiusMaxKm: null,
+          radiusSource: null,
+        })}
+        interpolated={false}
+        eventName="Batsirai — février 2022"
+      />,
+    );
+
+    expect(screen.queryByTestId('cyclone-radius-label')).toBeNull();
   });
 });

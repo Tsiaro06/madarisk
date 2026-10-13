@@ -4,6 +4,7 @@ import {
   clockBounds,
   deriveRiskFromWind,
   describeMovementDirection,
+  documentedWindRadius,
   filterImpactsAt,
   formatAntananarivo,
   formatAntananarivoShort,
@@ -15,6 +16,8 @@ import {
   segmentMinutesAt,
   toAntananarivoTime,
   vigilanceLabel,
+  windRadiusLongLabel,
+  windRadiusShortLabel,
 } from './historical';
 import type { TrackStatePoint } from '@/types';
 
@@ -262,6 +265,28 @@ describe('rayon de vent et mesures manquantes', () => {
   it('privilégie le rayon documenté', () => {
     expect(availableWindRadiusKm({ ...base, radiusMaxKm: 250, radius34ktKm: 400 })).toBe(250);
     expect(availableWindRadiusKm({ ...base, radius34ktKm: 400 })).toBe(400);
+  });
+
+  it('retourne le seuil publié avec la valeur (pour pouvoir le nommer)', () => {
+    expect(documentedWindRadius(base)).toBeNull();
+    expect(documentedWindRadius(null)).toBeNull();
+    expect(documentedWindRadius({ ...base, radiusMaxKm: 250, radius34ktKm: 400 })).toEqual({
+      km: 250,
+      kind: 'max',
+    });
+    expect(documentedWindRadius({ ...base, radius34ktKm: 368.5, radius50ktKm: 164.8 })).toEqual({
+      km: 368.5,
+      kind: 34,
+    });
+    expect(documentedWindRadius({ ...base, radius50ktKm: 164.8 })).toEqual({ km: 164.8, kind: 50 });
+    expect(documentedWindRadius({ ...base, radius64ktKm: 90 })).toEqual({ km: 90, kind: 64 });
+  });
+
+  it('nomme les seuils tels qu’ils figurent dans les bulletins', () => {
+    expect(windRadiusShortLabel('max')).toBe('RMW');
+    expect(windRadiusShortLabel(34)).toBe('R34');
+    expect(windRadiusLongLabel(34)).toBe('Rayon du vent ≥ 34 nœuds (R34)');
+    expect(windRadiusLongLabel('max')).toBe('Rayon des vents maximaux (RMW)');
   });
 
   it('affiche « non disponible » plutôt que zéro', () => {

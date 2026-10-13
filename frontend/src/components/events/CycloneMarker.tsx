@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from 'react';
 import { Circle, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import {
-  availableWindRadiusKm,
   CYCLONE_VIOLET,
   CYCLONE_VIOLET_DEEP,
   deriveRiskFromWind,
   describeMovementDirection,
+  documentedWindRadius,
   formatAntananarivo,
   formatMeasure,
   OBSERVED_RISK_LABELS,
+  windRadiusLongLabel,
+  windRadiusShortLabel,
 } from '@/lib/historical';
 import type { TrackStatePoint } from '@/types';
 
@@ -28,6 +30,28 @@ const SPIRAL_SVG = `
 
 function sizeForZoom(zoom: number): number {
   return Math.round(Math.min(MAX_SIZE_PX, Math.max(MIN_SIZE_PX, 34 + (zoom - 4) * 3)));
+}
+
+/** Échappe un texte injecté dans le HTML d'un `divIcon` (aucune balise autorisée). */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * Source abrégée pour l'étiquette de l'anneau : seule l'autorité est reprise
+ * (« RSMC La Réunion (Météo-France) »). La référence complète — archive, version
+ * et identifiant de la tempête — reste dans le popup du marqueur et dans
+ * l'infobulle de l'anneau.
+ */
+function shortRadiusSource(source: string | null | undefined): string | null {
+  if (!source) return null;
+  const [authority] = source.split(' — ');
+  return authority.trim() || null;
 }
 
 /** Taille du marqueur (34–48 px) suivant le zoom, sans recréer la carte. */
@@ -81,7 +105,7 @@ function TooltipContent({
   eventName: string;
   sourceName?: string | null;
 }) {
-  const radiusKm = availableWindRadiusKm(point);
+  const radius = documentedWindRadius(point);
   const risk = OBSERVED_RISK_LABELS[deriveRiskFromWind(point.windSpeedKmh)];
   return (
     <div className="min-w-[13rem] space-y-0.5">
@@ -107,7 +131,11 @@ function TooltipContent({
         <Detail label="Pression" value={formatMeasure(point.pressureHpa, 'hPa')} />
         <Detail
           label="Rayon de vent"
-          value={radiusKm != null ? formatMeasure(radiusKm, 'km') : 'non disponible'}
+          value={
+            radius
+              ? `${formatMeasure(radius.km, 'km')} (${windRadiusShortLabel(radius.kind)})`
+              : 'non disponible'
+          }
         />
         <Detail label="Source" value={sourceName ?? 'non disponible'} />
       </dl>
@@ -142,7 +170,7 @@ export function CycloneMarker({
   sourceUrl,
 }: CycloneMarkerProps) {
   const size = useZoomBasedSize();
-  const radiusKm = availableWindRadiusKm(point);
+  const radius = documentedWindRadius(point);
 
   const icon = useMemo(
     () =>
@@ -155,6 +183,36 @@ export function CycloneMarker({
     [size],
   );
 
+  /**
+   * Étiquette du rayon documenté, solidaire du centre affiché : elle voyage donc
+   * avec l'œil pendant la lecture animée. Son rôle est de rendre lisible le
+   * changement de taille de l'anneau — quand il grossit ou se contracte, c'est
+   * qu'une nouvelle mesure publiée vient d'être atteinte, et la date affichée le
+   * dit. Valeur, source et horodatage sont repris tels quels : aucune valeur
+   * n'est interpolée, l'étiquette n'existe que si un rayon est publié.
+   */
+  const radiusLabelIcon = useMemo(() => {
+    if (!radius) return null;
+    const source = shortRadiusSource(point.radiusSource);
+    const html = [
+      `<b class="madarisk-cyclone-radius-label__value">${escapeHtml(
+        `${windRadiusShortLabel(radius.kind)} · ${formatMeasure(radius.km, 'km')}`,
+      )}</b>`,
+      `<span class="madarisk-cyclone-radius-label__meta">${escapeHtml(
+        `${formatAntananarivo(point.observedAt)} (Madagascar)`,
+      )}</span>`,
+      source
+        ? `<span class="madarisk-cyclone-radius-label__source">${escapeHtml(source)}</span>`
+        : '',
+    ].join('');
+    return L.divIcon({
+      className: 'madarisk-cyclone-radius-icon',
+      html: `<span class="madarisk-cyclone-radius-label">${html}</span>`,
+      iconSize: [0, 0],
+      iconAnchor: [0, 0],
+    });
+  }, [radius, point.observedAt, point.radiusSource]);
+
   const accessibleName = [
     `${eventName} — position observée du centre`,
     `le ${formatAntananarivo(point.observedAt)} (heure de Madagascar)`,
@@ -163,6 +221,21 @@ export function CycloneMarker({
 
   return (
     <>
+      {/*
+        Étiquette du rayon : non interactive (elle ne capte ni clic ni survol) et
+        solidaire du centre affiché, pour expliquer à l'écran le changement de
+        taille de l'anneau sans qu'il faille survoler quoi que ce soit.
+      */}
+      {radiusLabelIcon ? (
+        <Marker
+          position={position}
+          icon={radiusLabelIcon}
+          interactive={false}
+          keyboard={false}
+          zIndexOffset={790}
+        />
+      ) : null}
+
       {/*
         Zone d'influence du cyclone : le rayon de vent documenté (RSMC) est
         dessiné en anneau rempli pour rester lisible comme sur les cartes de
@@ -174,12 +247,13 @@ export function CycloneMarker({
         interpolée entre deux points vérifiés) et suit donc le déplacement de
         l'œil au lieu de sauter d'un point observé au suivant. Son RAYON, lui,
         reste celui publié pour le point observé de référence : il n'est jamais
-        interpolé, la taille ne change donc qu'à l'arrivée sur un point daté.
+        interpolé, la taille ne change donc qu'à l'arrivée sur un point daté —
+        changement que l'étiquette ci-dessus nomme et date.
       */}
-      {radiusKm != null ? (
+      {radius ? (
         <Circle
           center={position}
-          radius={radiusKm * 1000}
+          radius={radius.km * 1000}
           pathOptions={{
             color: CYCLONE_VIOLET_DEEP,
             weight: 2,
@@ -189,7 +263,8 @@ export function CycloneMarker({
           }}
         >
           <Tooltip>
-            {point.radiusMeasureType ?? 'Rayon de vent documenté'} — {radiusKm} km
+            {windRadiusLongLabel(radius.kind)} — {formatMeasure(radius.km, 'km')}
+            {point.radiusMeasureType ? ` — ${point.radiusMeasureType}` : ''}
             {point.radiusSource ? ` (source : ${point.radiusSource})` : ''}
           </Tooltip>
         </Circle>
@@ -233,8 +308,10 @@ export function CycloneMarker({
               <Detail
                 label="Rayon de vent"
                 value={
-                  radiusKm != null
-                    ? `${formatMeasure(radiusKm, 'km')}${point.radiusMeasureType ? ` — ${point.radiusMeasureType}` : ''}`
+                  radius
+                    ? `${formatMeasure(radius.km, 'km')} (${windRadiusShortLabel(radius.kind)})${
+                        point.radiusMeasureType ? ` — ${point.radiusMeasureType}` : ''
+                      }`
                     : 'non disponible'
                 }
               />

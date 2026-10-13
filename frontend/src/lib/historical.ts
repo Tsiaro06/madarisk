@@ -282,16 +282,59 @@ export function describeMovementDirection(raw: string | null | undefined): strin
 }
 
 /**
- * Rayon de vent (km) réellement documenté, sinon `null`. On n'assimile jamais
- * une absence à zéro et on ne parle pas de « diamètre » sans définition.
+ * Seuil du rayon de vent publié par la source : RMW (vent maximal), R34, R50
+ * ou R64 (nœuds d'après l'échelle de Beaufort utilisée par les RSMC).
  */
-export function availableWindRadiusKm(point: TrackStatePoint | null | undefined): number | null {
+export type WindRadiusKind = 'max' | 34 | 50 | 64;
+
+export interface DocumentedWindRadius {
+  /** Rayon en km, tel que publié par la source (jamais recalculé, jamais interpolé). */
+  km: number;
+  /** Seuil correspondant : un seul cercle est dessiné, le plus large gagne. */
+  kind: WindRadiusKind;
+}
+
+/**
+ * Rayon de vent réellement documenté, sinon `null`. On n'assimile jamais une
+ * absence à zéro et on ne parle pas de « diamètre » sans définition.
+ *
+ * Les seuils sont examinés du plus large au plus étroit (RMW → R34 → R50 → R64)
+ * car la carte n'affiche qu'un cercle : il représente donc l'enveloppe
+ * documentée la plus large de ce point. Le seuil retenu est retourné avec la
+ * valeur, pour pouvoir l'annoncer à l'écran (ex. « R34 · 368,5 km »).
+ */
+export function documentedWindRadius(
+  point: TrackStatePoint | null | undefined,
+): DocumentedWindRadius | null {
   if (!point) return null;
-  const values = [point.radiusMaxKm, point.radius34ktKm, point.radius50ktKm, point.radius64ktKm];
-  for (const value of values) {
-    if (value != null && Number.isFinite(value)) return value;
+  const candidates: Array<{ kind: WindRadiusKind; value: number | null | undefined }> = [
+    { kind: 'max', value: point.radiusMaxKm },
+    { kind: 34, value: point.radius34ktKm },
+    { kind: 50, value: point.radius50ktKm },
+    { kind: 64, value: point.radius64ktKm },
+  ];
+  for (const candidate of candidates) {
+    if (candidate.value != null && Number.isFinite(candidate.value)) {
+      return { km: candidate.value, kind: candidate.kind };
+    }
   }
   return null;
+}
+
+/** Rayon de vent (km) réellement documenté, sinon `null`. */
+export function availableWindRadiusKm(point: TrackStatePoint | null | undefined): number | null {
+  return documentedWindRadius(point)?.km ?? null;
+}
+
+/** Libellé court du seuil, tel qu'il figure dans les bulletins cycloniques. */
+export function windRadiusShortLabel(kind: WindRadiusKind): string {
+  return kind === 'max' ? 'RMW' : `R${kind}`;
+}
+
+/** Libellé explicite du seuil, pour les infobulles et le panneau de détail. */
+export function windRadiusLongLabel(kind: WindRadiusKind): string {
+  if (kind === 'max') return 'Rayon des vents maximaux (RMW)';
+  return `Rayon du vent ≥ ${kind} nœuds (R${kind})`;
 }
 
 /** Mesure avec unité, ou « non disponible » quand la source ne la fournit pas. */
