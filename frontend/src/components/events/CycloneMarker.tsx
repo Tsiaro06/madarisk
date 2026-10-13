@@ -163,16 +163,23 @@ export function CycloneMarker({
 
   return (
     <>
+      {/*
+        Zone d'influence du cyclone : le rayon de vent documenté (RSMC) est
+        dessiné en anneau rempli pour rester lisible comme sur les cartes de
+        vigilance, tout en gardant un contour pointillé qui la distingue des
+        zones administratives pleines. Aucune donnée inventée : le cercle
+        n'existe que lorsqu'une source publie le rayon.
+      */}
       {radiusKm != null ? (
         <Circle
           center={[point.latitude, point.longitude]}
           radius={radiusKm * 1000}
           pathOptions={{
             color: CYCLONE_VIOLET_DEEP,
-            weight: 1.5,
-            dashArray: '6 6',
+            weight: 2,
+            dashArray: '8 6',
             fillColor: CYCLONE_VIOLET,
-            fillOpacity: 0.08,
+            fillOpacity: 0.16,
           }}
         >
           <Tooltip>

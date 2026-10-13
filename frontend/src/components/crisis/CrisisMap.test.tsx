@@ -43,7 +43,16 @@ vi.mock('react-leaflet', async () => {
         },
         children,
       ),
-    Circle: () => React.createElement('div', { 'data-testid': 'cyclone-radius' }),
+    Circle: ({
+      pathOptions,
+    }: {
+      pathOptions?: { fillOpacity?: number; dashArray?: string };
+    }) =>
+      React.createElement('div', {
+        'data-testid': 'cyclone-radius',
+        'data-fill-opacity': String(pathOptions?.fillOpacity ?? ''),
+        'data-dash-array': pathOptions?.dashArray ?? '',
+      }),
     Popup: ({ children }: { children: React.ReactNode }) =>
       React.createElement('div', { 'data-testid': 'popup' }, children),
     Tooltip: ({ children }: { children: React.ReactNode }) =>
@@ -279,7 +288,10 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
       ],
     });
 
-    expect(screen.getByTestId('cyclone-radius')).toBeInTheDocument();
+    const circle = screen.getByTestId('cyclone-radius');
+    // La zone d'influence doit rester lisible : anneau rempli + contour pointillé.
+    expect(Number(circle.getAttribute('data-fill-opacity'))).toBeGreaterThanOrEqual(0.1);
+    expect(circle.getAttribute('data-dash-array')).not.toBe('');
   });
 
   it('ne dessine aucune zone d\'influence sans rayon documenté', () => {
@@ -301,7 +313,7 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
         }),
       ],
     });
-    expect(screen.getByText(/Rayon de vent documenté/)).toBeInTheDocument();
+    expect(screen.getByText(/rayon de vent documenté/i)).toBeInTheDocument();
     unmount();
 
     renderMap({
@@ -309,7 +321,7 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
         makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2),
       ],
     });
-    expect(screen.queryByText(/Rayon de vent documenté/)).toBeNull();
+    expect(screen.queryByText(/rayon de vent documenté/i)).toBeNull();
   });
 });
 

@@ -16,7 +16,7 @@ import { BookOpen, ChevronDown, ChevronUp, Layers, LocateFixed, RefreshCw, Snowf
 import type { EventListItem, TrackStatePoint } from '@/types';
 import { RISK_COLORS, RISK_LABELS } from '@/types';
 import { RISK_LEVELS } from '@/lib/eventMeta';
-import { availableWindRadiusKm, CYCLONE_VIOLET_DEEP, observedSteps } from '@/lib/historical';
+import { availableWindRadiusKm, CYCLONE_VIOLET, CYCLONE_VIOLET_DEEP, observedSteps } from '@/lib/historical';
 import { useTrackPlayback } from '@/lib/useTrackPlayback';
 import {
   communeStyle,
@@ -179,9 +179,12 @@ function Legend({ hasDocumentedRadius }: { hasDocumentedRadius: boolean }) {
                 <li className="flex items-center gap-2">
                   <span
                     className="inline-block size-3 rounded-full border border-dashed"
-                    style={{ borderColor: CYCLONE_VIOLET_DEEP }}
+                    style={{
+                      borderColor: CYCLONE_VIOLET_DEEP,
+                      backgroundColor: `${CYCLONE_VIOLET}29`,
+                    }}
                   />
-                  Rayon de vent documenté (zone d&apos;influence du cyclone)
+                  Zone d&apos;influence : rayon de vent documenté (RSMC)
                 </li>
               ) : null}
               <li className="flex items-center gap-2">

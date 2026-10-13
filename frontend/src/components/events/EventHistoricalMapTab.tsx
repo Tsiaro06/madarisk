@@ -360,7 +360,10 @@ export function EventHistoricalMapTab({
                 <li className="flex items-center gap-2 text-muted">
                   <span
                     className="inline-block size-3 rounded-full border border-dashed"
-                    style={{ borderColor: CYCLONE_VIOLET_DEEP }}
+                    style={{
+                      borderColor: CYCLONE_VIOLET_DEEP,
+                      backgroundColor: `${CYCLONE_VIOLET}29`,
+                    }}
                   />
                   {radiusKm != null
                     ? `${activePoint?.radiusMeasureType ?? 'Rayon de vent'} — ${radiusKm} km`
