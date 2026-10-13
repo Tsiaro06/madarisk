@@ -13,6 +13,7 @@ import {
   isAffectedAt,
   observedSteps,
   toAntananarivoTime,
+  vigilanceLabel,
 } from './historical';
 
 describe('deriveRiskFromWind', () => {
@@ -265,5 +266,20 @@ describe('rayon de vent et mesures manquantes', () => {
     expect(formatMeasure(null, 'km/h')).toBe('non disponible');
     expect(formatMeasure(undefined, 'km/h')).toBe('non disponible');
     expect(formatMeasure(185.4, 'km/h')).toBe('185,4 km/h');
+  });
+});
+
+describe('vigilanceLabel (zones de vigilance du bulletin)', () => {
+  it('reprend le libellé de la source jusqu’à « zone placée »', () => {
+    expect(
+      vigilanceLabel(
+        'Alerte rouge — région Analamanga — zone placée en vigilance selon le bulletin Météo Madagascar du 4 février 2022.',
+      ),
+    ).toBe('Alerte rouge — région Analamanga');
+  });
+
+  it('retourne null sans libellé exploitable', () => {
+    expect(vigilanceLabel(null)).toBeNull();
+    expect(vigilanceLabel('')).toBeNull();
   });
 });

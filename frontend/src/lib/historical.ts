@@ -1,4 +1,4 @@
-import type { ImpactState, ObservedRiskLevel, TrackStatePoint } from '@/types';
+import type { ImpactState, ObservedRiskLevel, RiskLevel, TrackStatePoint } from '@/types';
 
 /**
  * Palette des impacts OBSERVÉS d'un événement historique (Batsirai etc.) :
@@ -34,6 +34,12 @@ export const IMPACT_STATE_LABELS: Record<ImpactState, string> = {
 
 /** Commune jamais affectée au temps courant : gris neutre transparent. */
 export const NOT_AFFECTED_FILL = '#94a3b8';
+
+/**
+ * Niveaux d'une zone de vigilance du bulletin prévisionnel, du plus faible au
+ * plus intense. Sert à n'afficher que les niveaux réellement présents en base.
+ */
+export const VIGILANCE_LEVELS: RiskLevel[] = ['FAIBLE', 'MODERE', 'ELEVE', 'EXTREME'];
 
 /** Violet du marqueur cyclone (historique) — distinct du navy MadaRisk. */
 export const CYCLONE_VIOLET = '#7c3aed';
@@ -270,4 +276,15 @@ export function availableWindRadiusKm(point: TrackStatePoint | null | undefined)
 export function formatMeasure(value: number | null | undefined, unit: string): string {
   if (value == null || Number.isNaN(value)) return 'non disponible';
   return `${value.toLocaleString('fr-FR')} ${unit}`;
+}
+
+/**
+ * Libellé court d'une zone de vigilance (bulletin prévisionnel) : on reprend
+ * les mots de la source jusqu'à la mention « zone placée… », sans reformuler.
+ * Retourne `null` si la description ne porte pas de libellé exploitable.
+ */
+export function vigilanceLabel(description: string | null | undefined): string | null {
+  if (!description) return null;
+  const head = description.split(/zone placée/i)[0].replace(/[—–-]\s*$/, '').trim();
+  return head || null;
 }

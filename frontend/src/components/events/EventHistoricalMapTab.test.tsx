@@ -58,6 +58,7 @@ const api = vi.hoisted(() => ({
   tracks: vi.fn(),
   trackState: vi.fn(),
   communeImpacts: vi.fn(),
+  areas: vi.fn(),
   mapCommunes: vi.fn(),
 }));
 
@@ -66,6 +67,7 @@ vi.mock('@/api', () => ({
     tracks: api.tracks,
     trackState: api.trackState,
     communeImpacts: api.communeImpacts,
+    areas: api.areas,
   },
   territoriesApi: { mapCommunes: api.mapCommunes },
 }));
@@ -131,6 +133,73 @@ const communeLayer: FeatureCollection = {
         ],
       },
       properties: { communeId: 'c2', commune: 'Ifanadiana', district: 'Ifanadiana' },
+    },
+  ],
+};
+
+const vigilanceLayer: FeatureCollection = {
+  type: 'FeatureCollection',
+  features: [
+    {
+      type: 'Feature',
+      id: 'z1',
+      geometry: {
+        type: 'MultiPolygon',
+        coordinates: [
+          [
+            [
+              [47, -19],
+              [48, -19],
+              [48, -20],
+              [47, -20],
+              [47, -19],
+            ],
+          ],
+        ],
+      },
+      properties: {
+        areaId: 'z1',
+        phase: 'AVANT',
+        riskLevel: 'EXTREME',
+        radiusKm: null,
+        validFrom: '2022-02-03T21:00:00.000Z',
+        validTo: '2022-02-06T21:00:00.000Z',
+        source: 'Bulletin Météo Madagascar du 4 février 2022',
+        sourceType: 'OFFICIEL',
+        isEstimate: false,
+        description:
+          'Alerte rouge — région Analamanga — zone placée en vigilance selon le bulletin Météo Madagascar du 4 février 2022.',
+      },
+    },
+    {
+      type: 'Feature',
+      id: 'z2',
+      geometry: {
+        type: 'MultiPolygon',
+        coordinates: [
+          [
+            [
+              [43, -21],
+              [44, -21],
+              [44, -22],
+              [43, -22],
+              [43, -21],
+            ],
+          ],
+        ],
+      },
+      properties: {
+        areaId: 'z2',
+        phase: 'AVANT',
+        riskLevel: 'ELEVE',
+        radiusKm: null,
+        validFrom: '2022-02-03T21:00:00.000Z',
+        validTo: '2022-02-06T21:00:00.000Z',
+        source: 'Bulletin Météo Madagascar du 4 février 2022',
+        sourceType: 'OFFICIEL',
+        isEstimate: false,
+        description: 'Alerte jaune — région Menabe — zone placée en vigilance.',
+      },
     },
   ],
 };
@@ -254,6 +323,7 @@ describe('EventHistoricalMapTab', () => {
       }
       return Promise.resolve(impactsAfter);
     });
+    api.areas.mockResolvedValue(vigilanceLayer);
     api.mapCommunes.mockResolvedValue(communeLayer);
   });
 
@@ -272,7 +342,10 @@ describe('EventHistoricalMapTab', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('track-point')).toHaveLength(2);
       expect(screen.getAllByTestId('polyline').length).toBeGreaterThan(0);
-      expect(screen.getByTestId('geojson').getAttribute('data-features')).toBe('2');
+      const layerSizes = screen
+        .getAllByTestId('geojson')
+        .map((el) => el.getAttribute('data-features'));
+      expect(layerSizes).toContain('2');
     });
   });
 
@@ -369,5 +442,33 @@ describe('EventHistoricalMapTab', () => {
       ).toBeTruthy();
     });
     expect(screen.queryByTestId('cyclone-marker')).toBeNull();
+  });
+
+  it('superpose les zones de vigilance du bulletin (couche documentaire)', async () => {
+    renderTab();
+    await waitFor(() => {
+      expect(api.areas).toHaveBeenCalledWith('evt-batsirai');
+    });
+    // Deux couches GeoJSON : zones de vigilance + communes.
+    await waitFor(() => {
+      expect(screen.getAllByTestId('geojson')).toHaveLength(2);
+    });
+    expect(
+      screen.getByText(/Zones de vigilance du bulletin prévisionnel \(2\)/),
+    ).toBeTruthy();
+    expect(screen.getByText('Zones de vigilance (prévision)')).toBeTruthy();
+  });
+
+  it('masque les zones de vigilance via la case à cocher', async () => {
+    const user = userEvent.setup();
+    renderTab();
+    await waitFor(() => {
+      expect(screen.getAllByTestId('geojson')).toHaveLength(2);
+    });
+    await user.click(screen.getByRole('checkbox'));
+    await waitFor(() => {
+      expect(screen.getAllByTestId('geojson')).toHaveLength(1);
+    });
+    expect(screen.queryByText('Zones de vigilance (prévision)')).toBeNull();
   });
 });

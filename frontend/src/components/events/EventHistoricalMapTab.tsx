@@ -17,12 +17,15 @@ import {
   OBSERVED_RISK_COLORS,
   OBSERVED_RISK_LABELS,
   PLAYBACK_TRAVERSAL_MS,
+  VIGILANCE_LEVELS,
 } from '@/lib/historical';
 import type {
   EventCommuneImpactRow,
   ObservedRiskLevel,
+  RiskLevel,
   TrackStatePoint,
 } from '@/types';
+import { RISK_COLORS, RISK_LABELS } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { AlertBanner } from '@/components/ui/AlertBanner';
@@ -34,6 +37,7 @@ import {
 } from '@/components/events/CycloneInformationPanel';
 import { CycloneMarker } from '@/components/events/CycloneMarker';
 import { EventTrackLayer } from '@/components/events/EventTrackLayer';
+import { VigilanceZoneLayer } from '@/components/events/VigilanceZoneLayer';
 import {
   HistoricalTimelineControl,
   type TimelineSpeed,
@@ -136,10 +140,17 @@ export function EventHistoricalMapTab({
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<TimelineSpeed>('1x');
   const [selected, setSelected] = useState<{ id: string; name: string } | null>(null);
+  const [showVigilance, setShowVigilance] = useState(true);
 
   const tracksQ = useQuery({
     queryKey: ['event', eventId, 'tracks'],
     queryFn: () => eventsApi.tracks(eventId),
+    enabled: Boolean(eventId),
+  });
+
+  const areasQ = useQuery({
+    queryKey: ['event', eventId, 'areas'],
+    queryFn: () => eventsApi.areas(eventId),
     enabled: Boolean(eventId),
   });
 
@@ -195,6 +206,19 @@ export function EventHistoricalMapTab({
     }
     return counts;
   }, [affected]);
+
+  // Zones de vigilance du bulletin prévisionnel (couche documentaire, jamais un
+  // impact observé) : on ne liste que les niveaux réellement présents en base.
+  const vigilanceZones = areasQ.data ?? null;
+  const vigilanceCount = vigilanceZones?.features?.length ?? 0;
+  const vigilanceLevels = useMemo(() => {
+    const present = new Set<RiskLevel>();
+    for (const feature of vigilanceZones?.features ?? []) {
+      const level = (feature.properties as Record<string, unknown> | null)?.riskLevel;
+      if (typeof level === 'string' && level in RISK_COLORS) present.add(level as RiskLevel);
+    }
+    return VIGILANCE_LEVELS.filter((level) => present.has(level));
+  }, [vigilanceZones]);
 
   const traveled = useMemo<Array<[number, number]>>(() => {
     if (!frame || !currentPosition) return [];
@@ -265,7 +289,7 @@ export function EventHistoricalMapTab({
   return (
     <Card
       title="Historique — carte temporelle"
-      description="Lecture de la trajectoire observée (best track IBTrACS) : les communes ne sont colorées qu'après leur premier impact documenté, jamais sur une alerte prévisionnelle."
+      description="Lecture de la trajectoire observée (best track IBTrACS) : les communes ne sont colorées qu'après leur premier impact documenté, jamais sur une alerte prévisionnelle. Les zones de vigilance du bulletin sont une couche documentaire distincte (contours tiretés)."
     >
       <HistoricalTimelineControl
         points={steps}
@@ -285,6 +309,23 @@ export function EventHistoricalMapTab({
         onSpeedChange={(value) => setSpeed(value)}
       />
 
+      {vigilanceCount > 0 ? (
+        <label className="mb-3 flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-line bg-canvas px-3 py-2 text-xs text-ink">
+          <input
+            type="checkbox"
+            className="size-3.5 accent-brand"
+            checked={showVigilance}
+            onChange={(event) => setShowVigilance(event.target.checked)}
+          />
+          <span className="font-medium">
+            Zones de vigilance du bulletin prévisionnel ({vigilanceCount})
+          </span>
+          <span className="text-muted">
+            — indépendantes du curseur temporel ; aucune commune n&apos;est colorée par cette couche.
+          </span>
+        </label>
+      ) : null}
+
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_19rem]">
         <div className="relative h-[26rem] overflow-hidden rounded-xl border border-line">
           <MapContainer
@@ -301,6 +342,10 @@ export function EventHistoricalMapTab({
             />
             <ZoomControl position="bottomright" />
             <FitBounds data={communesQ.data ?? null} />
+
+            {showVigilance && vigilanceCount > 0 ? (
+              <VigilanceZoneLayer data={vigilanceZones} />
+            ) : null}
 
             <CommuneImpactLayer
               data={communesQ.data ?? null}
@@ -355,9 +400,28 @@ export function EventHistoricalMapTab({
                   Non affectée au temps choisi
                 </li>
               </ul>
+              {showVigilance && vigilanceLevels.length > 0 ? (
+                <>
+                  <p className="mt-1.5 border-t border-line pt-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    Zones de vigilance (prévision)
+                  </p>
+                  <ul className="space-y-1 text-muted">
+                    {vigilanceLevels.map((level) => (
+                      <li key={level} className="flex items-center gap-2">
+                        <span
+                          className="inline-block size-3 rounded-sm border border-dashed"
+                          style={{ borderColor: RISK_COLORS[level] }}
+                        />
+                        {RISK_LABELS[level]}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
               <p className="mt-1.5 border-t border-line pt-1.5 text-[10px] leading-snug text-muted">
                 Le passage du marqueur est une lecture de la trajectoire importée ; la couleur des
-                communes vient uniquement d&apos;un impact daté.
+                communes vient uniquement d&apos;un impact daté. Les zones de vigilance reprennent le
+                bulletin prévisionnel, sans contaminer les impacts observés.
               </p>
             </div>
           </MapContainer>
