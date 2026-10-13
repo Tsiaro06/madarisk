@@ -262,6 +262,10 @@ function renderTab() {
 describe('EventHistoricalMapTab', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Lecture visuelle désactivée en test : pas de rAF, donc pas d'avancée
+    // dépendante du temps — les positions du curseur restent déterministes.
+    vi.spyOn(globalThis, 'requestAnimationFrame').mockReturnValue(0);
+    vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => undefined);
     api.tracks.mockResolvedValue([
       point({ id: 'p1', observedAt: '2022-02-05T12:00:00.000Z', latitude: -20.5, longitude: 49.2 }),
       point({ id: 'p2', observedAt: '2022-02-05T18:00:00.000Z', latitude: -21.3, longitude: 48.3, windSpeedKmh: 165, gustSpeedKmh: 230, pressureHpa: 955 }),
@@ -375,15 +379,15 @@ describe('EventHistoricalMapTab', () => {
     });
   });
 
-  it('bascule lecture / pause via la barre temporelle', async () => {
+  it('démarre en lecture puis bascule en pause via la barre temporelle', async () => {
     const user = userEvent.setup();
     renderTab();
     await waitFor(() => {
-      expect(screen.getByTitle('Lecture automatique')).toBeTruthy();
-    });
-    await user.click(screen.getByTitle('Lecture automatique'));
-    await waitFor(() => {
       expect(screen.getByTitle('Mettre en pause')).toBeTruthy();
+    });
+    await user.click(screen.getByTitle('Mettre en pause'));
+    await waitFor(() => {
+      expect(screen.getByTitle('Lecture automatique')).toBeTruthy();
     });
     expect(screen.getByRole('slider', { name: /Position temporelle/ })).toHaveProperty('disabled', false);
   });

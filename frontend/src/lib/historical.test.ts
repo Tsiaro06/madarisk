@@ -12,9 +12,11 @@ import {
   framePosition,
   isAffectedAt,
   observedSteps,
+  segmentMinutesAt,
   toAntananarivoTime,
   vigilanceLabel,
 } from './historical';
+import type { TrackStatePoint } from '@/types';
 
 describe('deriveRiskFromWind', () => {
   const cases: Array<[number | null, string]> = [
@@ -281,5 +283,52 @@ describe('vigilanceLabel (zones de vigilance du bulletin)', () => {
   it('retourne null sans libellé exploitable', () => {
     expect(vigilanceLabel(null)).toBeNull();
     expect(vigilanceLabel('')).toBeNull();
+  });
+});
+
+describe('segmentMinutesAt (lecture visuelle : 3 s par segment)', () => {
+  const p = (id: string, observedAt: string): TrackStatePoint =>
+    ({
+      id,
+      eventId: 'e',
+      observedAt,
+      forecastFor: null,
+      trackType: 'OBSERVEE',
+      latitude: 0,
+      longitude: 0,
+      windSpeedKmh: null,
+      gustSpeedKmh: null,
+      pressureHpa: null,
+      precipitationMm: null,
+      movementDirection: null,
+      movementSpeedKmh: null,
+      createdAt: observedAt,
+      radius34ktKm: null,
+      radius50ktKm: null,
+      radius64ktKm: null,
+      radiusMaxKm: null,
+      radiusSource: null,
+      radiusMeasureType: null,
+      radiusQuality: null,
+      dataQuality: null,
+      confidence: null,
+    }) as TrackStatePoint;
+
+  const steps = [
+    p('p1', '2022-02-05T12:00:00.000Z'),
+    p('p2', '2022-02-05T18:00:00.000Z'),
+    p('p3', '2022-02-05T19:00:00.000Z'),
+  ];
+  const startMs = new Date(steps[0].observedAt).getTime();
+
+  it('renvoie la durée réelle du segment courant, quelle que soit sa longueur', () => {
+    expect(segmentMinutesAt(steps, startMs)).toBe(360);
+    expect(segmentMinutesAt(steps, startMs + 180 * 60_000)).toBe(360);
+    expect(segmentMinutesAt(steps, startMs + 380 * 60_000)).toBe(60);
+  });
+
+  it('vaut 0 sur le dernier point (fin de trajectoire → boucle)', () => {
+    expect(segmentMinutesAt(steps, startMs + 420 * 60_000)).toBe(0);
+    expect(segmentMinutesAt([], 0)).toBe(0);
   });
 });

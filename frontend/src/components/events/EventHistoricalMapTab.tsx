@@ -16,7 +16,8 @@ import {
   IMPACT_STATE_LABELS,
   OBSERVED_RISK_COLORS,
   OBSERVED_RISK_LABELS,
-  PLAYBACK_TRAVERSAL_MS,
+  PLAYBACK_SEGMENT_MS,
+  segmentMinutesAt,
   VIGILANCE_LEVELS,
 } from '@/lib/historical';
 import type {
@@ -137,7 +138,7 @@ export function EventHistoricalMapTab({
   sourceUrl,
 }: EventHistoricalMapTabProps) {
   const [minute, setMinute] = useState(0);
-  const [playing, setPlaying] = useState(false);
+  const [playing, setPlaying] = useState(true);
   const [speed, setSpeed] = useState<TimelineSpeed>('1x');
   const [selected, setSelected] = useState<{ id: string; name: string } | null>(null);
   const [showVigilance, setShowVigilance] = useState(true);
@@ -232,34 +233,28 @@ export function EventHistoricalMapTab({
   const radiusKm = availableWindRadiusKm(activePoint);
   const eventTitle = eventName?.trim() || 'Événement historique';
 
-  // Lecture visuelle via requestAnimationFrame : annulée à la pause comme au
-  // démontage. Aucune écriture en base n'est déclenchée par la lecture.
+  // Lecture visuelle provisoire : chaque segment de la trajectoire est parcouru
+  // en 3 s (voir PLAYBACK_SEGMENT_MS), sans tenir compte des horodatages réels,
+  // puis la boucle reprend au premier point — « ainsi de suite ». L'animation est
+  // annulée à la pause comme au démontage ; aucune écriture en base.
   useEffect(() => {
     if (!playing || spanMinutes <= 0) return;
     let raf = 0;
     let last = performance.now();
-    let finished = false;
-    const traversal = PLAYBACK_TRAVERSAL_MS[speed];
+    const segmentMs = PLAYBACK_SEGMENT_MS[speed];
     const tick = (now: number) => {
       const elapsed = Math.max(0, now - last);
       last = now;
       setMinute((prev) => {
-        const next = prev + (elapsed / traversal) * spanMinutes;
-        if (next >= spanMinutes) {
-          finished = true;
-          return spanMinutes;
-        }
-        return next;
+        const segment = segmentMinutesAt(steps, startMs + prev * 60_000);
+        if (segment <= 0) return 0; // fin de trajectoire → recommence
+        return Math.min(spanMinutes, prev + (elapsed / segmentMs) * segment);
       });
-      if (finished) {
-        setPlaying(false);
-        return;
-      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, speed, spanMinutes]);
+  }, [playing, speed, spanMinutes, steps, startMs]);
 
   if (tracksQ.isLoading || communesQ.isLoading) return <Spinner />;
 

@@ -45,11 +45,15 @@ export const VIGILANCE_LEVELS: RiskLevel[] = ['FAIBLE', 'MODERE', 'ELEVE', 'EXTR
 export const CYCLONE_VIOLET = '#7c3aed';
 export const CYCLONE_VIOLET_DEEP = '#5b21b6';
 
-/** Durée de traversée complète de la trajectoire en lecture (par vitesse). */
-export const PLAYBACK_TRAVERSAL_MS: Record<'1x' | '2x' | '4x', number> = {
-  '1x': 45_000,
-  '2x': 22_500,
-  '4x': 11_250,
+/**
+ * Lecture visuelle provisoire : chaque segment de la trajectoire est parcouru
+ * en 3 s, indépendamment de l'écart d'horodatage réel entre les deux points (le
+ * temps réel n'est pas encore pris en compte). Les vitesses multiplient ce pas.
+ */
+export const PLAYBACK_SEGMENT_MS: Record<'1x' | '2x' | '4x', number> = {
+  '1x': 3_000,
+  '2x': 1_500,
+  '4x': 750,
 };
 
 /** Seuil des vents soutenus (ge) ; en dessous : MODERE. */
@@ -221,6 +225,21 @@ export function framePosition(frame: ActiveTrackFrame): [number, number] {
     from.latitude + (to.latitude - from.latitude) * progress,
     from.longitude + (to.longitude - from.longitude) * progress,
   ];
+}
+
+/**
+ * Durée réelle (en minutes) du segment de trajectoire contenant l'instant
+ * `atMs`, ou 0 lorsqu'il n'y a plus de point suivant (fin de trajectoire).
+ *
+ * Sert à la lecture visuelle provisoire : le curseur n'avance pas selon une
+ * horloge réelle, il avance pour que CHAQUE segment soit parcouru dans le même
+ * laps de temps d'animation — quel que soit l'écart réel entre les points.
+ */
+export function segmentMinutesAt(steps: TrackStatePoint[], atMs: number): number {
+  const frame = frameAt(steps, atMs);
+  if (!frame || !frame.to) return 0;
+  const minutes = (pointTimeMs(frame.to) - pointTimeMs(frame.from)) / 60_000;
+  return Number.isFinite(minutes) && minutes > 0 ? minutes : 0;
 }
 
 const COMPASS_16 = [
