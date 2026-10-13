@@ -20,6 +20,11 @@ import { availableWindRadiusKm, CYCLONE_VIOLET, CYCLONE_VIOLET_DEEP, observedSte
 import { useTrackPlayback } from '@/lib/useTrackPlayback';
 import {
   communeStyle,
+  CONE_AREA_FILL,
+  CONE_EDGE,
+  CONE_FILL,
+  CRISIS_FORECAST_FILL,
+  districtFeatureId,
   districtStyle,
   featureId,
   featureName,
@@ -28,12 +33,23 @@ import {
   trackPointStyle,
   trackStyle,
 } from '@/lib/crisisStyles';
+import {
+  buildCone,
+  conePointsFromTrack,
+  FORECAST_CONE_LABEL,
+  FORECAST_CONE_NOTE,
+  intersectingFeatureIds,
+} from '@/lib/forecastCone';
 import { cn } from '@/lib/utils';
 import { CommuneMapSearch } from '@/components/crisis/CommuneMapSearch';
+import { ForecastConeLayer } from '@/components/crisis/ForecastConeLayer';
 import { CycloneMarker } from '@/components/events/CycloneMarker';
 import { CycloneWindSwath } from '@/components/events/CycloneWindSwath';
 
 type CommuneClickHandler = (communeId: string, name: string) => void;
+
+/** Ensemble vide partagé : évite de recalculer / réallouer sans zone probable. */
+const NO_IDS: ReadonlySet<string> = new Set<string>();
 
 interface CrisisMapProps {
   riskLayer: FeatureCollection | null;
@@ -112,10 +128,13 @@ function CrisisMapOverlay({ children, position }: { children: ReactNode; positio
 function Legend({
   hasDocumentedRadius,
   hasWindSwath,
+  hasProbableZone,
 }: {
   hasDocumentedRadius: boolean;
   /** Emprise réellement visible : la légende ne l'annonce que si elle est dessinée. */
   hasWindSwath: boolean;
+  /** Zone de position probable réellement dessinée (points de prévision datés). */
+  hasProbableZone: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -190,9 +209,30 @@ function Legend({
                 Centre cyclonique (lecture animée)
               </li>
               <li className="flex items-center gap-2">
-                <span className="inline-block h-0.5 w-4 rounded border-t-2 border-dashed border-[#c47d4a]" />
+                <span
+                  className="inline-block h-0.5 w-4 rounded border-t-2 border-dashed"
+                  style={{ borderColor: CRISIS_FORECAST_FILL }}
+                />
                 Trajectoire prévue
               </li>
+              {hasProbableZone ? (
+                <li className="flex items-center gap-2">
+                  <span
+                    className="inline-block h-3 w-4 rounded-sm border border-dashed"
+                    style={{ borderColor: CONE_EDGE, background: `${CONE_FILL}40` }}
+                  />
+                  {FORECAST_CONE_LABEL}
+                </li>
+              ) : null}
+              {hasProbableZone ? (
+                <li className="flex items-center gap-2">
+                  <span
+                    className="inline-block size-3 rounded-sm"
+                    style={{ background: CONE_AREA_FILL }}
+                  />
+                  Commune ou district traversé par la zone probable
+                </li>
+              ) : null}
               {hasDocumentedRadius ? (
                 <li className="flex items-center gap-2">
                   <span
@@ -218,6 +258,11 @@ function Legend({
                 Emprise documentée : chaque cercle reprend le rayon publié, et deux mesures
                 consécutives sont reliées par leurs tangentes. Aucune largeur n&apos;est mesurée
                 entre deux points datés — ce n&apos;est pas un cône d&apos;incertitude.
+              </p>
+            ) : null}
+            {hasProbableZone ? (
+              <p className="mt-1.5 border-t border-line pt-1.5 text-[10px] leading-snug text-muted">
+                {FORECAST_CONE_NOTE}
               </p>
             ) : null}
           </div>
@@ -256,9 +301,11 @@ function LayerControls({
   showWeather,
   showEvent,
   showSwath,
+  showCone,
   hasEvent,
   communesAreExposed,
   hasDocumentedRadius,
+  hasProbableZone,
   onChange,
 }: {
   showRisks: boolean;
@@ -267,11 +314,13 @@ function LayerControls({
   showWeather: boolean;
   showEvent: boolean;
   showSwath: boolean;
+  showCone: boolean;
   hasEvent: boolean;
   communesAreExposed: boolean;
   hasDocumentedRadius: boolean;
+  hasProbableZone: boolean;
   onChange: (
-    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath',
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath' | 'cone',
     value: boolean,
   ) => void;
 }) {
@@ -299,7 +348,7 @@ function LayerControls({
   }, [open]);
 
   const items: Array<{
-    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath';
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath' | 'cone';
     label: string;
     checked: boolean;
     disabled?: boolean;
@@ -318,6 +367,12 @@ function LayerControls({
       label: 'Emprise des vents',
       checked: showSwath,
       disabled: !hasEvent || !hasDocumentedRadius,
+    },
+    {
+      key: 'cone',
+      label: 'Zone probable du centre',
+      checked: showCone,
+      disabled: !hasEvent || !hasProbableZone,
     },
   ];
 
@@ -442,6 +497,10 @@ export function CrisisMap({
   // Emprise documentée des vents : affichée par défaut (c'est la lecture
   // d'ensemble du cyclone), masquable pour dégager la carte.
   const [showSwath, setShowSwath] = useState(true);
+  // Zone de position probable du centre (trajectoire prévue) : affichée par
+  // défaut, mais elle n'existe que si l'événement porte des points de prévision
+  // dont l'échéance est datable.
+  const [showCone, setShowCone] = useState(true);
 
   // Points observés (jamais les points prévus) : base de la lecture animée.
   const observedTrack = useMemo(() => observedSteps(trackPoints), [trackPoints]);
@@ -451,6 +510,39 @@ export function CrisisMap({
   const hasDocumentedRadius = useMemo(
     () => observedTrack.some((point) => availableWindRadiusKm(point) != null),
     [observedTrack],
+  );
+
+  // Points de prévision : seuls ceux dont l'échéance est datable portent une
+  // erreur de position, donc un cercle. Un point sans `forecastFor` est écarté.
+  const forecastTrack = useMemo(
+    () => trackPoints.filter((point) => point.trackType === 'PREVUE'),
+    [trackPoints],
+  );
+
+  // Zone de position probable du centre : recalculée quand les points de
+  // prévision changent (autre cyclone, autre bulletin) — jamais pendant la
+  // lecture animée, qui ne travaille que sur la trajectoire observée.
+  const forecastCone = useMemo(
+    () => (showEvent ? buildCone(conePointsFromTrack(forecastTrack)) : null),
+    [showEvent, forecastTrack],
+  );
+
+  // Communes / districts traversés par la zone : le test d'intersection (Turf)
+  // n'est lancé qu'après un pré-filtre par boîte englobante, et le résultat est
+  // mémorisé tant que la zone ou la couche ne changent pas.
+  const coneCommuneIds = useMemo(
+    () =>
+      forecastCone && showCommunes && communeLayer
+        ? intersectingFeatureIds(forecastCone, communeLayer)
+        : NO_IDS,
+    [forecastCone, showCommunes, communeLayer],
+  );
+  const coneDistrictIds = useMemo(
+    () =>
+      forecastCone && showDistricts && districtLayer
+        ? intersectingFeatureIds(forecastCone, districtLayer, districtFeatureId)
+        : NO_IDS,
+    [forecastCone, showDistricts, districtLayer],
   );
 
   useEffect(() => {
@@ -465,7 +557,7 @@ export function CrisisMap({
   };
 
   const handleToggle = (
-    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath',
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath' | 'cone',
     value: boolean,
   ) => {
     if (key === 'risks') setShowRisks(value);
@@ -473,6 +565,7 @@ export function CrisisMap({
     else if (key === 'districts') setShowDistricts(value);
     else if (key === 'weather') setShowWeather(value);
     else if (key === 'swath') setShowSwath(value);
+    else if (key === 'cone') setShowCone(value);
     else setShowEvent(value);
   };
 
@@ -521,6 +614,20 @@ export function CrisisMap({
       */}
       {showEvent && showSwath ? <CycloneWindSwath points={observedTrack} /> : null}
 
+      {/*
+        Zone de position probable du centre (trajectoire prévue), dessinée elle
+        aussi sous les couches administratives : le jaune des communes et
+        districts traversés reste ainsi lisible par-dessus la zone.
+      */}
+      {showEvent && showCone && forecastCone ? (
+        <ForecastConeLayer
+          key={`cone-${forecastTrack.length}-${forecastTrack[0]?.id ?? 'none'}-${
+            forecastTrack.at(-1)?.id ?? 'none'
+          }`}
+          cone={forecastCone}
+        />
+      ) : null}
+
       {selectedCommuneGeometry ? (
         <GeoJSON
           key={`highlight-${selectedCommuneId ?? 'geo'}`}
@@ -567,7 +674,7 @@ export function CrisisMap({
       {showDistricts && districtLayer ? (
         <GeoJSON
           data={districtLayer}
-          style={districtStyle}
+          style={(feature) => districtStyle(feature, coneDistrictIds)}
           onEachFeature={(feature: Feature<Geometry>, layer: Layer) => {
             const p = (feature.properties ?? {}) as Record<string, unknown>;
             layer.bindPopup(`<strong>${featureName(p) || 'District'}</strong>`);
@@ -580,7 +687,7 @@ export function CrisisMap({
           key={`commune-${selectedCommuneId ?? 'none'}-${communeLayer.features.length}`}
           data={communeLayer}
           style={(feature) =>
-            communeStyle(feature, selectedCommuneId, Boolean(activeEvent))
+            communeStyle(feature, selectedCommuneId, Boolean(activeEvent), coneCommuneIds)
           }
           onEachFeature={(feature: Feature<Geometry>, layer: Layer) => {
             const p = (feature.properties ?? {}) as Record<string, unknown>;
@@ -672,6 +779,7 @@ export function CrisisMap({
         <Legend
           hasDocumentedRadius={hasDocumentedRadius}
           hasWindSwath={hasDocumentedRadius && showEvent && showSwath}
+          hasProbableZone={forecastCone !== null && showEvent && showCone}
         />
       </CrisisMapOverlay>
       <CrisisMapOverlay position="top-right">
@@ -707,9 +815,11 @@ export function CrisisMap({
             showWeather={showWeather}
             showEvent={showEvent}
             showSwath={showSwath}
+            showCone={showCone}
             hasEvent={Boolean(activeEvent)}
             communesAreExposed={communesAreExposed}
             hasDocumentedRadius={hasDocumentedRadius}
+            hasProbableZone={forecastCone !== null}
             onChange={handleToggle}
           />
           {activeEvent ? (

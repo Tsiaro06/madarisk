@@ -6,7 +6,13 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { FeatureCollection } from 'geojson';
 import { CrisisMap } from './CrisisMap';
 import type { EventListItem, TrackStatePoint } from '@/types';
-import { trackStyle, riskStyle, communeStyle } from '@/lib/crisisStyles';
+import {
+  trackStyle,
+  trackPointStyle,
+  riskStyle,
+  communeStyle,
+  districtStyle,
+} from '@/lib/crisisStyles';
 import { RISK_COLORS } from '@/types';
 
 vi.mock('react-leaflet', async () => {
@@ -15,14 +21,24 @@ vi.mock('react-leaflet', async () => {
     MapContainer: ({ children }: { children: React.ReactNode }) =>
       React.createElement('div', { 'data-testid': 'map' }, children),
     TileLayer: () => null,
-    GeoJSON: ({ data }: { data: unknown }) =>
-      React.createElement('div', {
+    GeoJSON: ({ data, interactive }: { data: unknown; interactive?: boolean }) => {
+      // La zone probable est un `Feature` unique : elle est identifiée à part
+      // pour que les autres couches GeoJSON restent comptées par `data-features`.
+      const payload = data as { type?: string; properties?: Record<string, unknown> } | null;
+      if (payload?.type === 'Feature' && payload.properties?.pointCount != null) {
+        return React.createElement('div', {
+          'data-testid': 'forecast-cone',
+          'data-interactive': String(interactive),
+        });
+      }
+      return React.createElement('div', {
         'data-testid': 'geojson',
         'data-features':
           data && typeof data === 'object' && 'features' in data
             ? (data as FeatureCollection).features.length
             : 0,
-      }),
+      });
+    },
     CircleMarker: () => React.createElement('div', { 'data-testid': 'track-point' }),
     Polygon: ({ pathOptions }: { pathOptions?: { className?: string } }) =>
       React.createElement('div', {
@@ -133,6 +149,7 @@ function makeTrackPoint(
   latitude: number,
   longitude: number,
   radius: Partial<Pick<TrackStatePoint, 'radius34ktKm' | 'radius50ktKm' | 'radiusMeasureType'>> = {},
+  extra: Partial<TrackStatePoint> = {},
 ): TrackStatePoint {
   return {
     id,
@@ -159,6 +176,7 @@ function makeTrackPoint(
     dataQuality: null,
     confidence: null,
     ...radius,
+    ...extra,
   };
 }
 
@@ -449,14 +467,28 @@ describe('trackStyle', () => {
     expect(style.dashArray).toBeUndefined();
   });
 
-  it('applique des pointillés pour PREVUE', () => {
+  it('applique des pointillés rose pour PREVUE', () => {
     const style = trackStyle({
       type: 'Feature',
       geometry: { type: 'LineString', coordinates: [[0, 0], [1, 1]] },
       properties: { trackType: 'PREVUE', pointCount: 2, startedAt: '', endedAt: '' },
     });
-    expect(style.color).toBe('#c47d4a');
+    expect(style.color).toBe('#d6336c');
     expect(style.dashArray).toBe('8 6');
+  });
+});
+
+describe('trackPointStyle', () => {
+  it('dessine les points de prévision en pastilles blanches à contour rose', () => {
+    const style = trackPointStyle('PREVUE');
+    expect(style.color).toBe('#d6336c');
+    expect(style.fillColor).toBe('#ffffff');
+    expect(style.fillOpacity).toBe(1);
+  });
+
+  it('garde les points observés en bleu acier', () => {
+    const style = trackPointStyle('OBSERVEE');
+    expect(style.fillColor).toBe('#5a7d90');
   });
 });
 
@@ -506,5 +538,90 @@ describe('communeStyle', () => {
     const style = communeStyle(feature, null, false);
     expect(style.fillOpacity).toBe(0.04);
     expect(style.color).toBe('#94a3b8');
+  });
+});
+
+describe('zone de position probable du centre (prévision)', () => {
+  const forecastPoints = [
+    makeTrackPoint('o1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2),
+    makeTrackPoint('f1', 'PREVUE', '2026-04-01T00:00:00.000Z', -21.0, 48.6, {}, {
+      forecastFor: '2026-04-01T12:00:00.000Z',
+    }),
+    makeTrackPoint('f2', 'PREVUE', '2026-04-01T00:00:00.000Z', -21.6, 47.8, {}, {
+      forecastFor: '2026-04-02T00:00:00.000Z',
+    }),
+  ];
+
+  it('dessine une seule zone, passive, à partir des points de prévision', () => {
+    renderMap({ trackPoints: forecastPoints });
+
+    expect(screen.getByTestId('forecast-cone')).toHaveAttribute('data-interactive', 'false');
+  });
+
+  it("n'affiche ni zone ni entrée de légende sans point de prévision", async () => {
+    const user = userEvent.setup();
+    renderMap({ trackPoints: [makeTrackPoint('o1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2)] });
+
+    await user.click(screen.getByRole('button', { name: 'Afficher la légende' }));
+
+    expect(screen.queryByTestId('forecast-cone')).toBeNull();
+    expect(screen.queryByText('Zone de position probable du centre')).toBeNull();
+  });
+
+  it("écarte une prévision dont l'échéance n'est pas datable", () => {
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('f1', 'PREVUE', '2026-04-01T00:00:00.000Z', -21.0, 48.6),
+      ],
+    });
+
+    expect(screen.queryByTestId('forecast-cone')).toBeNull();
+  });
+
+  it('annonce la zone dans la légende et la masque via la couche', async () => {
+    const user = userEvent.setup();
+    renderMap({ trackPoints: forecastPoints });
+
+    await user.click(screen.getByRole('button', { name: 'Afficher la légende' }));
+    expect(screen.getByText('Zone de position probable du centre')).toBeInTheDocument();
+    expect(
+      screen.getByText('Commune ou district traversé par la zone probable'),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Afficher les couches' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Zone probable du centre' }));
+
+    expect(screen.queryByTestId('forecast-cone')).toBeNull();
+    expect(screen.queryByText('Zone de position probable du centre')).toBeNull();
+  });
+
+  it('colore en jaune la commune traversée, sans écraser la sélection', () => {
+    const feature = {
+      type: 'Feature' as const,
+      geometry: { type: 'Polygon' as const, coordinates: [[[0,0],[1,0],[1,1],[0,1],[0,0]]] },
+      properties: { communeId: 'cm-9', riskLevel: 'FAIBLE' },
+    };
+
+    const traversed = communeStyle(feature, null, true, new Set(['cm-9']));
+    expect(traversed.fillColor).toBe('#f5b942');
+    expect(traversed.fillOpacity).toBe(0.7);
+
+    const selected = communeStyle(feature, 'cm-9', true, new Set(['cm-9']));
+    expect(selected.fillColor).not.toBe('#f5b942');
+  });
+
+  it('colore en jaune le district traversé et laisse les autres intacts', () => {
+    const district = {
+      type: 'Feature' as const,
+      geometry: { type: 'Polygon' as const, coordinates: [[[0,0],[1,0],[1,1],[0,1],[0,0]]] },
+      properties: { districtId: 'd-1' },
+    };
+
+    const traversed = districtStyle(district, new Set(['d-1']));
+    expect(traversed.fillColor).toBe('#f5b942');
+    expect(traversed.fillOpacity).toBe(0.7);
+
+    const intact = districtStyle(district, new Set(['d-9']));
+    expect(intact.fillColor).toBe('#f8fafc');
   });
 });
