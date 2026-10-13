@@ -263,7 +263,8 @@ h3 {
   Étiquette du rayon de vent documenté. Elle est solidaire de l'œil (même
   position Leaflet) : quand l'anneau change de taille, l'étiquette nomme et date
   la mesure publiée qui vient d'être atteinte. Décorative au clavier et au
-  survol : les mêmes informations restent dans le popup du marqueur.
+  survol : les mêmes informations (et la source complète) restent dans le popup
+  du marqueur.
 */
 .madarisk-cyclone-radius-label {
   position: absolute;
@@ -290,17 +291,9 @@ h3 {
   color: #5b21b6;
 }
 
-.madarisk-cyclone-radius-label__meta,
-.madarisk-cyclone-radius-label__source {
+.madarisk-cyclone-radius-label__meta {
   font-size: 10px;
   color: #52525b;
-}
-
-/* Écrans étroits : on garde la valeur et la date, on masque la source abrégée. */
-@media (max-width: 640px) {
-  .madarisk-cyclone-radius-label__source {
-    display: none;
-  }
 }
 
 /* ------------------------------------------------------------------

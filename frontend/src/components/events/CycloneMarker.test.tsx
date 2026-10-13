@@ -147,7 +147,7 @@ describe('CycloneMarker — zone d\u2019influence', () => {
 });
 
 describe('CycloneMarker — étiquette du rayon documenté', () => {
-  it('nomme, date et source la mesure affichée (aucune valeur inventée)', () => {
+  it('nomme et date la mesure affichée (aucune valeur inventée)', () => {
     render(
       <CycloneMarker
         position={[-20.5, 49.2]}
@@ -161,9 +161,9 @@ describe('CycloneMarker — étiquette du rayon documenté', () => {
     expect(label).toHaveTextContent('R34 · 368,5 km');
     // 5 févr. 12:00 UTC = 15:00 à Madagascar (UTC+3).
     expect(label).toHaveTextContent('05 févr. 2022, 15:00 (Madagascar)');
-    // Source abrégée : l'autorité, la référence complète restant dans le popup.
-    expect(label).toHaveTextContent('RSMC La Réunion (Météo-France)');
-    expect(label).not.toHaveTextContent('IBTrACS');
+    // L'étiquette reste minimale : la source (autorité, archive, version) est
+    // dans l'infobulle de l'anneau et le popup du marqueur, pas sur la carte.
+    expect(label).not.toHaveTextContent('RSMC');
   });
 
   it("accompagne l'œil : l\u2019étiquette est à la position affichée", () => {

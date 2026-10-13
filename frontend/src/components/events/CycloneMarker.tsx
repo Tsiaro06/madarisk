@@ -42,18 +42,6 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/**
- * Source abrégée pour l'étiquette de l'anneau : seule l'autorité est reprise
- * (« RSMC La Réunion (Météo-France) »). La référence complète — archive, version
- * et identifiant de la tempête — reste dans le popup du marqueur et dans
- * l'infobulle de l'anneau.
- */
-function shortRadiusSource(source: string | null | undefined): string | null {
-  if (!source) return null;
-  const [authority] = source.split(' — ');
-  return authority.trim() || null;
-}
-
 /** Taille du marqueur (34–48 px) suivant le zoom, sans recréer la carte. */
 function useZoomBasedSize(): number {
   const map = useMap();
@@ -188,12 +176,15 @@ export function CycloneMarker({
    * avec l'œil pendant la lecture animée. Son rôle est de rendre lisible le
    * changement de taille de l'anneau — quand il grossit ou se contracte, c'est
    * qu'une nouvelle mesure publiée vient d'être atteinte, et la date affichée le
-   * dit. Valeur, source et horodatage sont repris tels quels : aucune valeur
-   * n'est interpolée, l'étiquette n'existe que si un rayon est publié.
+   * dit. Valeur et horodatage sont repris tels quels : aucune valeur n'est
+   * interpolée, l'étiquette n'existe que si un rayon est publié.
+   *
+   * Elle reste volontairement minimale (seuil, valeur, date) : la provenance
+   * complète — autorité, archive, version, identifiant de la tempête — reste
+   * dans l'infobulle de l'anneau et le popup du marqueur, pas sur la carte.
    */
   const radiusLabelIcon = useMemo(() => {
     if (!radius) return null;
-    const source = shortRadiusSource(point.radiusSource);
     const html = [
       `<b class="madarisk-cyclone-radius-label__value">${escapeHtml(
         `${windRadiusShortLabel(radius.kind)} · ${formatMeasure(radius.km, 'km')}`,
@@ -201,9 +192,6 @@ export function CycloneMarker({
       `<span class="madarisk-cyclone-radius-label__meta">${escapeHtml(
         `${formatAntananarivo(point.observedAt)} (Madagascar)`,
       )}</span>`,
-      source
-        ? `<span class="madarisk-cyclone-radius-label__source">${escapeHtml(source)}</span>`
-        : '',
     ].join('');
     return L.divIcon({
       className: 'madarisk-cyclone-radius-icon',
@@ -211,7 +199,7 @@ export function CycloneMarker({
       iconSize: [0, 0],
       iconAnchor: [0, 0],
     });
-  }, [radius, point.observedAt, point.radiusSource]);
+  }, [radius, point.observedAt]);
 
   const accessibleName = [
     `${eventName} — position observée du centre`,
