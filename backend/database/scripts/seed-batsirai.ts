@@ -1,6 +1,7 @@
 import path from 'path';
 import pg from 'pg';
 import { BATSIRAI_TRACK } from '../seeds/batsirai-2022';
+import { BATSIRAI_RADII } from '../seeds/batsirai-2022-radii';
 
 /**
  * Import idempotent de l'événement historique « Cyclone Batsirai — février 2022 ».
@@ -30,6 +31,14 @@ const BULLETIN_ALERT_SOURCE = 'Météo Madagascar — Bulletin cyclonique du 4 f
 const ADMIN_AREA_SOURCE = 'Découpage administratif officiel Madagascar (MadaRisk)';
 const VALID_FROM = '2022-02-04T16:00:00+03:00';
 const VALID_TO = '2022-02-08T00:00:00+03:00';
+
+/**
+ * Rayons de vent documentés (RSMC La Réunion, IBTrACS v04r01). Valeur retenue :
+ * rayon maximal des 4 quadrants du vent ≥ 34/50/64 kt, en kilomètres. Aucune
+ * valeur n'est inventée : les seuils non publiés restent nuls en base.
+ */
+const RADIUS_SOURCE = 'RSMC La Réunion (Météo-France) — IBTrACS v04r01 (2022024S09090)';
+const RADIUS_MEASURE_TYPE = 'Rayon maximal des 4 quadrants';
 
 /** Heure d'atterrissage documentée : 19h00 locales (16h00 UTC) le 5 février 2022 (WMO). */
 const LANDFALL_AT = '2022-02-05T16:00:00Z';
@@ -636,14 +645,27 @@ export async function runBatsiraiSeed(): Promise<BatsiraiSeedSummary> {
     }
     console.log(`  ✓ Chronologie : ${STATUS_HISTORY.length} étapes.`);
 
-    // 4. Trajectoire officielle (IBTrACS).
+    // 4. Trajectoire officielle (IBTrACS) + rayons de vent documentés (RSMC).
+    const radiiByTime = new Map(BATSIRAI_RADII.map((entry) => [entry.time, entry]));
     let tracks = 0;
+    let documentedRadii = 0;
     for (const point of BATSIRAI_TRACK) {
+      const radii = radiiByTime.get(point.time);
+      const hasRadii = Boolean(
+        radii &&
+          (radii.radius34ktKm != null ||
+            radii.radius50ktKm != null ||
+            radii.radius64ktKm != null),
+      );
+      if (hasRadii) documentedRadii += 1;
       await client.query(
         `INSERT INTO event_tracks
            (event_id, observed_at, track_type, latitude, longitude,
-            wind_speed_kmh, pressure_hpa, movement_direction, movement_speed_kmh, geom)
+            wind_speed_kmh, pressure_hpa, movement_direction, movement_speed_kmh,
+            radius_34kt_km, radius_50kt_km, radius_64kt_km,
+            radius_source, radius_measure_type, geom)
          VALUES ($1, $2, 'OBSERVEE', $3::numeric, $4::numeric, $5, $6, $7, $8,
+                 $9, $10, $11, $12, $13,
                  ST_SetSRID(ST_MakePoint($4::double precision, $3::double precision), 4326))`,
         [
           eventId,
@@ -654,11 +676,19 @@ export async function runBatsiraiSeed(): Promise<BatsiraiSeedSummary> {
           point.pressureHpa,
           point.dirDeg === null ? null : `${point.dirDeg}°`,
           kmh(point.speedKt),
+          radii?.radius34ktKm ?? null,
+          radii?.radius50ktKm ?? null,
+          radii?.radius64ktKm ?? null,
+          hasRadii ? RADIUS_SOURCE : null,
+          hasRadii ? RADIUS_MEASURE_TYPE : null,
         ],
       );
       tracks += 1;
     }
-    console.log(`  ✓ Trajectoire : ${tracks} points (source IBTrACS).`);
+    console.log(
+      `  ✓ Trajectoire : ${tracks} points (source IBTrACS), ` +
+        `${documentedRadii} avec rayon de vent RSMC documenté.`,
+    );
 
     // 5. Zones (géométrie administrative réelle).
     let areas = 0;

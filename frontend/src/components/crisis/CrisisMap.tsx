@@ -16,7 +16,7 @@ import { BookOpen, ChevronDown, ChevronUp, Layers, LocateFixed, RefreshCw, Snowf
 import type { EventListItem, TrackStatePoint } from '@/types';
 import { RISK_COLORS, RISK_LABELS } from '@/types';
 import { RISK_LEVELS } from '@/lib/eventMeta';
-import { observedSteps } from '@/lib/historical';
+import { availableWindRadiusKm, CYCLONE_VIOLET_DEEP, observedSteps } from '@/lib/historical';
 import { useTrackPlayback } from '@/lib/useTrackPlayback';
 import {
   communeStyle,
@@ -103,7 +103,7 @@ function CrisisMapOverlay({ children, position }: { children: ReactNode; positio
 }
 
 /** Légende repliable : fermée par défaut pour ne pas voler de place à la carte. */
-function Legend() {
+function Legend({ hasDocumentedRadius }: { hasDocumentedRadius: boolean }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -173,8 +173,17 @@ function Legend() {
               </li>
               <li className="flex items-center gap-2">
                 <span className="inline-block size-3 rounded-sm border-2 border-[#b07070] bg-[#b07070]/20" />
-                Zone d&apos;influence
+                Zone d&apos;influence (polygone)
               </li>
+              {hasDocumentedRadius ? (
+                <li className="flex items-center gap-2">
+                  <span
+                    className="inline-block size-3 rounded-full border border-dashed"
+                    style={{ borderColor: CYCLONE_VIOLET_DEEP }}
+                  />
+                  Rayon de vent documenté (zone d&apos;influence du cyclone)
+                </li>
+              ) : null}
               <li className="flex items-center gap-2">
                 <Snowflake className="size-3.5 text-slate-500" /> Observation météo
               </li>
@@ -390,6 +399,12 @@ export function CrisisMap({
   // Points observés (jamais les points prévus) : base de la lecture animée.
   const observedTrack = useMemo(() => observedSteps(trackPoints), [trackPoints]);
 
+  // Rayon de vent réellement documenté (RSMC) : la zone d'influence du cyclone
+  // n'est dessinée — et annoncée en légende — que si une source la publie.
+  const hasDocumentedRadius = useMemo(
+    () => observedTrack.some((point) => availableWindRadiusKm(point) != null),
+    [observedTrack],
+  );
 
   useEffect(() => {
     setShowCommunes(Boolean(activeEvent));
@@ -419,7 +434,11 @@ export function CrisisMap({
 
   const eventWithoutData =
     Boolean(activeEvent) &&
-    (riskLayer?.features?.length ?? 0) + (communeLayer?.features?.length ?? 0) === 0;
+    !hasDocumentedRadius &&
+    (riskLayer?.features?.length ?? 0) +
+      (communeLayer?.features?.length ?? 0) +
+      (areasLayer?.features?.length ?? 0) ===
+      0;
 
   return (
     <MapContainer
@@ -597,7 +616,7 @@ export function CrisisMap({
       ) : null}
 
       <CrisisMapOverlay position="bottom-left">
-        <Legend />
+        <Legend hasDocumentedRadius={hasDocumentedRadius} />
       </CrisisMapOverlay>
       <CrisisMapOverlay position="top-right">
         {/* Coin haut-droit aligné à droite : actions, bouton Couches repliable

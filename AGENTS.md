@@ -11,6 +11,8 @@ Both packages must be handled independently (`cd backend` / `cd frontend`).
 ### backend (`D:\MadaRisk\backend`)
 - `npm run dev` — start API (`tsx watch src/server.ts`), requires running DB + `.env`
 - `npm run db:migrate` / `npm run db:seed` / `npm run db:check` — DB via `tsx`
+- `npm run db:seed:batsirai` — (re)importe l'événement historique Cyclone Batsirai 2022 (trajectoire IBTrACS + rayons de vent RSMC documentés)
+- `npm run db:generate:batsirai-radii` — régénère `database/seeds/batsirai-2022-radii.ts` depuis IBTrACS v04r01 (télécharge le CSV du bassin Sud-Indien, ou passer un CSV local en argument)
 - `npm run db:seed` creates demo account `admin@madarisk.mg` / `Admin@123!`
 - Verification order: `npm run lint` (eslint, `--max-warnings 0`) → `npm run typecheck` (`tsc --noEmit`) → `npm test` (vitest)
 - Formatting is Prettier (`npm run format`), enforced separately from lint; run `npm run format:check` too

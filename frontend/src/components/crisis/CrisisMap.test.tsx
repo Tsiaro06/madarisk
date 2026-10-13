@@ -98,6 +98,7 @@ function makeTrackPoint(
   observedAt: string,
   latitude: number,
   longitude: number,
+  radius: Partial<Pick<TrackStatePoint, 'radius34ktKm' | 'radius50ktKm' | 'radiusMeasureType'>> = {},
 ): TrackStatePoint {
   return {
     id,
@@ -123,6 +124,7 @@ function makeTrackPoint(
     radiusQuality: null,
     dataQuality: null,
     confidence: null,
+    ...radius,
   };
 }
 
@@ -263,6 +265,51 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
     });
 
     expect(screen.queryByTestId('cyclone-marker')).toBeNull();
+  });
+
+  it('dessine la zone d\'influence quand un rayon de vent est documenté', () => {
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2, {
+          radius34ktKm: 368.5,
+          radius50ktKm: 164.8,
+          radiusMeasureType: 'Rayon maximal des 4 quadrants',
+        }),
+        makeTrackPoint('p2', 'OBSERVEE', '2026-04-01T06:00:00.000Z', -20.9, 48.4),
+      ],
+    });
+
+    expect(screen.getByTestId('cyclone-radius')).toBeInTheDocument();
+  });
+
+  it('ne dessine aucune zone d\'influence sans rayon documenté', () => {
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2),
+        makeTrackPoint('p2', 'OBSERVEE', '2026-04-01T06:00:00.000Z', -20.9, 48.4),
+      ],
+    });
+
+    expect(screen.queryByTestId('cyclone-radius')).toBeNull();
+  });
+
+  it('n\'annonce la zone d\'influence en légende que si un rayon est documenté', () => {
+    const { unmount } = renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2, {
+          radius34ktKm: 368.5,
+        }),
+      ],
+    });
+    expect(screen.getByText(/Rayon de vent documenté/)).toBeInTheDocument();
+    unmount();
+
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2),
+      ],
+    });
+    expect(screen.queryByText(/Rayon de vent documenté/)).toBeNull();
   });
 });
 
