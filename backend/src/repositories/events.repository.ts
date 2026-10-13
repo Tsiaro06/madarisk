@@ -1,6 +1,8 @@
 import { db } from '../config/database';
 import {
   AreaGeoJson,
+  CommuneImpactsResult,
+  EventCommuneImpactRow,
   EventListItem,
   EventAlert,
   EventRiskDistribution,
@@ -14,6 +16,7 @@ import {
   RiskPhase,
   SeverityLevel,
   TrackGeoJson,
+  TrackStatePoint,
 } from '../types/event.types';
 import { PaginatedResult } from '../types/territory.types';
 
@@ -24,6 +27,42 @@ interface CountRow {
 function parseCount(row: CountRow | undefined): number {
   return parseInt(row?.count ?? '0', 10);
 }
+
+/** Ligne brute `event_tracks` (colonnes de base + rayons de vent documentés). */
+interface TrackStateRow {
+  id: string;
+  event_id: string;
+  observed_at: string;
+  forecast_for: string | null;
+  track_type: string;
+  latitude: string;
+  longitude: string;
+  wind_speed_kmh: string | null;
+  gust_speed_kmh: string | null;
+  pressure_hpa: string | null;
+  precipitation_mm: string | null;
+  movement_direction: string | null;
+  movement_speed_kmh: string | null;
+  radius_34kt_km: string | null;
+  radius_50kt_km: string | null;
+  radius_64kt_km: string | null;
+  radius_max_km: string | null;
+  radius_source: string | null;
+  radius_measure_type: string | null;
+  radius_quality: string | null;
+  data_quality: string | null;
+  confidence: string | null;
+  created_at: string;
+}
+
+const TRACK_STATE_COLUMNS = `
+  id, event_id, observed_at, forecast_for, track_type, latitude, longitude,
+  wind_speed_kmh, gust_speed_kmh, pressure_hpa, precipitation_mm,
+  movement_direction, movement_speed_kmh,
+  radius_34kt_km, radius_50kt_km, radius_64kt_km, radius_max_km,
+  radius_source, radius_measure_type, radius_quality, data_quality, confidence,
+  created_at
+`;
 
 interface EventRow {
   id: string;
@@ -43,7 +82,7 @@ interface EventRow {
   updated_at: string;
 }
 
-function mapTrackRow(r: any): import('../types/event.types').EventTrack {
+function mapTrackRow(r: TrackStateRow): import('../types/event.types').EventTrack {
   return {
     id: r.id,
     eventId: r.event_id,
@@ -59,6 +98,27 @@ function mapTrackRow(r: any): import('../types/event.types').EventTrack {
     movementDirection: r.movement_direction,
     movementSpeedKmh: r.movement_speed_kmh !== null ? parseFloat(r.movement_speed_kmh) : null,
     createdAt: r.created_at,
+  };
+}
+
+/**
+ * Colonnes de traçabilité des rayons de vent documentés (nullable, jamais
+ * inventés) : uniquement présents quand une source fiable les fournit.
+ */
+function mapTrackStatePoint(r: TrackStateRow): TrackStatePoint {
+  const num = (v: unknown): number | null =>
+    v === null || v === undefined ? null : parseFloat(String(v));
+  return {
+    ...mapTrackRow(r),
+    radius34ktKm: num(r.radius_34kt_km),
+    radius50ktKm: num(r.radius_50kt_km),
+    radius64ktKm: num(r.radius_64kt_km),
+    radiusMaxKm: num(r.radius_max_km),
+    radiusSource: r.radius_source ?? null,
+    radiusMeasureType: r.radius_measure_type ?? null,
+    radiusQuality: r.radius_quality ?? null,
+    dataQuality: r.data_quality ?? null,
+    confidence: num(r.confidence),
   };
 }
 
@@ -493,34 +553,170 @@ export const eventsRepository = {
       where += ` AND et.track_type = $2`;
       values.push(trackType);
     }
-    const result = await db.query<any>(
-      `SELECT
-         id, event_id, observed_at, forecast_for, track_type, latitude, longitude,
-         wind_speed_kmh, gust_speed_kmh, pressure_hpa, precipitation_mm,
-         movement_direction, movement_speed_kmh,
-         radius_34kt_km, radius_50kt_km, radius_64kt_km, radius_max_km,
-         radius_source, radius_measure_type, radius_quality, data_quality, confidence,
-         created_at
+    const result = await db.query<TrackStateRow>(
+      `SELECT ${TRACK_STATE_COLUMNS}
        FROM event_tracks et
        ${where}
        ORDER BY et.observed_at ASC`,
       values,
     );
-    return result.rows.map((r) => {
-      const base = mapTrackRow(r) as import('../types/event.types').TrackStatePoint;
-      return {
-        ...base,
-        radius34ktKm: r.radius_34kt_km !== null ? parseFloat(r.radius_34kt_km) : null,
-        radius50ktKm: r.radius_50kt_km !== null ? parseFloat(r.radius_50kt_km) : null,
-        radius64ktKm: r.radius_64kt_km !== null ? parseFloat(r.radius_64kt_km) : null,
-        radiusMaxKm: r.radius_max_km !== null ? parseFloat(r.radius_max_km) : null,
-        radiusSource: r.radius_source,
-        radiusMeasureType: r.radius_measure_type,
-        radiusQuality: r.radius_quality,
-        dataQuality: r.data_quality,
-        confidence: r.confidence !== null ? parseFloat(r.confidence) : null,
-      };
-    });
+    return result.rows.map((r) => mapTrackStatePoint(r));
+  },
+
+  /**
+   * État de la trajectoire observée à une date/heure donnée : point courant
+   * (dernier point observé ≤ `at`), points antérieurs, et présence d'un rayon
+   * de vent documenté (jamais inventé). Uniquement la trajectoire OBSERVEE :
+   * les prévisions historiques n'entrent jamais dans l'état observé.
+   */
+  async getTrackStateAt(
+    eventId: string,
+    at: Date,
+  ): Promise<{
+    current: TrackStatePoint | null;
+    previous: TrackStatePoint[];
+    total: number;
+    radius: { has: boolean; src: string | null; mtype: string | null; rmax: number | null };
+  }> {
+    const result = await db.query<TrackStateRow>(
+      `SELECT ${TRACK_STATE_COLUMNS}
+       FROM event_tracks
+       WHERE event_id = $1 AND observed_at <= $2 AND track_type = 'OBSERVEE'
+       ORDER BY observed_at ASC`,
+      [eventId, at.toISOString()],
+    );
+    const previous = result.rows.map((r) => mapTrackStatePoint(r));
+    const current = previous.length > 0 ? previous[previous.length - 1] : null;
+
+    const totalResult = await db.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM event_tracks
+       WHERE event_id = $1 AND track_type = 'OBSERVEE'`,
+      [eventId],
+    );
+    const total = parseInt(totalResult.rows[0]?.count ?? '0', 10);
+
+    const hasRadius =
+      current !== null &&
+      (current.radius34ktKm !== null ||
+        current.radius50ktKm !== null ||
+        current.radius64ktKm !== null ||
+        current.radiusMaxKm !== null);
+
+    return {
+      current,
+      previous,
+      total,
+      radius: {
+        has: hasRadius,
+        src: current?.radiusSource ?? null,
+        mtype: current?.radiusMeasureType ?? null,
+        rmax: current?.radiusMaxKm ?? null,
+      },
+    };
+  },
+
+  /**
+   * Impacts communaux observés à une date/heure donnée : communes dont le
+   * premier impact observé (event_commune_impacts.first_affected_at) est
+   * antérieur ou égal à `at`. Une commune n'apparaît donc colorée qu'après le
+   * passage réellement documenté, jamais d'avance.
+   */
+  async listCommuneImpactsAt(eventId: string, at: Date): Promise<CommuneImpactsResult> {
+    const result = await db.query<Record<string, unknown>>(
+      `SELECT
+         eci.commune_id AS "communeId",
+         c.name AS "communeName",
+         c.admin_code AS "communeCode",
+         d.id AS "districtId",
+         d.name AS "districtName",
+         eci.first_affected_at AS "firstAffectedAt",
+         eci.last_affected_at AS "lastAffectedAt",
+         eci.impact_state AS "impactState",
+         eci.observed_risk_level AS "observedRiskLevel",
+         eci.forecast_risk_level AS "forecastRiskLevel",
+         eci.source_name AS "sourceName",
+         eci.source_url AS "sourceUrl",
+         eci.confidence AS "confidence",
+         eci.method AS "method",
+         eci.notes AS "notes"
+       FROM event_commune_impacts eci
+       JOIN communes c ON c.id = eci.commune_id
+       LEFT JOIN districts d ON d.id = c.district_id
+       WHERE eci.event_id = $1
+         AND eci.impact_state <> 'NOT_REACHED'
+         AND (eci.first_affected_at IS NULL OR eci.first_affected_at <= $2)
+       ORDER BY eci.first_affected_at ASC NULLS LAST, c.name ASC`,
+      [eventId, at.toISOString()],
+    );
+
+    const radius = await db.query<{
+      has: boolean;
+      src: string | null;
+      mtype: string | null;
+      rmax: string | null;
+    }>(
+      `SELECT
+         (COUNT(*) FILTER (
+            WHERE et.radius_34kt_km IS NOT NULL
+               OR et.radius_50kt_km IS NOT NULL
+               OR et.radius_64kt_km IS NOT NULL
+               OR et.radius_max_km IS NOT NULL
+         )) > 0 AS has,
+         (SELECT et2.radius_source FROM event_tracks et2
+           WHERE et2.event_id = $1 AND et2.radius_source IS NOT NULL LIMIT 1) AS src,
+         (SELECT et3.radius_measure_type FROM event_tracks et3
+           WHERE et3.event_id = $1 AND et3.radius_measure_type IS NOT NULL LIMIT 1) AS mtype,
+         (SELECT MAX(et4.radius_max_km)::text FROM event_tracks et4
+           WHERE et4.event_id = $1) AS rmax
+       FROM event_tracks et
+       WHERE et.event_id = $1`,
+      [eventId],
+    );
+
+    const communes: EventCommuneImpactRow[] = result.rows.map((r) => ({
+      communeId: String(r.communeId),
+      communeName: String(r.communeName),
+      communeCode: r.communeCode !== null ? String(r.communeCode) : null,
+      districtId: r.districtId !== null ? String(r.districtId) : null,
+      districtName: r.districtName !== null ? String(r.districtName) : null,
+      // pg renvoie les timestamptz en Date JS : on force l'ISO-8601 (la forme
+      // "Fri Feb 05 ..." de String(Date) casserait le tri/le parsing côté UI).
+      firstAffectedAt:
+        r.firstAffectedAt !== null
+          ? new Date(r.firstAffectedAt as string | Date).toISOString()
+          : null,
+      lastAffectedAt:
+        r.lastAffectedAt !== null
+          ? new Date(r.lastAffectedAt as string | Date).toISOString()
+          : null,
+      impactState: r.impactState as EventCommuneImpactRow['impactState'],
+      observedRiskLevel: r.observedRiskLevel as EventCommuneImpactRow['observedRiskLevel'],
+      forecastRiskLevel: r.forecastRiskLevel !== null ? String(r.forecastRiskLevel) : null,
+      sourceName: r.sourceName !== null ? String(r.sourceName) : null,
+      sourceUrl: r.sourceUrl !== null ? String(r.sourceUrl) : null,
+      confidence: r.confidence !== null ? parseFloat(String(r.confidence)) : null,
+      method: r.method !== null ? String(r.method) : null,
+      notes: r.notes !== null ? String(r.notes) : null,
+    }));
+
+    const radiusRow = radius.rows[0];
+    const radiusMaxKm =
+      radiusRow?.rmax !== null && radiusRow?.rmax !== undefined ? parseFloat(radiusRow.rmax) : null;
+
+    return {
+      eventId,
+      at: at.toISOString(),
+      count: communes.length,
+      hasRadiusData: radiusRow?.has ?? false,
+      radiusKm: radiusRow?.has ? radiusMaxKm : null,
+      radiusSource: radiusRow?.src ?? null,
+      communes,
+      method:
+        communes.length > 0
+          ? `Communes dont le centre observé a atteint le territoire au plus tard à ${at.toISOString()} (données d'impact enregistrées, voir source/méthode par commune).`
+          : `Aucune commune affectée documentée à ${at.toISOString()}.`,
+    };
   },
 
   async trackGeoJson(eventId: string): Promise<TrackGeoJson> {

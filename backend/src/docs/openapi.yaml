@@ -1584,6 +1584,88 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /events/{id}/track-state:
+    get:
+      tags: [Événements]
+      summary: État observé de la trajectoire à une date/heure (visualisation historique)
+      description: >-
+        Retourne le dernier point observé (trajectoire OBSERVEE uniquement) à la
+        date/heure `at`, les points antérieurs, et la présence d'un rayon de vent
+        documenté. Ne concerne que les événements historiques passés : aucune
+        prévision n'entre dans cet état.
+      security:
+        - bearerAuth: []
+      operationId: getEventTrackState
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - {
+            name: at,
+            in: query,
+            required: false,
+            description: 'Date/heure ISO-8601. Par défaut : la dernière observation connue.',
+            schema: { type: string, format: date-time },
+          }
+      responses:
+        '200':
+          description: État observé de la trajectoire
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/TrackState' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/commune-impacts:
+    get:
+      tags: [Événements]
+      summary: Impacts communaux observés à une date/heure (visualisation historique)
+      description: >-
+        Communes affectées passées dont le premier impact observé
+        (`first_affected_at`) est antérieur ou égal à `at`. Une commune n'est
+        donc colorée qu'après le passage réellement documenté du centre, jamais
+        d'avance ni via les alertes prévisionnelles.
+      security:
+        - bearerAuth: []
+      operationId: getEventCommuneImpacts
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - {
+            name: at,
+            in: query,
+            required: false,
+            description: 'Date/heure ISO-8601. Par défaut : la dernière observation connue.',
+            schema: { type: string, format: date-time },
+          }
+      responses:
+        '200':
+          description: Impacts communaux observés
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/CommuneImpactsResult' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /events/{id}/areas:
     get:
       tags: [Événements]
@@ -4530,6 +4612,88 @@ components:
         description: { type: [string, 'null'] }
         circle: { $ref: '#/components/schemas/GeoJsonGeometry' }
         createdAt: { type: string, format: date-time }
+    TrackStatePoint:
+      type: object
+      description: >-
+        Point de trajectoire observée avec rayons de vent documentés (jamais
+        inventés : absents quand aucune source fiable ne les fournit).
+      allOf:
+        - { $ref: '#/components/schemas/EventTrack' }
+        - type: object
+          properties:
+            radius34ktKm: { type: number, nullable: true, description: Rayon des vents ≥ 34 kt (km) }
+            radius50ktKm: { type: number, nullable: true, description: Rayon des vents ≥ 50 kt (km) }
+            radius64ktKm: { type: number, nullable: true, description: Rayon des vents ≥ 64 kt (km) }
+            radiusMaxKm: { type: number, nullable: true, description: Rayon maximal documenté (km) }
+            radiusSource: { type: string, nullable: true }
+            radiusMeasureType: { type: string, nullable: true }
+            radiusQuality: { type: string, nullable: true }
+            dataQuality: { type: string, nullable: true }
+            confidence: { type: number, nullable: true }
+    TrackState:
+      type: object
+      description: État observé de la trajectoire à une date/heure
+      properties:
+        eventId: { type: string, format: uuid }
+        at: { type: string, format: date-time }
+        hasRadiusData: { type: boolean }
+        radiusSource: { type: string, nullable: true }
+        radiusMeasureType: { type: string, nullable: true }
+        radiusMaxKm: { type: number, nullable: true }
+        currentPoint: { $ref: '#/components/schemas/TrackStatePoint' }
+        previousPoints:
+          type: array
+          items: { $ref: '#/components/schemas/TrackStatePoint' }
+        upToAtCount: { type: integer }
+        totalPoints: { type: integer }
+        method: { type: string }
+    ObservedRiskLevel:
+      type: string
+      enum: [FAIBLE, MODERE, ELEVE, TRES_ELEVE, INCONNU]
+      description: Niveau de risque OBSERVÉ (événement passé), différent du risque prévisionnel
+    ImpactState:
+      type: string
+      enum:
+        - NOT_REACHED
+        - CENTER_CROSSED
+        - WIND_IMPACT
+        - RAIN_IMPACT
+        - FLOOD_IMPACT
+        - IMPACT_ESTIMATED
+        - UNKNOWN
+    EventCommuneImpactRow:
+      type: object
+      description: Impact observé documenté d'une commune
+      properties:
+        communeId: { type: string, format: uuid }
+        communeName: { type: string }
+        communeCode: { type: string, nullable: true }
+        districtId: { type: string, format: uuid, nullable: true }
+        districtName: { type: string, nullable: true }
+        firstAffectedAt: { type: string, format: date-time, nullable: true }
+        lastAffectedAt: { type: string, format: date-time, nullable: true }
+        impactState: { $ref: '#/components/schemas/ImpactState' }
+        observedRiskLevel: { $ref: '#/components/schemas/ObservedRiskLevel' }
+        forecastRiskLevel: { type: string, nullable: true }
+        sourceName: { type: string, nullable: true }
+        sourceUrl: { type: string, nullable: true }
+        confidence: { type: number, nullable: true }
+        method: { type: string, nullable: true }
+        notes: { type: string, nullable: true }
+    CommuneImpactsResult:
+      type: object
+      description: Communes dont le premier impact observé est antérieur ou égal à `at`
+      properties:
+        eventId: { type: string, format: uuid }
+        at: { type: string, format: date-time }
+        count: { type: integer }
+        hasRadiusData: { type: boolean }
+        radiusKm: { type: number, nullable: true }
+        radiusSource: { type: string, nullable: true }
+        method: { type: string }
+        communes:
+          type: array
+          items: { $ref: '#/components/schemas/EventCommuneImpactRow' }
     PolygonGeometry:
       type: object
       description: Géométrie GeoJSON (Polygon ou MultiPolygon) représentant la zone d'influence tracée manuellement.

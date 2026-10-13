@@ -7,6 +7,7 @@ import { exposureRepository } from '../repositories/exposure.repository';
 import { exposureService } from './exposure.service';
 import {
   AreaGeoJson,
+  CommuneImpactsResult,
   EventDetail,
   EventListItem,
   EventStatus,
@@ -14,6 +15,7 @@ import {
   ExposureCalculationResult,
   ExposedCommuneRow,
   TrackGeoJson,
+  TrackState,
 } from '../types/event.types';
 import {
   ExposureLayerGeoJson,
@@ -351,35 +353,36 @@ export const eventsService = {
     return eventsRepository.trackGeoJson(id);
   },
 
-  async getTrackState(id: string, atIso: string): Promise<import('../types/event.types').TrackState> {
+  async getTrackState(id: string, atIso: string): Promise<TrackState> {
     await this.ensureExists(id);
     const d = new Date(atIso);
-    if (Number.isNaN(d.getTime())) throw AppError.badRequest('Paramètre at invalide (ISO8601 requis)');
+    if (Number.isNaN(d.getTime()))
+      throw AppError.badRequest('Paramètre at invalide (ISO8601 requis)');
     const repoRes = await eventsRepository.getTrackStateAt(id, d);
-    const cur = repoRes.current as any;
     return {
       eventId: id,
-      at: atIso,
+      at: d.toISOString(),
       hasRadiusData: repoRes.radius.has,
       radiusSource: repoRes.radius.src,
       radiusMeasureType: repoRes.radius.mtype,
       radiusMaxKm: repoRes.radius.rmax,
-      currentPoint: cur,
-      previousPoints: repoRes.previous as any,
+      currentPoint: repoRes.current,
+      previousPoints: repoRes.previous,
       upToAtCount: repoRes.previous.length,
       totalPoints: repoRes.total,
-      method: cur
+      method: repoRes.current
         ? repoRes.radius.has && repoRes.radius.rmax !== null
-          ? `Point observé le plus proche (<= ${atIso}) avec rayon documenté`
-          : `Point observé le plus proche (<= ${atIso}) — rayon non documenté`
+          ? `Point observé le plus proche (<= ${d.toISOString()}) avec rayon documenté`
+          : `Point observé le plus proche (<= ${d.toISOString()}) — rayon non documenté`
         : 'Aucun point observé jusqu’à cette date/heure',
     };
   },
 
-  async getCommuneImpactsAt(id: string, atIso: string): Promise<import('../types/event.types').CommuneImpactsResult> {
+  async getCommuneImpactsAt(id: string, atIso: string): Promise<CommuneImpactsResult> {
     await this.ensureExists(id);
     const d = new Date(atIso);
-    if (Number.isNaN(d.getTime())) throw AppError.badRequest('Paramètre at invalide (ISO8601 requis)');
+    if (Number.isNaN(d.getTime()))
+      throw AppError.badRequest('Paramètre at invalide (ISO8601 requis)');
     return eventsRepository.listCommuneImpactsAt(id, d);
   },
 

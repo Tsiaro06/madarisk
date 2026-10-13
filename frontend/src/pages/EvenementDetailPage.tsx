@@ -29,12 +29,24 @@ import { useActiveEvent } from '@/stores/activeEvent';
 import { EventChronologieTab } from '@/components/events/EventChronologieTab';
 import { EventBulletinsTab } from '@/components/events/EventBulletinsTab';
 import { EventBilanTab } from '@/components/events/EventBilanTab';
+import { EventHistoricalMapTab } from '@/components/events/EventHistoricalMapTab';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
 
 const STATUSES: EventStatus[] = ['BROUILLON', 'PREVISION', 'ACTIF', 'SUIVI', 'CLOTURE'];
 const PHASES: RiskPhase[] = ['AVANT', 'PENDANT', 'APRES', 'RETABLISSEMENT'];
 const LEVELS: RiskLevel[] = ['FAIBLE', 'MODERE', 'ELEVE', 'EXTREME'];
+
+const TAB_DEFS: Array<{
+  key: 'operations' | 'chronologie' | 'bulletins' | 'bilan' | 'historique';
+  label: string;
+}> = [
+  { key: 'operations', label: 'Opérations' },
+  { key: 'chronologie', label: 'Chronologie' },
+  { key: 'bulletins', label: 'Bulletins historiques' },
+  { key: 'historique', label: 'Carte historique' },
+  { key: 'bilan', label: 'Bilan · Évaluation' },
+];
 
 function tone(level: RiskLevel) {
   if (level === 'EXTREME') return 'danger' as const;
@@ -108,9 +120,9 @@ export function EvenementDetailPage() {
   const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
   const { activeEventId } = useActiveEvent();
   const [trackPoint, setTrackPoint] = useState({ lat: '', lng: '', trackType: 'PREVUE' });
-  const [activeTab, setActiveTab] = useState<'operations' | 'chronologie' | 'bulletins' | 'bilan'>(
-    'operations',
-  );
+  const [activeTab, setActiveTab] = useState<
+    'operations' | 'chronologie' | 'bulletins' | 'bilan' | 'historique'
+  >('operations');
   const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
   const [exposedPhase, setExposedPhase] = useState('');
   const [polyForm, setPolyForm] = useState<{ phase: RiskPhase; riskLevel: RiskLevel }>({
@@ -385,25 +397,19 @@ export function EvenementDetailPage() {
       </div>
 
       <div className="flex flex-wrap gap-1 border-b border-line">
-        {(['operations', 'chronologie', 'bulletins', 'bilan'] as const).map((t) => (
+        {TAB_DEFS.filter((t) => t.key !== 'historique' || ev.status === 'CLOTURE').map((t) => (
           <button
-            key={t}
+            key={t.key}
             type="button"
-            onClick={() => setActiveTab(t)}
+            onClick={() => setActiveTab(t.key)}
             className={cn(
               'rounded-t-lg border-b-2 px-4 py-2 text-sm font-medium transition',
-              activeTab === t
+              activeTab === t.key
                 ? 'border-brand bg-brand-soft text-brand-deep'
                 : 'border-transparent text-muted hover:text-ink',
             )}
           >
-            {t === 'operations'
-              ? 'Opérations'
-              : t === 'chronologie'
-                ? 'Chronologie'
-                : t === 'bulletins'
-                  ? 'Bulletins historiques'
-                  : 'Bilan · Évaluation'}
+            {t.label}
           </button>
         ))}
       </div>
@@ -1054,6 +1060,8 @@ export function EvenementDetailPage() {
         <EventChronologieTab eventId={ev.id} />
       ) : activeTab === 'bulletins' ? (
         <EventBulletinsTab eventId={ev.id} />
+      ) : activeTab === 'historique' ? (
+        <EventHistoricalMapTab eventId={ev.id} />
       ) : (
         <EventBilanTab eventId={ev.id} />
       )}

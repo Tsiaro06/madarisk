@@ -31,6 +31,48 @@ const ADMIN_AREA_SOURCE = 'Découpage administratif officiel Madagascar (MadaRis
 const VALID_FROM = '2022-02-04T16:00:00+03:00';
 const VALID_TO = '2022-02-08T00:00:00+03:00';
 
+/** Heure d'atterrissage documentée : 19h00 locales (16h00 UTC) le 5 février 2022 (WMO). */
+const LANDFALL_AT = '2022-02-05T16:00:00Z';
+
+/**
+ * Tolérance géométrique autour de la ligne du centre observé pour qualifier le
+ * statut CENTER_CROSSED d'une commune. Fondée sur la précision documentée de
+ * l'atterrissage (centre à ~14 km de Mananjary, WMO) et sur la résolution du
+ * best track (pas de 6 h, points espacés de ~40-55 km) : sans cette tolérance,
+ * aucune commune des zones traversées ne contiendrait un point de grille.
+ *
+ * La même valeur sert de corridor autour de la ligne du centre pour déterminer
+ * les communes affectées passées (event_commune_impacts) : une commune n'est
+ * marquée CENTER_CROSSED que si son polygone intersecte ce corridor.
+ */
+const CENTER_CROSSING_TOLERANCE_M = 15_000;
+
+/** Source de la ligne d'impact documentée WMO (atterrissage près de Mananjary). */
+const MANANJARY_SOURCE_NAME = 'WMO — Organisation météorologique mondiale';
+const MANANJARY_SOURCE_URL = 'https://wmo.int';
+
+/** Vent soutenu à l'impact près de Mananjary et rafales documentées (WMO). */
+const MANANJARY_LANDFALL_WIND_KMH = 165;
+const MANANJARY_LANDFALL_GUST_KMH = 230;
+
+/**
+ * Méthode de calcul des impacts communaux passés (ligne d'impact). Tout est
+ * documenté : aucune intensité ni coordonnée n'est inventée.
+ */
+const IMPACT_METHOD =
+  'PostGIS : communes dont le polygone intersecte un corridor de 15 km autour ' +
+  'de la ligne du centre observé (best track IBTrACS, pas 6 h) ; ' +
+  "first_affected_at interpolé linéairement le long de la trajectoire (ST_LineLocatePoint du centroid) ; " +
+  'last_affected_at = point du best track le plus proche du centroid ; ' +
+  'risque dérivé du vent soutenu RSMC à ce point (>= 118 km/h TRES_ELEVE, ' +
+  '89-117 ELEVE, < 89 MODERE, vent inconnu INCONNU).';
+
+const MANANJARY_METHOD =
+  "Atterrissage documenté WMO : le centre du cyclone est passé à ~14 km de " +
+  'Mananjary le 5 février 2022 à 16h00 UTC (19h00 locales, heure de Madagascar). ' +
+  'Le best track (point 18:00Z à ~25 km au nord) ne traverse pas le corridor ' +
+  "de 15 km de la commune : ajout explicite sourcé pour ne pas sous-estimer l'impact documenté.";
+
 /**
  * Normalisation côté SQL d'un nom de territoire : minuscules, sans caractère
  * non alphanumérique. Permet de retrouver une région ou un district quelle que
@@ -232,32 +274,33 @@ function normalizeName(name: string): string {
 
 const EVENT_DESCRIPTION = [
   'Événement historique reconstitué : cyclone tropical intense Batsirai (saison 2021-2022).',
-  'Formation du système le 24 janvier 2022, atterrissage le 5 février 2022 vers 17h30 UTC (20h30, heure de Madagascar) à proximité de Nosy Varika, traversée de la Grande Île puis dissipation le 11 février 2022.',
-  'Zones les plus touchées : régions Atsinanana, Vatovavy, Fitovinany et Atsimo Atsinanana.',
+  'Formation du système le 24 janvier 2022 ; atterrissage le 5 février 2022 vers 16h00 UTC (19h00, heure de Madagascar) à proximité de Mananjary, le centre passant à environ 14 km de la ville (WMO). Traversée de la Grande Île les 5-6 février, en ressortant affaibli vers le canal du Mozambique au sud-ouest (best track), puis dissipation observée à partir du 10 février.',
+  'Vent soutenu à l\'impact : environ 165 km/h (WMO, Météo Madagascar) ; rafales jusqu\'à 230 km/h. Les sources donnent des intensités différentes selon l\'heure, l\'instrument et la méthode de calcul : toutes les valeurs sont conservées distinctes, horodatées et sourcées.',
+  'Zones les plus touchées : régions Atsinanana, Vatovavy, Fitovinany et Atsimo Atsinanana. Inondations visibles par satellite jusqu\'au 10 février (NASA Earth Observatory).',
   'Bilans humains (sources datées, estimations divergentes conservées) : environ 112 000 personnes affectées et 62 000 déplacées (situation au 10 février 2022) ; 121 décès (bilan consolidé ONU/OCHA, 14 février 2022), contre un bilan initial de 92 décès (UNICEF).',
-  'Données importées depuis des sources officielles citees : elles decrivent une situation passee et ne correspondent en aucun cas à une situation en temps reel.',
+  'Sources : WMO, NASA Earth Observatory, Météo-France (RSMC La Réunion), NOAA IBTrACS, Météo Madagascar. Données passées, datées et sourcées : elles décrivent une situation historique et ne correspondent en aucun cas à une situation en temps réel.',
 ].join(' ');
 
 const BULLETIN_1 = {
   bulletinRef: 'Bulletin cyclonique — 1er février 2022',
-  title: 'Bulletin cyclonique du 1er février 2022 à 16h00 (heure de Madagascar)',
+  title: 'Bulletin cyclonique du 1er février 2022 (observation de 15h00, heure de Madagascar)',
   publishedAt: '2022-02-01T16:00:00+03:00',
-  observedAt: '2022-02-01T13:00:00Z',
+  observedAt: '2022-02-01T12:00:00Z',
   windKmh: 150,
   gustKmh: 210,
   alertLevel: 'VERTE',
   alertLevels: { global: 'VERTE' },
   positionDescription:
-    'Système encore en mer, à distance de la Grande Île. Le bulletin ne fournit pas de coordonnée : la position officielle associée (best track IBTrACS au 1er février 2022 à 13h00 UTC) est approximativement 17,4°S 60,3°E.',
+    'Système encore en mer, à distance de la Grande Île. Le bulletin ne fournit pas de coordonnée : la position officielle associée est le point du best track IBTrACS au 1er février 2022 à 12h00 UTC (15h00 locales), soit environ 17,2°S 60,1°E.',
   content:
-    "Bulletin du 1er février 2022 (16h00, heure de Madagascar). Vent soutenu moyen estimé à 150 km/h, rafales pouvant atteindre 210 km/h. Vigilance de niveau vert. Le système évolue encore en mer, se déplaçant vers l'ouest-sud-ouest.",
+    "Bulletin du 1er février 2022. Vent soutenu moyen estimé à 150 km/h, rafales pouvant atteindre 210 km/h. Vigilance de niveau vert. Le système évolue encore en mer, se déplaçant vers l'ouest-sud-ouest à environ 18 km/h. Atterrissage alors prévu entre Vatomandry et Mananjary dans la nuit du 5 février.",
 };
 
 const BULLETIN_4 = {
   bulletinRef: 'Bulletin cyclonique — 4 février 2022',
-  title: 'Bulletin cyclonique du 4 février 2022 à 16h00 (heure de Madagascar)',
+  title: 'Bulletin cyclonique du 4 février 2022 (observation de 15h00, heure de Madagascar)',
   publishedAt: BULLETIN_PUBLISHED_AT,
-  observedAt: '2022-02-04T13:00:00Z',
+  observedAt: '2022-02-04T12:00:00Z',
   windKmh: 185,
   gustKmh: 260,
   alertLevel: 'ROUGE',
@@ -267,9 +310,9 @@ const BULLETIN_4 = {
     verte: GREEN_TERRITORIES,
   },
   positionDescription:
-    "Approche de la côte est de Madagascar. Atterrissage prévu le 5 février 2022 entre 11h00 et 17h00 (heure de Madagascar), à proximité de Nosy Varika. Le bulletin ne fournit pas de coordonnée : la position officielle associée (best track IBTrACS au 4 février 2022 à 13h00 UTC) est approximativement 19,8°S 51,6°E.",
+    "Approche de la côte est de Madagascar. Le bulletin ne fournit pas de coordonnée : la position officielle associée est le point du best track IBTrACS au 4 février 2022 à 12h00 UTC (15h00 locales), soit environ 19,4°S 52,5°E. Atterrissage prévu entre Mahanoro et Mananjary le 5 février entre 11h00 et 17h00 (heure de Madagascar).",
   content:
-    "Bulletin du 4 février 2022 (16h00, heure de Madagascar). Vent soutenu moyen estimé à 185 km/h, rafales jusqu'à 260 km/h. Atterrissage prévu le 5 février entre 11h00 et 17h00 sur la côte est, avec un vent prévu d'environ 195 km/h. Alerte rouge pour les régions Atsinanana, Vatovavy, Fitovinany, Atsimo Atsinanana et Analamanga ; alerte jaune pour Bongolava, Menabe, Atsimo Andrefana, Anosy et Androy ; alerte verte pour les districts d'Antalaha, Maroantsetra, Mananara Avaratra, Mandritsara, Andilamena, Tsaratanana et Maevatanana.",
+    "Bulletin du 4 février 2022. Vent soutenu moyen estimé à 185 km/h, rafales jusqu'à 260 km/h. Déplacement vers l'ouest à environ 11 km/h. Atterrissage prévu entre Mahanoro et Mananjary le 5 février entre 11h00 et 17h00 (heure de Madagascar). Alerte rouge pour les régions Atsinanana, Vatovavy, Fitovinany, Atsimo Atsinanana et Analamanga ; alerte jaune pour Bongolava, Menabe, Atsimo Andrefana, Anosy et Androy ; alerte verte pour les districts d'Antalaha, Maroantsetra, Mananara Avaratra, Mandritsara, Andilamena, Tsaratanana et Maevatanana.",
 };
 
 const STATUS_HISTORY: Array<{
@@ -451,6 +494,7 @@ export interface BatsiraiSeedSummary {
   bulletins: number;
   alerts: number;
   reports: number;
+  communeImpacts: number;
   skippedZones: string[];
 }
 
@@ -577,6 +621,7 @@ export async function runBatsiraiSeed(): Promise<BatsiraiSeedSummary> {
     await client.query('DELETE FROM event_status_history WHERE event_id = $1', [eventId]);
     await client.query('DELETE FROM event_areas WHERE event_id = $1', [eventId]);
     await client.query('DELETE FROM weather_bulletins WHERE event_id = $1', [eventId]);
+    await client.query('DELETE FROM event_commune_impacts WHERE event_id = $1', [eventId]);
     await client.query('DELETE FROM alerts WHERE event_id = $1 AND is_historique = true', [eventId]);
     await client.query('DELETE FROM reports WHERE event_id = $1 AND is_historique = true', [eventId]);
 
@@ -632,6 +677,170 @@ export async function runBatsiraiSeed(): Promise<BatsiraiSeedSummary> {
         `  ⚠ Zones non trouvées en base (ignorées) : ${skippedZones.join(', ')}`,
       );
     }
+
+    // 5bis. Impacts communaux observés (dérivés du best track par PostGIS).
+    //   - Communes dont le polygone intersecte le corridor (15 km) autour de la
+    //     ligne du centre observé -> CENTER_CROSSED.
+    //   - first_affected_at : interpolation linéaire de l'heure de passage du
+    //     centre le long de la trajectoire (ST_LineLocatePoint du centroid).
+    //   - last_affected_at / risque observé : point du best track le plus
+    //     proche du centroid ; risque dérivé de son vent soutenu RSMC.
+    //   - Aucune commune n'est affectée AVANT la première observation du centre
+    //     à son emplacement : la couleur n'apparaît qu'après le passage.
+    let communeImpacts = 0;
+    const computedImpacts = await client.query(
+      `INSERT INTO event_commune_impacts
+         (event_id, commune_id, first_affected_at, last_affected_at,
+          impact_state, observed_risk_level, forecast_risk_level,
+          source_name, source_url, confidence, method, notes)
+       WITH observed AS (
+         SELECT id, observed_at, wind_speed_kmh, geom
+         FROM event_tracks
+          WHERE event_id = $1 AND track_type = 'OBSERVEE' AND geom IS NOT NULL
+         ORDER BY observed_at ASC
+       ),
+       track_line AS (
+         SELECT ST_MakeLine(geom ORDER BY observed_at) AS line_geom,
+                ST_MakeLine(geom ORDER BY observed_at)::geography AS line_geog
+         FROM observed
+       ),
+       fracs AS (
+         SELECT o.id, o.observed_at,
+                LEAST(1.0, GREATEST(0.0, ST_LineLocatePoint(tl.line_geom, o.geom)))::float8 AS frac
+         FROM observed o
+         CROSS JOIN track_line tl
+       ),
+       candidates AS (
+         SELECT c.id AS commune_id,
+                c.centroid AS centroid_geom,
+                tl.line_geom,
+                LEAST(1.0, GREATEST(0.0, ST_LineLocatePoint(tl.line_geom, c.centroid)))::float8 AS loc
+         FROM communes c
+         CROSS JOIN track_line tl
+         WHERE ST_DWithin(c.geom::geography, tl.line_geog, $2)
+       ),
+       bracket AS (
+         SELECT cand.commune_id,
+                b0.observed_at AS t0,
+                b1.observed_at AS t1,
+                b0.frac AS f0,
+                b1.frac AS f1,
+                cand.loc
+         FROM candidates cand
+         CROSS JOIN LATERAL (
+           SELECT f.observed_at, f.frac FROM fracs f
+            WHERE f.frac <= cand.loc
+            ORDER BY f.frac DESC
+            LIMIT 1
+         ) b0
+         CROSS JOIN LATERAL (
+           SELECT f.observed_at, f.frac FROM fracs f
+            WHERE f.frac >= cand.loc
+            ORDER BY f.frac ASC
+            LIMIT 1
+         ) b1
+       ),
+       crossing AS (
+         SELECT commune_id,
+                CASE
+                  WHEN f1 - f0 = 0 THEN t0
+                  ELSE t0 + (t1 - t0) * ((loc - f0) / (f1 - f0))
+                END AS first_affected_at
+         FROM bracket
+       ),
+       nearby AS (
+         SELECT DISTINCT ON (cand.commune_id)
+                cand.commune_id,
+                p.observed_at AS nearest_at,
+                p.wind_speed_kmh AS wind_kmh
+         FROM candidates cand
+         CROSS JOIN observed p
+         ORDER BY cand.commune_id,
+                  ST_Distance(cand.centroid_geom::geography, p.geom::geography) ASC
+       )
+       SELECT $1,
+              x.commune_id,
+              x.first_affected_at,
+              n.nearest_at,
+              'CENTER_CROSSED',
+              CASE
+                WHEN n.wind_kmh IS NULL THEN 'INCONNU'
+                WHEN n.wind_kmh >= 118 THEN 'TRES_ELEVE'
+                WHEN n.wind_kmh >= 89 THEN 'ELEVE'
+                ELSE 'MODERE'
+              END,
+              NULL, -- forecast_risk_level : aucun, événement passé observé.
+              $3,  -- source_name
+              $4,  -- source_url
+              NULL, -- confidence : non évaluée.
+              $5,  -- method
+              NULL  -- notes
+       FROM crossing x
+       JOIN nearby n ON n.commune_id = x.commune_id
+       ON CONFLICT (event_id, commune_id) DO NOTHING`,
+      [eventId, CENTER_CROSSING_TOLERANCE_M, EVENT_SOURCE_NAME, EVENT_SOURCE_URL, IMPACT_METHOD],
+    );
+    communeImpacts += computedImpacts.rowCount ?? 0;
+
+    // Ligne d'impact WMO explicite : la commune de Mananjary. Le centre étant
+    // passé à ~14 km de la ville (WMO), le best track (point 18:00Z ~25 km au
+    // nord) place la commune hors du corridor de 15 km : elle ne serait pas
+    // colorée sans cette ligne d'impact documentée.
+    const mananjary = await client.query<{ id: string }>(
+      `SELECT c.id
+         FROM communes c
+         JOIN districts d ON d.id = c.district_id
+        WHERE c.name = $1 AND d.name = $2
+        ORDER BY c.admin_code ASC NULLS LAST
+        LIMIT 1`,
+      ['Mananjary', 'Mananjary'],
+    );
+    let mananjaryInserted = false;
+    if (mananjary.rows.length > 0) {
+      const explicit = await client.query(
+        `INSERT INTO event_commune_impacts
+           (event_id, commune_id, first_affected_at, last_affected_at,
+            impact_state, observed_risk_level, forecast_risk_level,
+            source_name, source_url, confidence, method, notes)
+         VALUES ($1, $2, $3, $3, 'CENTER_CROSSED', 'TRES_ELEVE', NULL,
+                 $4, $5, NULL, $6,
+                 $7)
+         ON CONFLICT (event_id, commune_id) DO UPDATE SET
+           first_affected_at = EXCLUDED.first_affected_at,
+           last_affected_at = EXCLUDED.last_affected_at,
+           impact_state = EXCLUDED.impact_state,
+           observed_risk_level = EXCLUDED.observed_risk_level,
+           source_name = EXCLUDED.source_name,
+           source_url = EXCLUDED.source_url,
+           method = EXCLUDED.method,
+           notes = EXCLUDED.notes,
+           updated_at = now()`,
+        [
+          eventId,
+          mananjary.rows[0].id,
+          LANDFALL_AT,
+          MANANJARY_SOURCE_NAME,
+          MANANJARY_SOURCE_URL,
+          MANANJARY_METHOD,
+          `Atterrissage WMO : vent soutenu ≈ ${MANANJARY_LANDFALL_WIND_KMH} km/h, rafales jusqu'à ${MANANJARY_LANDFALL_GUST_KMH} km/h. La commune est marquée affectée uniquement à partir de ${LANDFALL_AT} (16h00 UTC / 19h00 locales).`,
+        ],
+      );
+      mananjaryInserted = (explicit.rowCount ?? 0) > 0;
+    } else {
+      console.log(
+        '  ⚠ Commune « Mananjary » (district de Mananjary) introuvable : ligne d\'impact WMO non insérée.',
+      );
+    }
+    // Comptage final robuste (idempotent, évite tout double comptage entre le
+    // corridor et la ligne WMO explicite).
+    const impactCount = await client.query<{ n: number }>(
+      `SELECT COUNT(*)::int AS n FROM event_commune_impacts WHERE event_id = $1`,
+      [eventId],
+    );
+    communeImpacts = impactCount.rows[0]?.n ?? 0;
+    console.log(
+      `  ✓ Impacts communaux observés : ${communeImpacts} (corridor ${computedImpacts.rowCount ?? 0} + WMO Mananjary ${mananjaryInserted ? 1 : 0}).`,
+    );
 
     // 6. Bulletins météo historiques.
     const bulletins = [BULLETIN_1, BULLETIN_4];
@@ -727,7 +936,16 @@ export async function runBatsiraiSeed(): Promise<BatsiraiSeedSummary> {
       console.log(`\n--- Import terminé : événement ${EVENT_CODE} mis à jour ---\n`);
     }
 
-    return { eventId, tracks, areas, bulletins: bulletins.length, alerts, reports: REPORTS.length, skippedZones };
+    return {
+      eventId,
+      tracks,
+      areas,
+      bulletins: bulletins.length,
+      alerts,
+      reports: REPORTS.length,
+      communeImpacts,
+      skippedZones,
+    };
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('\nImport échoué:', err instanceof Error ? err.message : err);

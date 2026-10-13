@@ -12,6 +12,7 @@ let eventId: string;
 let bulletinId: string;
 let historicalAlertId: string;
 let liveAlertId: string;
+let communeId: string;
 
 function makeEmail(role: string): string {
   return `historical_${role.toLowerCase()}_${Date.now()}@madarisk.test`;
@@ -109,12 +110,52 @@ beforeAll(async () => {
              'ONU/OCHA', true)`,
     [admin.id, eventId],
   );
+
+  // Trajectoire observée minimale (2 points à 6 h d'écart) + 1 point prévu,
+  // pour vérifier que seuls les points observés composent l'état historique.
+  await db.query(
+    `INSERT INTO event_tracks
+       (event_id, observed_at, track_type, latitude, longitude, wind_speed_kmh, geom)
+     VALUES
+       ($1, '2022-02-05T12:00:00Z', 'OBSERVEE', -20.8, 49.4, 167,
+        ST_SetSRID(ST_MakePoint(49.4, -20.8), 4326)),
+       ($1, '2022-02-05T18:00:00Z', 'OBSERVEE', -21.0, 48.3, 148,
+        ST_SetSRID(ST_MakePoint(48.3, -21.0), 4326)),
+       ($1, '2022-02-05T18:30:00Z', 'PREVUE', -21.2, 47.9, 160,
+        ST_SetSRID(ST_MakePoint(47.9, -21.2), 4326))`,
+    [eventId],
+  );
+
+  // Deux communes réelles pour la ligne d'impact : l'une CENTER_CROSSED
+  // (affectée à partir du passage documenté), l'autre NOT_REACHED (jamais
+  // renvoyée par l'API, même après le passage).
+  const communes = await db.query<{ id: string }>(
+    `SELECT id FROM communes ORDER BY created_at ASC LIMIT 2`,
+  );
+  if (communes.rows.length < 2) {
+    throw new Error('Moins de deux communes en base : impossible de tester les impacts communaux');
+  }
+  communeId = communes.rows[0].id;
+  const untouchedCommuneId = communes.rows[1].id;
+
+  await db.query(
+    `INSERT INTO event_commune_impacts
+       (event_id, commune_id, first_affected_at, last_affected_at, impact_state,
+        observed_risk_level, source_name, method)
+     VALUES
+       ($1, $2, '2022-02-05T16:00:00Z', '2022-02-05T16:00:00Z', 'CENTER_CROSSED',
+        'TRES_ELEVE', 'Test WMO', 'Ligne d''impact de test'),
+       ($1, $3, NULL, NULL, 'NOT_REACHED', 'INCONNU', 'Test', 'Jamais atteinte')`,
+    [eventId, communeId, untouchedCommuneId],
+  );
 });
 
 afterAll(async () => {
   await db.query('DELETE FROM reports WHERE event_id = $1', [eventId]);
   await db.query('DELETE FROM alerts WHERE event_id = $1', [eventId]);
   await db.query('DELETE FROM weather_bulletins WHERE event_id = $1', [eventId]);
+  await db.query('DELETE FROM event_commune_impacts WHERE event_id = $1', [eventId]);
+  await db.query('DELETE FROM event_tracks WHERE event_id = $1', [eventId]);
   await db.query('DELETE FROM hazard_events WHERE id = $1', [eventId]);
   await db.query('DELETE FROM user_sessions WHERE user_id = $1', [admin.id]);
   await db.query('DELETE FROM audit_logs WHERE user_id = $1', [admin.id]);
@@ -217,5 +258,148 @@ describe('Rapports de situation historiques', () => {
     const report = reports[0];
     expect(report.isHistorique).toBe(true);
     expect(report.source).toBe('ONU/OCHA');
+  });
+});
+
+describe('État de trajectoire historique (track-state)', () => {
+  const base = () => `/api/v1/events/${eventId}/track-state`;
+
+  it('refuse un accès non authentifié (401)', async () => {
+    const res = await request(app).get(base());
+    expect(res.status).toBe(401);
+  });
+
+  it('rejette un paramètre at invalide (422)', async () => {
+    const res = await request(app)
+      .get(base())
+      .query({ at: '5 février' })
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(422);
+  });
+
+  it('rejette une date sans heure (422)', async () => {
+    const res = await request(app)
+      .get(base())
+      .query({ at: '2022-02-05' })
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(422);
+  });
+
+  it('renvoie 404 pour un événement inconnu', async () => {
+    const res = await request(app)
+      .get('/api/v1/events/00000000-0000-0000-0000-000000000000/track-state')
+      .query({ at: '2022-02-05T16:00:00Z' })
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(404);
+  });
+
+  it('ne compose l’état qu’avec des points observés (jamais prévus)', async () => {
+    const res = await request(app).get(base()).set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    const st = res.body.data;
+    expect(st.totalPoints).toBe(2); // 2 OBSERVEE, la PREVUE est exclue
+    expect(st.currentPoint.trackType).toBe('OBSERVEE');
+    expect(st.currentPoint.observedAt).toBe('2022-02-05T18:00:00.000Z');
+  });
+
+  it('renvoie le dernier point observé ≤ at', async () => {
+    const res = await request(app)
+      .get(base())
+      .query({ at: '2022-02-05T13:00:00Z' })
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    const st = res.body.data;
+    expect(st.upToAtCount).toBe(1);
+    expect(st.currentPoint.observedAt).toBe('2022-02-05T12:00:00.000Z');
+    expect(st.currentPoint.windSpeedKmh).toBe(167);
+    expect(st.previousPoints).toHaveLength(1);
+  });
+
+  it('inclut le point exactement égal à at', async () => {
+    const res = await request(app)
+      .get(base())
+      .query({ at: '2022-02-05T12:00:00Z' })
+      .set('Authorization', `Bearer ${admin.token}`);
+    const st = res.body.data;
+    expect(st.upToAtCount).toBe(1);
+    expect(st.currentPoint.observedAt).toBe('2022-02-05T12:00:00.000Z');
+  });
+
+  it('renvoie tous les points après le dernier passage observé', async () => {
+    const res = await request(app)
+      .get(base())
+      .query({ at: '2022-02-06T00:00:00Z' })
+      .set('Authorization', `Bearer ${admin.token}`);
+    const st = res.body.data;
+    expect(st.upToAtCount).toBe(2);
+    expect(st.currentPoint.observedAt).toBe('2022-02-05T18:00:00.000Z');
+    expect(st.hasRadiusData).toBe(false); // aucun rayon documenté n'est inventé
+  });
+});
+
+describe('Impacts communaux historiques (commune-impacts)', () => {
+  const base = () => `/api/v1/events/${eventId}/commune-impacts`;
+
+  it('refuse un accès non authentifié (401)', async () => {
+    const res = await request(app).get(base());
+    expect(res.status).toBe(401);
+  });
+
+  it('rejette un paramètre at invalide (422)', async () => {
+    const res = await request(app)
+      .get(base())
+      .query({ at: 'hier' })
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(422);
+  });
+
+  it('ne colore aucune commune avant le passage observé', async () => {
+    const res = await request(app)
+      .get(base())
+      .query({ at: '2022-02-05T15:59:00Z' })
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    const data = res.body.data;
+    const ids = (data.communes as Array<{ communeId: string }>).map((c) => c.communeId);
+    expect(ids).not.toContain(communeId);
+  });
+
+  it('colore la commune à partir de son first_affected_at', async () => {
+    const res = await request(app)
+      .get(base())
+      .query({ at: '2022-02-05T16:00:00Z' })
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    const data = res.body.data;
+    const rows = data.communes as Array<{
+      communeId: string;
+      impactState: string;
+      firstAffectedAt: string | null;
+    }>;
+    const hit = rows.find((c) => c.communeId === communeId);
+    expect(hit).toBeTruthy();
+    expect(hit?.impactState).toBe('CENTER_CROSSED');
+    // Série ISO-8601 (jamais la forme "Fri Feb 05 ..." de String(Date)).
+    expect(hit?.firstAffectedAt).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
+  });
+
+  it('renvoie la commune après le passage également (bornes incluses)', async () => {
+    const res = await request(app)
+      .get(base())
+      .query({ at: '2022-02-05T18:00:00Z' })
+      .set('Authorization', `Bearer ${admin.token}`);
+    const rows = res.body.data.communes as Array<{ communeId: string }>;
+    expect(rows.map((c) => c.communeId)).toContain(communeId);
+  });
+
+  it('n’inclut jamais une commune NOT_REACHED', async () => {
+    const res = await request(app)
+      .get(base())
+      .query({ at: '2022-02-06T00:00:00Z' })
+      .set('Authorization', `Bearer ${admin.token}`);
+    const rows = res.body.data.communes as Array<{ communeId: string; impactState: string }>;
+    for (const c of rows) {
+      expect(c.impactState).not.toBe('NOT_REACHED');
+    }
   });
 });

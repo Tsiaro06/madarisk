@@ -14,6 +14,7 @@ import {
   eventIdCommuneIdParamsSchema,
   createTrackSchema,
   listTracksQuerySchema,
+  historicalAtQuerySchema,
   calculateAreaSchema,
   createPolygonAreaSchema,
   calculateExposureSchema,
@@ -84,26 +85,20 @@ router.get(
 );
 
 router.get(
-  '/:id/track-state',
+  '/:id/track-geojson',
   validate({ params: eventIdParamsSchema }),
+  asyncHandler(eventsController.getTrackGeoJson),
+);
+
+router.get(
+  '/:id/track-state',
+  validate({ params: eventIdParamsSchema, query: historicalAtQuerySchema }),
   asyncHandler(eventsController.getTrackState),
 );
 
 router.get(
   '/:id/commune-impacts',
-  validate({ params: eventIdParamsSchema }),
-  asyncHandler(eventsController.getCommuneImpactsAt),
-);
-
-router.get(
-  '/:id/track-state',
-  validate({ params: eventIdParamsSchema }),
-  asyncHandler(eventsController.getTrackState),
-);
-
-router.get(
-  '/:id/commune-impacts',
-  validate({ params: eventIdParamsSchema }),
+  validate({ params: eventIdParamsSchema, query: historicalAtQuerySchema }),
   asyncHandler(eventsController.getCommuneImpactsAt),
 );
 

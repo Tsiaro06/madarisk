@@ -274,6 +274,84 @@ export interface EventTrack {
   trackType: 'OBSERVEE' | 'PREVUE';
   latitude: number;
   longitude: number;
+  windSpeedKmh: number | null;
+  gustSpeedKmh: number | null;
+  pressureHpa: number | null;
+  precipitationMm: number | null;
+  movementDirection: string | null;
+  movementSpeedKmh: number | null;
+  createdAt: string;
+}
+
+/**
+ * État documenté d'un événement historique (Batsirai etc.) : communes
+ * affectées après le passage réellement observé, jamais d'avance.
+ */
+export type ImpactState =
+  | 'NOT_REACHED'
+  | 'CENTER_CROSSED'
+  | 'WIND_IMPACT'
+  | 'RAIN_IMPACT'
+  | 'FLOOD_IMPACT'
+  | 'IMPACT_ESTIMATED'
+  | 'UNKNOWN';
+
+/** Risque OBSERVÉ (événement passé) — distinct du risque prévisionnel. */
+export type ObservedRiskLevel = 'FAIBLE' | 'MODERE' | 'ELEVE' | 'TRES_ELEVE' | 'INCONNU';
+
+export interface TrackStatePoint extends EventTrack {
+  radius34ktKm: number | null;
+  radius50ktKm: number | null;
+  radius64ktKm: number | null;
+  radiusMaxKm: number | null;
+  radiusSource: string | null;
+  radiusMeasureType: string | null;
+  radiusQuality: string | null;
+  dataQuality: string | null;
+  confidence: number | null;
+}
+
+export interface TrackState {
+  eventId: string;
+  at: string;
+  hasRadiusData: boolean;
+  radiusSource: string | null;
+  radiusMeasureType: string | null;
+  radiusMaxKm: number | null;
+  currentPoint: TrackStatePoint | null;
+  previousPoints: TrackStatePoint[];
+  upToAtCount: number;
+  totalPoints: number;
+  method: string;
+}
+
+export interface EventCommuneImpactRow {
+  communeId: string;
+  communeName: string;
+  communeCode: string | null;
+  districtId: string | null;
+  districtName: string | null;
+  firstAffectedAt: string | null;
+  lastAffectedAt: string | null;
+  impactState: ImpactState;
+  observedRiskLevel: ObservedRiskLevel;
+  forecastRiskLevel: string | null;
+  sourceName: string | null;
+  sourceUrl: string | null;
+  confidence: number | null;
+  method: string | null;
+  notes: string | null;
+}
+
+export interface CommuneImpactsResult {
+  eventId: string;
+  at: string;
+  count: number;
+  hasRadiusData: boolean;
+  radiusKm: number | null;
+  radiusSource: string | null;
+  method: string;
+  communes: EventCommuneImpactRow[];
 }
 
 export interface AlertListRow {

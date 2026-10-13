@@ -144,6 +144,19 @@ export const listTracksQuerySchema = z.object({
   trackType: trackTypeEnum.optional(),
 });
 
+/**
+ * Paramètre `at` des endpoints historiques (état de trajectoire, impacts
+ * communaux) : date/heure ISO-8601. Rejetée si absente du format ou invalide
+ * (ex. « 5 février » ne doit pas être acceptée telle quelle).
+ */
+export const historicalAtQuerySchema = z.object({
+  at: z
+    .string()
+    .datetime({ offset: true })
+    .optional()
+    .describe('Date/heure ISO-8601, ex. 2022-02-05T16:00:00Z'),
+});
+
 export const calculateAreaSchema = z.object({
   phase: riskPhaseEnum,
   riskLevel: riskLevelEnum,

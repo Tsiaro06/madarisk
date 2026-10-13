@@ -10,6 +10,7 @@ import type {
   AlertListRow,
   AuthTokens,
   CommuneDetail,
+  CommuneImpactsResult,
   CommuneListItem,
   DashboardSummary,
   DistrictListItem,
@@ -17,13 +18,14 @@ import type {
   EventListItem,
   EventsTimelineEntry,
   EventTimeline,
-  EventTrack,
   ExposedCommuneRow,
   PriorityCommune,
   RiskAssessment,
   RiskDistribution,
   SanitizedUser,
   TerritorySearchResult,
+  TrackState,
+  TrackStatePoint,
   WeatherForecastData,
   WeatherObservation,
 } from "@/types";
@@ -175,9 +177,15 @@ export const eventsApi = {
     apiPatch(`/events/${id}/status`, { status }),
   history: (id: string) => apiGet<EventTimeline>(`/events/${id}/history`),
   remove: (id: string) => apiDelete(`/events/${id}`),
-  tracks: (id: string) => apiGet<EventTrack[]>(`/events/${id}/tracks`),
+  tracks: (id: string) => apiGet<TrackStatePoint[]>(`/events/${id}/tracks`),
   trackGeoJson: (id: string) =>
     apiGet<FeatureCollection>(`/events/${id}/track-geojson`),
+  /** État observé de la trajectoire à une date/heure (points OBSERVEE ≤ at). */
+  trackState: (id: string, params?: { at?: string }) =>
+    apiGet<TrackState>(`/events/${id}/track-state`, { params }),
+  /** Communes affectées documentées à une date/heure (premier impact ≤ at). */
+  communeImpacts: (id: string, params?: { at?: string }) =>
+    apiGet<CommuneImpactsResult>(`/events/${id}/commune-impacts`, { params }),
   addTrack: (id: string, body: unknown) =>
     apiPost(`/events/${id}/tracks`, body),
   areas: (id: string) => apiGet<FeatureCollection>(`/events/${id}/areas`),
