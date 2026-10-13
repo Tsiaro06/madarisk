@@ -24,6 +24,11 @@ vi.mock('react-leaflet', async () => {
             : 0,
       }),
     CircleMarker: () => React.createElement('div', { 'data-testid': 'track-point' }),
+    Polygon: ({ pathOptions }: { pathOptions?: { className?: string } }) =>
+      React.createElement('div', {
+        'data-testid':
+          pathOptions?.className === 'madarisk-wind-swath' ? 'wind-swath-belt' : 'polygon',
+      }),
     Marker: ({
       children,
       position,
@@ -357,13 +362,15 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
         // Point muet : aucune emprise inventée pour lui.
         makeTrackPoint('p2', 'OBSERVEE', '2026-04-01T06:00:00.000Z', -20.9, 48.4),
         makeTrackPoint('p3', 'OBSERVEE', '2026-04-01T12:00:00.000Z', -21.4, 47.6, {
-          radius50ktKm: 164.8,
+          radius50ktKm: 250,
         }),
       ],
     });
 
-    // Une emprise d'ensemble (2 cercles documentés) + l'anneau de la lecture animée.
+    // Une emprise d'ensemble (2 cercles documentés reliés par 1 entre-deux continu)
+    // + l'anneau de la lecture animée.
     expect(screen.getAllByTestId('wind-swath-circle')).toHaveLength(2);
+    expect(screen.getAllByTestId('wind-swath-belt')).toHaveLength(1);
     expect(screen.getAllByTestId('cyclone-radius')).toHaveLength(1);
   });
 
@@ -374,11 +381,15 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
         makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2, {
           radius34ktKm: 368.5,
         }),
+        makeTrackPoint('p2', 'OBSERVEE', '2026-04-01T06:00:00.000Z', -21.0, 48.6, {
+          radius34ktKm: 300,
+        }),
       ],
     });
 
     expect(screen.getByText(/Emprise documentée des vents/)).toBeTruthy();
-    expect(screen.getAllByTestId('wind-swath-circle')).toHaveLength(1);
+    expect(screen.getAllByTestId('wind-swath-circle')).toHaveLength(2);
+    expect(screen.getAllByTestId('wind-swath-belt')).toHaveLength(1);
 
     await user.click(screen.getByRole('button', { name: 'Afficher les couches' }));
     await user.click(
@@ -386,6 +397,7 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
     );
 
     expect(screen.queryAllByTestId('wind-swath-circle')).toHaveLength(0);
+    expect(screen.queryAllByTestId('wind-swath-belt')).toHaveLength(0);
     expect(screen.queryByText(/Emprise documentée des vents/)).toBeNull();
     // L'anneau de la lecture animée reste affiché : seule l'emprise d'ensemble part.
     expect(screen.getByTestId('cyclone-radius')).toBeTruthy();

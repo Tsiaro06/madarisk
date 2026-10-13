@@ -23,6 +23,13 @@ vi.mock('react-leaflet', async () => {
       }),
     CircleMarker: () => React.createElement('div', { 'data-testid': 'track-point' }),
     Polyline: () => React.createElement('div', { 'data-testid': 'polyline' }),
+    // Comme pour Circle : l'entre-deux de l'emprise documentée porte la classe
+    // dédiée, les autres polygones de la carte sont distingués.
+    Polygon: ({ pathOptions }: { pathOptions?: { className?: string } }) =>
+      React.createElement('div', {
+        'data-testid':
+          pathOptions?.className === 'madarisk-wind-swath' ? 'wind-swath-belt' : 'polygon',
+      }),
     // L'anneau de la lecture animée porte un contour ; les cercles de l'emprise
     // documentée n'en ont pas (className dédiée) : on les distingue ici.
     Circle: ({ pathOptions }: { pathOptions?: { className?: string } }) =>
@@ -522,6 +529,9 @@ describe('EventHistoricalMapTab', () => {
     await waitFor(() => {
       expect(screen.getAllByTestId('wind-swath-circle')).toHaveLength(2);
     });
+    // Les deux mesures publiées sont reliées : l'emprise est continue, pas une
+    // suite de cercles isolés.
+    expect(screen.getAllByTestId('wind-swath-belt')).toHaveLength(1);
     expect(screen.getByText(/Emprise documentée des vents \(2 points\)/)).toBeTruthy();
   });
 
@@ -535,18 +545,27 @@ describe('EventHistoricalMapTab', () => {
         longitude: 49.2,
         radius34ktKm: 368.5,
       }),
+      point({
+        id: 'p2',
+        observedAt: '2022-02-05T18:00:00.000Z',
+        latitude: -21.3,
+        longitude: 48.3,
+        radius34ktKm: 300,
+      }),
     ]);
     renderTab();
 
     await waitFor(() => {
       expect(screen.getAllByTestId('wind-swath-circle').length).toBeGreaterThan(0);
     });
+    expect(screen.getAllByTestId('wind-swath-belt')).toHaveLength(1);
 
     await user.click(screen.getByRole('checkbox', { name: /Emprise documentée des vents/ }));
 
     await waitFor(() => {
       expect(screen.queryAllByTestId('wind-swath-circle')).toHaveLength(0);
     });
+    expect(screen.queryAllByTestId('wind-swath-belt')).toHaveLength(0);
     // Le marqueur du cyclone reste affiché : seule l'emprise est retirée.
     expect(screen.getByTestId('cyclone-marker')).toBeTruthy();
   });

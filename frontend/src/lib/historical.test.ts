@@ -4,6 +4,7 @@ import {
   clockBounds,
   deriveRiskFromWind,
   describeMovementDirection,
+  documentedWindBelts,
   documentedWindCircles,
   documentedWindRadius,
   filterImpactsAt,
@@ -21,6 +22,37 @@ import {
   windRadiusShortLabel,
 } from './historical';
 import type { TrackStatePoint } from '@/types';
+
+/** Repère local (km) de l'emprise : ancré sur un point, échelle du cos de sa latitude. */
+function localKm(origin: [number, number], point: [number, number]) {
+  const scale = Math.cos((origin[0] * Math.PI) / 180);
+  return {
+    x: (point[1] - origin[1]) * 111.32 * scale,
+    y: (point[0] - origin[0]) * 110.574,
+  };
+}
+
+/** Écart d'un sommet au centre `point`, mesuré dans le repère local de l'emprise. */
+function offsetTo(origin: [number, number], point: [number, number], vertex: [number, number]) {
+  const center = localKm(origin, point);
+  const corner = localKm(origin, vertex);
+  return Math.hypot(corner.x - center.x, corner.y - center.y);
+}
+
+/** Signe des quatre virages du contour : constant = quadrilatère non croisé. */
+function turnSigns(positions: Array<[number, number]>): number[] {
+  const scale = Math.cos((positions[0][0] * Math.PI) / 180);
+  const points = positions.map(([lat, lon]) => ({ x: lon * scale, y: lat }));
+  return points.map((_, index) => {
+    const previous = points[(index + points.length - 1) % points.length];
+    const current = points[index];
+    const next = points[(index + 1) % points.length];
+    const cross =
+      (current.x - previous.x) * (next.y - current.y) -
+      (current.y - previous.y) * (next.x - current.x);
+    return Math.sign(cross);
+  });
+}
 
 describe('deriveRiskFromWind', () => {
   const cases: Array<[number | null, string]> = [
@@ -317,6 +349,54 @@ describe('rayon de vent et mesures manquantes', () => {
       { ...base, id: 'p1', radiusMaxKm: 250, radius34ktKm: 400, radius50ktKm: 164.8 },
     ]);
     expect(circle).toMatchObject({ radiusKm: 250, kind: 'max' });
+  });
+
+  it('relie deux mesures consécutives par leurs tangentes extérieures', () => {
+    const p1: [number, number] = [-20.5, 49.2];
+    const p2: [number, number] = [-21.3, 48.3];
+    const circles = documentedWindCircles([
+      { ...base, id: 'p1', latitude: p1[0], longitude: p1[1], radius34ktKm: 300 },
+      { ...base, id: 'p2', latitude: p2[0], longitude: p2[1], radius34ktKm: 200 },
+    ]);
+    const [belt] = documentedWindBelts(circles);
+
+    expect(belt.id).toBe('p1→p2');
+    expect(belt.positions).toHaveLength(4);
+
+    // Chaque sommet de tangence est à exactement le rayon publié de son centre :
+    // la liaison ne fabrique aucune largeur, elle touche les deux cercles.
+    expect(offsetTo(p1, p1, belt.positions[0])).toBeCloseTo(300, 3);
+    expect(offsetTo(p1, p1, belt.positions[3])).toBeCloseTo(300, 3);
+    expect(offsetTo(p1, p2, belt.positions[1])).toBeCloseTo(200, 3);
+    expect(offsetTo(p1, p2, belt.positions[2])).toBeCloseTo(200, 3);
+
+    // Quadrilatère convexe, donc jamais croisé : les quatre virages tournent du
+    // même côté (sinon la bande se recouvrirait en papillon).
+    expect(turnSigns(belt.positions)).toEqual([1, 1, 1, 1]);
+  });
+
+  it('relie chaque paire documentée, dans l’ordre de la trajectoire', () => {
+    const circles = documentedWindCircles([
+      { ...base, id: 'p1', latitude: -20.5, longitude: 49.2, radius34ktKm: 120 },
+      { ...base, id: 'p2', latitude: -21.0, longitude: 48.6, radius34ktKm: 140 },
+      { ...base, id: 'p3', latitude: -21.6, longitude: 48.0, radius34ktKm: 160 },
+    ]);
+    expect(documentedWindBelts(circles).map((belt) => belt.id)).toEqual(['p1→p2', 'p2→p3']);
+  });
+
+  it('ne relie rien avec une seule mesure, ni quand un cercle contient l’autre', () => {
+    const single = documentedWindCircles([
+      { ...base, id: 'p1', latitude: -20.5, longitude: 49.2, radius34ktKm: 300 },
+    ]);
+    expect(documentedWindBelts(single)).toEqual([]);
+
+    // Petit disque entièrement contenu dans le grand : les tangentes extérieures
+    // n'existent pas, et rien ne doit être inventé pour les forcer.
+    const nested = documentedWindCircles([
+      { ...base, id: 'p1', latitude: -20.5, longitude: 49.2, radius34ktKm: 300 },
+      { ...base, id: 'p2', latitude: -20.55, longitude: 49.15, radius34ktKm: 20 },
+    ]);
+    expect(documentedWindBelts(nested)).toEqual([]);
   });
 
   it('affiche « non disponible » plutôt que zéro', () => {

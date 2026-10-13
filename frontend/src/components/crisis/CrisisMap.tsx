@@ -215,8 +215,9 @@ function Legend({
             </ul>
             {hasWindSwath ? (
               <p className="mt-1.5 border-t border-line pt-1.5 text-[10px] leading-snug text-muted">
-                L&apos;emprise des vents est l&apos;union des rayons publiés par la source, point par
-                point : ce n&apos;est pas un cône d&apos;incertitude.
+                Emprise documentée : chaque cercle reprend le rayon publié, et deux mesures
+                consécutives sont reliées par leurs tangentes. Aucune largeur n&apos;est mesurée
+                entre deux points datés — ce n&apos;est pas un cône d&apos;incertitude.
               </p>
             ) : null}
           </div>

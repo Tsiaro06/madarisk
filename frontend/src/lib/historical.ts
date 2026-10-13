@@ -376,6 +376,80 @@ export function documentedWindCircles(
   return circles;
 }
 
+/** Kilomètres par degré : repère local suffisant à l'échelle d'un intervalle de 6 h. */
+const KM_PER_DEG_LAT = 110.574;
+const KM_PER_DEG_LON_EQUATOR = 111.32;
+
+/** Entre-deux continu entre deux mesures : les deux tangentes extérieures. */
+export interface WindSwathBelt {
+  id: string;
+  /**
+   * Quatre sommets [lat, lon] dans l'ordre du contour : deux points de tangence
+   * sur le premier cercle, deux sur le second.
+   */
+  positions: Array<[number, number]>;
+}
+
+/**
+ * « Entre-deux » documenté : pour deux cercles publiés consécutifs, l'enveloppe
+ * convexe des deux disques, c'est-à-dire la bande comprise entre leurs deux
+ * tangentes extérieures. C'est elle qui relie les mesures au lieu de laisser
+ * une suite de cercles isolés là où les rayons sont petits devant l'écart entre
+ * points (début de trajectoire).
+ *
+ * Rien n'est inventé de plus que la continuité du phénomène d'un point daté au
+ * suivant : les deux tangentes touchent les cercles publiés, et les sommets
+ * sont à exactement `radiusKm` de leur centre — aucune largeur intermédiaire
+ * n'est calculée.
+ *
+ * Les tangentes extérieures n'existent pas quand un disque contient l'autre
+ * (distance ≤ |r1 − r2|) : la paire est alors ignorée, la plus grande mesure
+ * couvrant déjà l'union.
+ */
+export function documentedWindBelts(
+  circles: readonly DocumentedWindCircle[],
+): WindSwathBelt[] {
+  const belts: WindSwathBelt[] = [];
+  for (let index = 0; index < circles.length - 1; index += 1) {
+    const from = circles[index];
+    const to = circles[index + 1];
+    const scale = Math.cos((from.latitude * Math.PI) / 180);
+    const dx = (to.longitude - from.longitude) * KM_PER_DEG_LON_EQUATOR * scale;
+    const dy = (to.latitude - from.latitude) * KM_PER_DEG_LAT;
+    const distance = Math.hypot(dx, dy);
+    if (distance === 0 || distance <= Math.abs(to.radiusKm - from.radiusKm)) continue;
+
+    const ux = dx / distance;
+    const uy = dy / distance;
+    const cosPsi = (to.radiusKm - from.radiusKm) / distance;
+    const sinPsi = Math.sqrt(Math.max(0, 1 - cosPsi * cosPsi));
+
+    /** Retour au lat/lon depuis le repère local (km) ancré sur le premier centre. */
+    const toLatLng = (offsetX: number, offsetY: number): [number, number] => [
+      from.latitude + offsetY / KM_PER_DEG_LAT,
+      from.longitude + offsetX / (KM_PER_DEG_LON_EQUATOR * scale),
+    ];
+
+    // Une tangente par côté : m = cos ψ · u + side · sin ψ · n (n = normale gauche),
+    // et les points de contact sont les centres reculés de −r · m.
+    const tangent: Array<[number, number]> = [];
+    for (const side of [1, -1]) {
+      const mx = cosPsi * ux + side * sinPsi * -uy;
+      const my = cosPsi * uy + side * sinPsi * ux;
+      tangent.push(toLatLng(-from.radiusKm * mx, -from.radiusKm * my));
+      tangent.push(
+        toLatLng(dx - to.radiusKm * mx, dy - to.radiusKm * my),
+      );
+    }
+    // Ordre du contour : tangente du premier côté, puis retour par le second.
+    belts.push({
+      id: `${from.id}→${to.id}`,
+      positions: [tangent[0], tangent[1], tangent[3], tangent[2]],
+    });
+  }
+  return belts;
+}
+
 /** Mesure avec unité, ou « non disponible » quand la source ne la fournit pas. */
 export function formatMeasure(value: number | null | undefined, unit: string): string {
   if (value == null || Number.isNaN(value)) return 'non disponible';

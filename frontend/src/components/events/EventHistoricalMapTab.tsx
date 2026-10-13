@@ -315,9 +315,10 @@ export function EventHistoricalMapTab({
           </span>
           <span className="text-muted">
             — union des rayons de vent publiés par le RSMC, point par point, du premier au dernier
-            point documenté (le plus large documenté est retenu quand plusieurs seuils existent). Ce
-            n&apos;est pas un cône d&apos;incertitude : aucune incertitude de position n&apos;est
-            publiée pour un événement observé.
+            point documenté (le plus large documenté est retenu quand plusieurs seuils existent), les
+            mesures consécutives étant reliées par leurs tangentes. Aucune largeur n&apos;est mesurée
+            entre deux points datés, et ce n&apos;est pas un cône d&apos;incertitude : aucune
+            incertitude de position n&apos;est publiée pour un événement observé.
           </span>
         </label>
       ) : null}
