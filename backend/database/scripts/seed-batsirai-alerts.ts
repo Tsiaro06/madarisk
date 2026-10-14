@@ -1,56 +1,61 @@
 import path from 'path';
 import pg from 'pg';
+import { BATSIRAI_TRACK } from '../seeds/batsirai-2022';
+import { BATSIRAI_RADII } from '../seeds/batsirai-2022-radii';
 
 /**
  * Import des niveaux d'alerte cyclonique communaux de l'événement historique
  * « Cyclone Batsirai — février 2022 » dans `event_commune_alert_history`.
  *
  * Objectif : permettre à la carte de la salle de crise de colorer chaque commune
- * selon le niveau d'alerte officiel malgache (VERT / JAUNE / ROUGE / BLEU) à
- * l'instant consulté, en conservant la traçabilité complète (validité, nature de
- * l'information, source, commentaire).
+ * au fil de l'animation, en suivant le déplacement réel du cyclone et de son
+ * champ de vent documenté (rayons R34 / R50 / R64 de la RSMC La Réunion).
+ *
+ * Règles de coloration (code couleur cyclonique malgache) :
+ *  - ROUGE : la commune est à l'intérieur du rayon de vent ≥ 50 kt (R50/R64) —
+ *            « dans le cyclone ».
+ *  - JAUNE : la commune est dans le rayon de vent ≥ 34 kt (R34) mais hors du
+ *            rayon ≥ 50 kt — « affectée ».
+ *  - VERT  : la commune est hors du champ de vent documenté — « safe ».
+ *  - BLEU  : la commune vient de sortir du champ de vent (R34). La transition est
+ *            progressive, commune par commune, dès que le cercle ne la touche
+ *            plus — jamais une bascule globale quand le cyclone quitte Madagascar.
  *
  * Principe de non-invention :
- *  - Le bulletin du 4 février 2022 ne cite QUE des régions (rouge/jaune) et des
- *    districts (vert), jamais des communes. Chaque commune hérite donc du niveau
- *    de son district / de sa région : la donnée est enregistrée
- *    `info_type = ESTIMATION` avec `territory_scope = DISTRICT | REGION` et un
- *    commentaire qui rappelle que le niveau est hérité. L'interface signale cette
- *    estimation spatiale.
- *  - Les impacts observés proviennent uniquement de `event_commune_impacts`
- *    (méthode PostGIS documentée, alimentée par `db:seed:batsirai`). Aucun impact
- *    communal n'est inventé.
- *  - Le bulletin du 1er février ne publie qu'un niveau global « VERTE » sans
- *    liste de territoires : aucune commune ne peut en être déduite. Le script le
- *    signale explicitement au lieu d'inventer une liste.
+ *  - Aucune commune n'est colorée à partir d'une simple proximité estimée : seuls
+ *    les rayons de vent RÉELLEMENT publiés (RSMC La Réunion / IBTrACS v04r01)
+ *    sont utilisés. Un seuil non publié reste `null` (jamais interpolé comme une
+ *    valeur inventée).
+ *  - Les niveaux sont stockés `info_type = ESTIMATION`, `territory_scope =
+ *    COMMUNE`, avec la source et un commentaire explicite.
+ *  - Le bulletin du 1er février ne publie qu'un niveau global « VERTE » sans liste
+ *    de territoires : aucune commune ne peut en être déduite. Le script le signale
+ *    explicitement au lieu d'inventer une liste.
  *
  * Idempotence : relancer le script supprime puis réinsère toutes les lignes
- * d'alerte communale de l'événement. Il suppose que `db:seed:batsirai` a déjà été
- * exécuté (événement, bulletins et impacts créés).
+ * d'alerte de l'événement.
  *
  * Exécution : `npm run db:seed:batsirai-alerts`
  */
 
 const EVENT_CODE = 'HIST-BATSIRAI-2022';
 
-/** Bulletin officiel porteur des niveaux communaux (hérités région/district). */
-const BULLETIN_SOURCE_NAME = 'Météo Madagascar — Bulletin cyclonique du 4 février 2022';
-const BULLETIN_SOURCE_URL = 'https://meteomadagascar.mg';
-/** Validité officielle du bulletin du 4 février (16h00, heure de Madagascar). */
-const BULLETIN_VALID_FROM = '2022-02-04T16:00:00+03:00';
-const BULLETIN_VALID_TO = '2022-02-08T00:00:00+03:00';
+/** Début de l'événement : premier point de la trajectoire observée (UTC). */
+const EVENT_START = BATSIRAI_TRACK[0].time;
 
 /** Fin officielle de l'événement : borne des dangers résiduels documentés. */
 const EVENT_ENDED_AT = '2022-02-11T00:00:00Z';
 
-/** Source de repli de la ligne d'impact (best track IBTrACS). */
-const IMPACT_SOURCE_URL_FALLBACK = 'https://ncics.org/ibtracs/index.php?name=v04r01-2022024S09090';
+/** Source des rayons de vent documentés (autorité WMO du bassin). */
+const WIND_SOURCE_NAME =
+  'RSMC La Réunion (Météo-France) — rayons de vent IBTrACS v04r01 (2022024S09090)';
+const WIND_SOURCE_URL = 'https://ncics.org/ibtracs/index.php?name=v04r01-2022024S09090';
 
 /**
- * Dangers résiduels après le passage du centre (crues, inondations) : documentés
- * à l'échelle de l'événement (inondations observées par satellite jusqu'au
- * 10 février 2022). Le report au niveau communal est une ESTIMATION dérivée des
- * communes à impact observé — jamais une donnée communale publiée.
+ * Dangers résiduels après le passage du champ de vent (crues, inondations) :
+ * documentés à l'échelle de l'événement (inondations observées par satellite
+ * jusqu'au 10 février 2022). Le report au niveau communal est une ESTIMATION —
+ * jamais une donnée communale publiée.
  */
 const RESIDUAL_SOURCE_NAME =
   "NASA Earth Observatory — inondations observées jusqu'au 10 février 2022";
@@ -60,365 +65,296 @@ const RESIDUAL_SOURCE_URL =
 type Level = 'VERT' | 'JAUNE' | 'ROUGE' | 'BLEU';
 type Scope = 'COMMUNE' | 'DISTRICT' | 'REGION' | 'EVENEMENT';
 
-interface RegionAlert {
-  /** Nom de la région tel que publié par le bulletin. */
-  region: string;
+/** Pas d'échantillonnage de la trajectoire (minutes) pour dater entrées/sorties. */
+const SAMPLE_STEP_MINUTES = 15;
+
+/** Point d'échantillonnage du centre et de ses rayons de vent documentés. */
+export interface WindSample {
+  /** Horodatage epoch (ms, UTC). */
+  t: number;
+  /** Longitude du centre. */
+  lon: number;
+  /** Latitude du centre. */
+  lat: number;
+  /** Rayon du vent ≥ 34 kt (km) publié, ou null si absent. */
+  r34: number | null;
+  /** Rayon du vent ≥ 50 kt (km) publié, ou null si absent. */
+  r50: number | null;
+  /** Rayon du vent ≥ 64 kt (km) publié, ou null si absent. */
+  r64: number | null;
+}
+
+/** Intervalle d'alerte daté d'une commune (bornes en epoch ms). */
+export interface AlertInterval {
+  communeId: string;
   level: Level;
-  /** Districts (noms en base) dont l'union couvre la région. */
-  districts: string[];
+  from: number;
+  to: number;
+}
+
+/** Distance en kilomètres entre deux points géographiques (formule de haversine). */
+export function haversineKm(lon1: number, lat1: number, lon2: number, lat2: number): number {
+  const earthRadiusKm = 6371.0088;
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const dLat = rad(lat2 - lat1);
+  const dLon = rad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * earthRadiusKm * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
 /**
- * Correspondance « région citée par le bulletin » -> districts en base.
- * Reprise à l'identique de `ZONES` dans `seed-batsirai.ts` (les géométries des
- * zones de vigilance y sont déjà assemblées à partir de ces mêmes districts).
+ * Échantillonne la trajectoire observée et ses rayons de vent. Entre deux points
+ * consécutifs, la position du centre est interpolée linéairement ; un rayon n'est
+ * interpolé que si les DEUX points bornes le publient — sinon il reste `null`
+ * (aucune valeur inventée).
  */
-const RED_REGIONS: RegionAlert[] = [
-  {
-    region: 'Atsinanana',
-    level: 'ROUGE',
-    districts: [
-      'Antanambao Manampontsy',
-      'Brickaville',
-      'Mahanoro',
-      'Marolambo',
-      'Toamasina I',
-      'Toamasina II',
-      'Vatomandry',
-    ],
-  },
-  {
-    region: 'Vatovavy',
-    level: 'ROUGE',
-    districts: ['Ifanadiana', 'Mananjary', 'Nosy-Varika'],
-  },
-  {
-    region: 'Fitovinany',
-    level: 'ROUGE',
-    districts: ['Ikongo', 'Manakara Atsimo', 'Vohipeno'],
-  },
-  {
-    region: 'Atsimo Atsinanana',
-    level: 'ROUGE',
-    districts: ['Befotaka', 'Farafangana', 'Midongy-Atsimo', 'Vangaindrano', 'Vondrozo'],
-  },
-  {
-    region: 'Analamanga',
-    level: 'ROUGE',
-    districts: [
-      // Antananarivo-Renivohitra est modélisée en six arrondissements : la
-      // capitale appartient à la région Analamanga, placée en rouge.
-      '1er Arrondissement',
-      '2e Arrondissement',
-      '3e Arrondissement',
-      '4e Arrondissement',
-      '5e Arrondissement',
-      '6e Arrondissement',
-      'Ambohidratrimo',
-      'Andramasina',
-      'Anjozorobe',
-      'Ankazobe',
-      'Antananarivo Atsimondrano',
-      'Antananarivo Avaradrano',
-      'Manjakandriana',
-    ],
-  },
-  {
-    // Le bulletin du 4 février 2022 cite « MANGORO » en alerte rouge. Cette
-    // région (Alaotra-Mangoro) n'est pas citée nominativement ailleurs : les
-    // districts AMPARAFARAVOLA et ANDILAMENA sont explicitement mentionnés
-    // respectivement en jaune et en vert dans le même bulletin. L'inclusion ici
-    // n'affecte donc que les districts non nommés explicitement (Moramanga,
-    // Anosibe-An'ala), ce qui corrige les « trous » dans Alaotra-Mangoro.
-    region: 'Mangoro',
-    level: 'ROUGE',
-    districts: ["Anosibe-An'ala", 'Moramanga'],
-  },
-];
+export function buildWindSamples(): WindSample[] {
+  const radiiByTime = new Map(BATSIRAI_RADII.map((r) => [r.time, r]));
+  const samples: WindSample[] = [];
+  const lerp = (a: number | null | undefined, b: number | null | undefined, f: number) =>
+    a != null && b != null ? a + (b - a) * f : null;
 
-const YELLOW_REGIONS: RegionAlert[] = [
-  { region: 'Bongolava', level: 'JAUNE', districts: ['Fenoarivobe', 'Tsiroanomandidy'] },
-  {
-    region: 'Menabe',
-    level: 'JAUNE',
-    districts: ['Belo Sur Tsiribihina', 'Mahabo', 'Manja', 'Miandrivazo', 'Morondava'],
-  },
-  {
-    region: 'Atsimo Andrefana',
-    level: 'JAUNE',
-    districts: [
-      'Ampanihy Ouest',
-      'Ankazoabo',
-      'Benenitra',
-      'Beroroha',
-      'Betioky Atsimo',
-      'Morombe',
-      'Sakaraha',
-      'Toliary-I',
-      'Toliary-II',
-    ],
-  },
-  { region: 'Anosy', level: 'JAUNE', districts: ['Amboasary-Atsimo', 'Betroka', 'Taolagnaro'] },
-  {
-    region: 'Androy',
-    level: 'JAUNE',
-    districts: ['Ambovombe-Androy', 'Bekily', 'Beloha', 'Tsihombe'],
-  },
-];
+  for (let i = 0; i < BATSIRAI_TRACK.length; i += 1) {
+    const point = BATSIRAI_TRACK[i];
+    const next = BATSIRAI_TRACK[i + 1];
+    const r0 = radiiByTime.get(point.time);
+    const r1 = next ? radiiByTime.get(next.time) : undefined;
+    const t0 = Date.parse(point.time);
 
-/** Districts cités en alerte verte par le bulletin du 4 février 2022. */
-const GREEN_DISTRICTS = [
-  'Antalaha',
-  'Maroantsetra',
-  'Mananara Avaratra',
-  'Mandritsara',
-  'Andilamena',
-  'Tsaratanana',
-  'Maevatanana',
-];
+    if (!next) {
+      samples.push({
+        t: t0,
+        lon: point.lon,
+        lat: point.lat,
+        r34: r0?.radius34ktKm ?? null,
+        r50: r0?.radius50ktKm ?? null,
+        r64: r0?.radius64ktKm ?? null,
+      });
+      continue;
+    }
 
-/**
- * Districts explicitement cités par le bulletin EN PLUS des régions :
- * « Alerte Rouge (Danger imminent) : Régions d'ATSINANANA, VATOVAVY, FITOVINANY,
- * ATSIMO ATSINANANA, ANALAMANGA, les Districts de VAVATENINA, AMBATONDRAZAKA,
- * ARIVONIMAMO, AMBATOLAMPY, ANTANIFOTSY, ANTSIRABE I-II, FANDRIANA, AMBOSITRA,
- * MANANDRIANA, AMBOHIMAHASOA, LALANGINA, VOHIBATO, ISANDRA, FIANARANTSOA I,
- * IVOHIBE et IAKORA. »
- *
- * Sans ces listes, les hautes terres traversées par le cyclone (Haute Matsiatra,
- * Ihorombe, Amoron'i Mania, Vakinankaratra, Itasy, Alaotra-Mangoro, Analanjiroto,
- * Melaky) restaient GRISES alors que le bulletin les plaçait en alerte rouge ou
- * jaune : d'où des « trous » le long de la trajectoire, à côté de régions côtières
- * entièrement colorées.
- *
- * Source : bulletin cyclonique spécial de Météo Madagascar du 5 février 2022 à
- * 04h00 locales (« Les alertes cycloniques restent inchangées » depuis le bulletin
- * du 4 février 16h00).
- * https://reliefweb.int/report/madagascar/m-t-o-madagascar-bulletin-cyclonique-sp-cial-05-f-vrier-2022-04-heures-locales
- *
- * Le bulletin mentionne également la région « MANGORO » (Alaotra-Mangoro) en
- * alerte rouge. AMPARAFARAVOLA y est explicitement citée en jaune et
- * ANDILAMENA en vert : ces mentions explicites prévalent sur le niveau
- * régional. Seuls Moramanga et Anosibe-An'ala héritent donc de l'alerte rouge
- * régionale.
- */
-const RED_DISTRICTS: string[] = [
-  'Vavatenina',
-  'Ambatondrazaka',
-  'Arivonimamo',
-  'Ambatolampy',
-  'Antanifotsy',
-  'Antsirabe I',
-  'Antsirabe II',
-  'Fandriana',
-  'Ambositra',
-  'Manandriana',
-  'Ambohimahasoa',
-  'Lalangina',
-  'Vohibato',
-  'Isandra',
-  'Fianarantsoa I',
-  'Ivohibe',
-  'Iakora',
-];
-
-/** Districts cités en jaune par le même bulletin, en plus des régions. */
-const YELLOW_DISTRICTS: string[] = [
-  'Sainte Marie',
-  'Soanierana Ivongo',
-  'Fenerive Est',
-  'Amparafaravola',
-  'Antsalova',
-  'Miarinarivo',
-  'Soavinandriana',
-  'Faratsiho',
-  'Betafo',
-  'Mandoto',
-  'Ambatofinandrahana',
-  'Ikalamavony',
-  'Ihosy',
-];
-
-const ALL_DISTRICTS = [
-  ...RED_REGIONS.flatMap((r) => r.districts),
-  ...YELLOW_REGIONS.flatMap((r) => r.districts),
-  ...RED_DISTRICTS,
-  ...YELLOW_DISTRICTS,
-  ...GREEN_DISTRICTS,
-];
-/** Normalise un nom de territoire comme la requête SQL (`regexp_replace`). */
-function normalize(name: string): string {
-  return name.replace(/[^a-z0-9]/gi, '').toLowerCase();
-}
-
-/** Alias SQL de normalisation d'un nom de district (identique à seed-batsirai). */
-const NORM_DISTRICT_SQL = `regexp_replace(lower(d.name), '[^a-z0-9]', '', 'g')`;
-
-function scopeComment(scope: Scope, label: string, level: Level): string {
-  if (scope === 'REGION') {
-    return (
-      `Niveau « ${level} » publié par le bulletin du 4 février 2022 pour la région ` +
-      `${label}. Le bulletin ne cite pas les communes : le niveau est hérité de la ` +
-      'région (estimation spatiale), et non observé commune par commune.'
-    );
+    const t1 = Date.parse(next.time);
+    for (let t = t0; t < t1; t += SAMPLE_STEP_MINUTES * 60_000) {
+      const f = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
+      samples.push({
+        t,
+        lon: point.lon + (next.lon - point.lon) * f,
+        lat: point.lat + (next.lat - point.lat) * f,
+        r34: lerp(r0?.radius34ktKm, r1?.radius34ktKm, f),
+        r50: lerp(r0?.radius50ktKm, r1?.radius50ktKm, f),
+        r64: lerp(r0?.radius64ktKm, r1?.radius64ktKm, f),
+      });
+    }
   }
-  return (
-    `Niveau « ${level} » publié par le bulletin du 4 février 2022 pour le district de ` +
-    `${label}. Le bulletin ne cite pas les communes : le niveau est hérité du district ` +
-    '(estimation spatiale), et non observé commune par commune.'
-  );
+
+  samples.sort((a, b) => a.t - b.t);
+  return samples;
 }
 
 /**
- * Insère, pour chaque commune des districts fournis, une ligne héritée du
- * bulletin. Le niveau n'est jamais attribué « au district » : il est stocké pour
- * chaque commune, mais avec `territory_scope` et un commentaire qui rappellent
- * qu'il est estimé à partir d'une échelle supérieure.
+ * Niveau d'une commune à un instant donné, d'après les rayons documentés.
+ * Quand aucun seuil n'est publié à cet instant, le niveau précédent est conservé
+ * (on ne bascule pas une commune sur une donnée absente).
  */
-async function insertTerritoryAlerts(
+export function classifyWind(lon: number, lat: number, sample: WindSample, previous: Level): Level {
+  if (sample.r34 == null && sample.r50 == null && sample.r64 == null) {
+    return previous;
+  }
+  const distance = haversineKm(lon, lat, sample.lon, sample.lat);
+  if (
+    (sample.r64 != null && distance <= sample.r64) ||
+    (sample.r50 != null && distance <= sample.r50)
+  ) {
+    return 'ROUGE';
+  }
+  if (sample.r34 != null && distance <= sample.r34) {
+    return 'JAUNE';
+  }
+  return 'VERT';
+}
+
+/**
+ * Intervalles temporels d'alerte d'une commune le long de la trajectoire :
+ * JAUNE dans R34, ROUGE dans R50/R64, puis BLEU (danger résiduel) à partir de sa
+ * sortie du champ de vent jusqu'à la fin de l'événement. Les intervalles ne se
+ * chevauchent jamais : à chaque instant, un seul niveau dynamique est actif.
+ */
+export function windIntervalsForCommune(
+  communeId: string,
+  lon: number,
+  lat: number,
+  samples: WindSample[],
+  eventEndMs: number,
+): AlertInterval[] {
+  const intervals: AlertInterval[] = [];
+  if (samples.length === 0) {
+    return intervals;
+  }
+
+  let previous: Level = 'VERT';
+  let current: Level | null = null;
+  let runStart = samples[0].t;
+  let lastExit: number | null = null;
+
+  for (const sample of samples) {
+    const level = classifyWind(lon, lat, sample, previous);
+    previous = level;
+    if (level !== current) {
+      if ((current === 'ROUGE' || current === 'JAUNE') && sample.t > runStart) {
+        intervals.push({ communeId, level: current, from: runStart, to: sample.t });
+        lastExit = sample.t;
+      }
+      current = level;
+      runStart = sample.t;
+    }
+  }
+
+  const lastSampleTime = samples[samples.length - 1].t;
+  if ((current === 'ROUGE' || current === 'JAUNE') && lastSampleTime > runStart) {
+    intervals.push({ communeId, level: current, from: runStart, to: lastSampleTime });
+    lastExit = lastSampleTime;
+  }
+  if (lastExit != null && lastExit < eventEndMs) {
+    intervals.push({ communeId, level: 'BLEU', from: lastExit, to: eventEndMs });
+  }
+
+  return intervals;
+}
+
+/** Métadonnées (source + commentaire) associées à chaque niveau dynamique. */
+const WIND_LEVEL_META: Record<
+  'ROUGE' | 'JAUNE' | 'BLEU',
+  { name: string; url: string; comment: string }
+> = {
+  ROUGE: {
+    name: WIND_SOURCE_NAME,
+    url: WIND_SOURCE_URL,
+    comment:
+      "Cyclone : commune à l'intérieur du rayon de vent ≥ 50 kt (R50/R64) documenté " +
+      'par la RSMC La Réunion le long de la trajectoire observée (IBTrACS v04r01).',
+  },
+  JAUNE: {
+    name: WIND_SOURCE_NAME,
+    url: WIND_SOURCE_URL,
+    comment:
+      "Commune affectée : à l'intérieur du rayon de vent ≥ 34 kt (R34) mais hors du " +
+      'rayon ≥ 50 kt documenté (RSMC La Réunion / IBTrACS v04r01).',
+  },
+  BLEU: {
+    name: RESIDUAL_SOURCE_NAME,
+    url: RESIDUAL_SOURCE_URL,
+    comment:
+      "Fin d'alerte progressive : le cercle du cyclone ne touche plus la commune " +
+      '(sortie du rayon de vent ≥ 34 kt). Des dangers persistent (pluies ' +
+      'torrentielles, crues, vents résiduels), reportés depuis les inondations ' +
+      "observées par satellite jusqu'au 10 février 2022.",
+  },
+};
+
+interface WindAlertCounts {
+  ROUGE: number;
+  JAUNE: number;
+  BLEU: number;
+}
+
+/**
+ * Niveau de base VERT : toute commune est « safe » tant qu'elle n'est pas dans le
+ * champ de vent documenté. Ces lignes couvrent la totalité de l'événement et sont
+ * recolorées par les intervalles JAUNE / ROUGE / BLEU lorsqu'ils s'appliquent
+ * (leur `valid_from` plus récent l'emporte à rang égal).
+ */
+async function insertBaseVert(client: pg.PoolClient, eventId: string): Promise<number> {
+  const res = await client.query(
+    `INSERT INTO event_commune_alert_history
+       (event_id, commune_id, alert_level, valid_from, valid_to,
+        info_type, territory_scope, source_name, source_url, comment)
+     SELECT $1, c.id, 'VERT', $2::timestamptz, $3::timestamptz,
+            'ESTIMATION', 'COMMUNE', $4, $5,
+            'Hors du champ de vent documenté (rayons R34/R50/R64 de la RSMC La Réunion) '
+              || 'à cet instant : pas de menace publiée (niveau vert). Niveau de base '
+              || 'estimé ; toute commune entrant dans le champ de vent est recolorée '
+              || 'en jaune (R34) ou rouge (R50/R64), puis en bleu à sa sortie.'
+       FROM communes c`,
+    [eventId, EVENT_START, EVENT_ENDED_AT, WIND_SOURCE_NAME, WIND_SOURCE_URL],
+  );
+  return res.rowCount ?? 0;
+}
+
+/** Échappe une chaîne pour l'inliner comme littéral SQL (apostrophes doublées). */
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+/** Insère par lots les intervalles d'un même niveau (source/commentaire idem). */
+async function insertAlertIntervals(
   client: pg.PoolClient,
   eventId: string,
-  districts: string[],
-  level: Level,
-  scope: Scope,
-  label: string,
+  intervals: AlertInterval[],
+  level: 'ROUGE' | 'JAUNE' | 'BLEU',
 ): Promise<number> {
-  const res = await client.query(
-    `INSERT INTO event_commune_alert_history
-       (event_id, commune_id, alert_level, valid_from, valid_to,
-        info_type, territory_scope, source_name, source_url, comment)
-     SELECT $1, c.id, $2, $3, $4, 'ESTIMATION', $5, $6, $7, $8
-       FROM communes c
-       JOIN districts d ON d.id = c.district_id
-      WHERE ${NORM_DISTRICT_SQL} = ANY($9::text[])`,
-    [
+  if (intervals.length === 0) {
+    return 0;
+  }
+  const meta = WIND_LEVEL_META[level];
+  const chunkSize = 4000;
+  let inserted = 0;
+
+  for (let i = 0; i < intervals.length; i += chunkSize) {
+    const chunk = intervals.slice(i, i + chunkSize);
+    const params: unknown[] = [eventId];
+    const tuples = chunk.map((interval, index) => {
+      const offset = 2 + index * 3;
+      params.push(
+        interval.communeId,
+        new Date(interval.from).toISOString(),
+        new Date(interval.to).toISOString(),
+      );
+      return (
+        `($1, $${offset}, ${sqlLiteral(level)}, ` +
+        `$${offset + 1}::timestamptz, $${offset + 2}::timestamptz, ` +
+        `'ESTIMATION', 'COMMUNE', ${sqlLiteral(meta.name)}, ` +
+        `${sqlLiteral(meta.url)}, ${sqlLiteral(meta.comment)})`
+      );
+    });
+
+    const res = await client.query(
+      `INSERT INTO event_commune_alert_history
+         (event_id, commune_id, alert_level, valid_from, valid_to,
+          info_type, territory_scope, source_name, source_url, comment)
+       VALUES ${tuples.join(', ')}`,
+      params,
+    );
+    inserted += res.rowCount ?? 0;
+  }
+  return inserted;
+}
+
+/** Calcule puis insère tous les intervalles JAUNE / ROUGE / BLEU par commune. */
+async function insertWindAlerts(client: pg.PoolClient, eventId: string): Promise<WindAlertCounts> {
+  const samples = buildWindSamples();
+  const eventEndMs = Date.parse(EVENT_ENDED_AT);
+  const communes = await client.query<{ id: string; lon: number; lat: number }>(
+    `SELECT id, ST_X(centroid)::float8 AS lon, ST_Y(centroid)::float8 AS lat
+       FROM communes
+      WHERE centroid IS NOT NULL`,
+  );
+
+  const all: AlertInterval[] = [];
+  for (const commune of communes.rows) {
+    all.push(...windIntervalsForCommune(commune.id, commune.lon, commune.lat, samples, eventEndMs));
+  }
+
+  const counts: WindAlertCounts = { ROUGE: 0, JAUNE: 0, BLEU: 0 };
+  for (const level of ['ROUGE', 'JAUNE', 'BLEU'] as const) {
+    counts[level] = await insertAlertIntervals(
+      client,
       eventId,
+      all.filter((interval) => interval.level === level),
       level,
-      BULLETIN_VALID_FROM,
-      BULLETIN_VALID_TO,
-      scope,
-      BULLETIN_SOURCE_NAME,
-      BULLETIN_SOURCE_URL,
-      scopeComment(scope, label, level),
-      districts.map(normalize),
-    ],
-  );
-  return res.rowCount ?? 0;
-}
-
-/**
- * Impacts observés datés : une commune ayant subi un impact documenté devient
- * ROUGE pendant la période d'impact. La borne de fin est portée au moins jusqu'à
- * la fin de validité du bulletin officiel (8 février) : une commune réellement
- * touchée ne doit pas être rétrogradée tant que l'alerte officielle court, puis
- * elle passe au bleu (danger résiduel). Aucune commune n'est concernée avant le
- * passage réellement documenté.
- */
-async function insertImpactAlerts(client: pg.PoolClient, eventId: string): Promise<number> {
-  const res = await client.query(
-    `INSERT INTO event_commune_alert_history
-       (event_id, commune_id, alert_level, valid_from, valid_to,
-        info_type, territory_scope, source_name, source_url, comment)
-     SELECT eci.event_id,
-            eci.commune_id,
-            'ROUGE',
-            LEAST(eci.first_affected_at, COALESCE(eci.last_affected_at, eci.first_affected_at)),
-            GREATEST(
-              eci.first_affected_at,
-              COALESCE(eci.last_affected_at, eci.first_affected_at),
-              $3::timestamptz
-            ),
-            'IMPACT_OBSERVE',
-            'COMMUNE',
-            COALESCE(eci.source_name, 'Météo-France (RSMC La Réunion) / NOAA IBTrACS'),
-            COALESCE(eci.source_url, $2),
-            'Impacts observés documentés : le centre du cyclone a traversé la commune '
-              || '(corridor de 15 km autour du best track IBTrACS). Niveau rouge pendant '
-              || 'la période d''impact documentée, maintenu jusqu''à la fin de validité du '
-              || 'bulletin officiel (8 février 2022).'
-       FROM event_commune_impacts eci
-      WHERE eci.event_id = $1
-        AND eci.first_affected_at IS NOT NULL`,
-    [eventId, IMPACT_SOURCE_URL_FALLBACK, BULLETIN_VALID_TO],
-  );
-  return res.rowCount ?? 0;
-}
-
-/**
- * Dangers résiduels après le passage : les communes à impact observé restent
- * BLEU de la fin de l'impact documenté jusqu'à la fin officielle de l'événement.
- * Le report communal est une ESTIMATION (aucune donnée de danger résiduel n'est
- * publiée à l'échelle communale) ; l'interface la signale comme telle.
- */
-async function insertResidualAlerts(client: pg.PoolClient, eventId: string): Promise<number> {
-  const res = await client.query(
-    `INSERT INTO event_commune_alert_history
-       (event_id, commune_id, alert_level, valid_from, valid_to,
-        info_type, territory_scope, source_name, source_url, comment)
-     SELECT eci.event_id,
-            eci.commune_id,
-            'BLEU',
-            GREATEST(eci.first_affected_at, COALESCE(eci.last_affected_at, eci.first_affected_at)),
-            $2,
-            'ESTIMATION',
-            'COMMUNE',
-            $3,
-            $4,
-            'Danger résiduel après le passage du centre (crues, inondations). '
-              || 'Estimation communale dérivée des communes à impact observé : aucune '
-              || 'donnée de danger résiduel n''est publiée à l''échelle de la commune.'
-       FROM event_commune_impacts eci
-      WHERE eci.event_id = $1
-        AND eci.first_affected_at IS NOT NULL
-        AND GREATEST(eci.first_affected_at, COALESCE(eci.last_affected_at, eci.first_affected_at)) < $2`,
-    [eventId, EVENT_ENDED_AT, RESIDUAL_SOURCE_NAME, RESIDUAL_SOURCE_URL],
-  );
-  return res.rowCount ?? 0;
-}
-
-/**
- * Fin d'alerte (post-cyclone) : conformément au code couleur cyclonique
- * malgache (« Alerte Bleue : le cyclone s'éloigne ou se comble, mais des
- * dangers persistent »), les communes qui étaient sous le bulletin du
- * 4 février passent en BLEU à la fin de validité de ce bulletin — le cyclone a
- * quitté le territoire mais les pluies, crues et vents résiduels perdurent — et
- * le restent jusqu'à la fin officielle de l'événement. Le niveau territorial est
- * reporté au niveau communal : ESTIMATION, signalée comme telle. Les communes à
- * impact observé ont déjà leur propre ligne de danger résiduel.
- */
-async function insertEndOfAlertBlue(client: pg.PoolClient, eventId: string): Promise<number> {
-  const res = await client.query(
-    `INSERT INTO event_commune_alert_history
-       (event_id, commune_id, alert_level, valid_from, valid_to,
-        info_type, territory_scope, source_name, source_url, comment)
-     SELECT DISTINCT h.event_id, h.commune_id, 'BLEU', $2::timestamptz, $3::timestamptz,
-            'ESTIMATION', 'COMMUNE', $4::varchar, $5::text,
-            'Fin d''alerte (post-cyclone) : le cyclone a quitté le territoire mais des '
-              || 'dangers persistent (pluies torrentielles, crues, vents résiduels). '
-              || 'Niveau bleu reporté depuis le bulletin territorial du 4 février 2022 ; '
-              || 'aucune donnée de fin d''alerte n''est publiée à l''échelle communale.'
-       FROM event_commune_alert_history h
-      WHERE h.event_id = $1
-        AND h.info_type = 'ESTIMATION'
-        AND h.territory_scope IN ('REGION', 'DISTRICT')
-        AND NOT EXISTS (
-          SELECT 1 FROM event_commune_alert_history r
-           WHERE r.event_id = h.event_id
-             AND r.commune_id = h.commune_id
-             AND r.alert_level = 'BLEU'
-        )`,
-    [eventId, BULLETIN_VALID_TO, EVENT_ENDED_AT, RESIDUAL_SOURCE_NAME, RESIDUAL_SOURCE_URL],
-  );
-  return res.rowCount ?? 0;
-}
-
-/** Districts de la correspondance absents de la base (signalés, non bloquants). */
-async function findMissingDistricts(client: pg.PoolClient): Promise<string[]> {
-  const res = await client.query<{ norm: string }>(
-    `SELECT regexp_replace(lower(name), '[^a-z0-9]', '', 'g') AS norm FROM districts`,
-  );
-  const present = new Set(res.rows.map((r) => r.norm));
-  return ALL_DISTRICTS.filter((n) => !present.has(normalize(n)));
+    );
+  }
+  return counts;
 }
 
 /**
@@ -455,7 +391,6 @@ export interface BatsiraiAlertsReport {
   total: number;
   byLevel: Record<Level, number>;
   byScope: Record<Scope, number>;
-  missingDistricts: string[];
 }
 
 export async function runBatsiraiAlertsSeed(): Promise<BatsiraiAlertsReport> {
@@ -489,30 +424,10 @@ export async function runBatsiraiAlertsSeed(): Promise<BatsiraiAlertsReport> {
     }
     const eventId = found.rows[0].id;
 
-    // Purge idempotente des alertes communales de cet événement.
     await client.query('DELETE FROM event_commune_alert_history WHERE event_id = $1', [eventId]);
 
-    const missingDistricts = await findMissingDistricts(client);
-
-    for (const r of RED_REGIONS) {
-      await insertTerritoryAlerts(client, eventId, r.districts, r.level, 'REGION', r.region);
-    }
-    for (const d of RED_DISTRICTS) {
-      await insertTerritoryAlerts(client, eventId, [d], 'ROUGE', 'DISTRICT', d);
-    }
-    for (const r of YELLOW_REGIONS) {
-      await insertTerritoryAlerts(client, eventId, r.districts, r.level, 'REGION', r.region);
-    }
-    for (const d of YELLOW_DISTRICTS) {
-      await insertTerritoryAlerts(client, eventId, [d], 'JAUNE', 'DISTRICT', d);
-    }
-    for (const district of GREEN_DISTRICTS) {
-      await insertTerritoryAlerts(client, eventId, [district], 'VERT', 'DISTRICT', district);
-    }
-
-    const impactRows = await insertImpactAlerts(client, eventId);
-    const residualRows = await insertResidualAlerts(client, eventId);
-    const endOfAlertRows = await insertEndOfAlertBlue(client, eventId);
+    const baseRows = await insertBaseVert(client, eventId);
+    const wind = await insertWindAlerts(client, eventId);
 
     const counts = await client.query<{ level: string; scope: string; n: number }>(
       `SELECT alert_level AS level, territory_scope AS scope, COUNT(*)::int AS n
@@ -531,23 +446,19 @@ export async function runBatsiraiAlertsSeed(): Promise<BatsiraiAlertsReport> {
       total += row.n;
     }
 
+    console.log(`  ✓ Niveau de base VERT (safe, hors champ de vent) : ${baseRows} lignes.`);
     console.log(
-      `  ✓ Impacts observés (ROUGE) : ${impactRows} lignes ; dangers résiduels (BLEU, estimation) : ${residualRows} lignes.`,
-    );
-    console.log(
-      `  ✓ Fin d'alerte (BLEU, post-cyclone) reportée aux communes du bulletin : ${endOfAlertRows} lignes.`,
+      `  ✓ Zones dynamiques — ROUGE (≤ R50/R64) : ${wind.ROUGE} ; ` +
+        `JAUNE (≤ R34) : ${wind.JAUNE} ; BLEU (sortie de rayon) : ${wind.BLEU} intervalles.`,
     );
     console.log(
       `  ✓ ${total} lignes au total — par niveau : ${JSON.stringify(byLevel)} ; par portée : ${JSON.stringify(byScope)}.`,
     );
-    if (missingDistricts.length > 0) {
-      console.log(`  ⚠ Districts absents de la base (ignorés) : ${missingDistricts.join(', ')}`);
-    }
     await reportGlobalOnlyBulletins(client, eventId);
 
     await client.query('COMMIT');
 
-    return { eventId, total, byLevel, byScope, missingDistricts };
+    return { eventId, total, byLevel, byScope };
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('Import des alertes communales échoué :', err);
