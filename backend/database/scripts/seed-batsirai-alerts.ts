@@ -12,10 +12,14 @@ import { BATSIRAI_RADII } from '../seeds/batsirai-2022-radii';
  * champ de vent documenté (rayons R34 / R50 / R64 de la RSMC La Réunion).
  *
  * Règles de coloration (code couleur cyclonique malgache) :
- *  - ROUGE : la commune est à l'intérieur du rayon de vent ≥ 50 kt (R50/R64) —
- *            « dans le cyclone ».
- *  - JAUNE : la commune est dans le rayon de vent ≥ 34 kt (R34) mais hors du
- *            rayon ≥ 50 kt — « affectée ».
+ *  - ROUGE : la commune est dans le cœur du cyclone (« passage ») : rayon de vent
+ *            ≥ 50 kt (R50/R64) documenté par la RSMC. Lorsque la RSMC cesse de
+ *            publier le R50 (Batsirai retombe sous 50 kt le 6 février), la dernière
+ *            valeur publiée est **prolongée** le long de la trajectoire pour que le
+ *            cœur reste visible pendant tout le passage — méthode de persistance,
+ *            jamais une valeur inventée.
+ *  - JAUNE : la commune est dans le rayon de vent ≥ 34 kt (R34) mais hors du cœur
+ *            — « affectée ».
  *  - VERT  : la commune est hors du champ de vent documenté — « safe ».
  *  - BLEU  : la commune vient de sortir du champ de vent (R34). La transition est
  *            progressive, commune par commune, dès que le cercle ne la touche
@@ -25,7 +29,7 @@ import { BATSIRAI_RADII } from '../seeds/batsirai-2022-radii';
  *  - Aucune commune n'est colorée à partir d'une simple proximité estimée : seuls
  *    les rayons de vent RÉELLEMENT publiés (RSMC La Réunion / IBTrACS v04r01)
  *    sont utilisés. Un seuil non publié reste `null` (jamais interpolé comme une
- *    valeur inventée).
+ *    valeur inventée) ; seule la valeur du cœur déjà publiée est prolongée.
  *  - Les niveaux sont stockés `info_type = ESTIMATION`, `territory_scope =
  *    COMMUNE`, avec la source et un commentaire explicite.
  *  - Le bulletin du 1er février ne publie qu'un niveau global « VERTE » sans liste
@@ -82,6 +86,14 @@ export interface WindSample {
   r50: number | null;
   /** Rayon du vent ≥ 64 kt (km) publié, ou null si absent. */
   r64: number | null;
+  /**
+   * Rayon du cœur (« passage du cyclone ») utilisé pour le ROUGE, en km.
+   * Correspond au rayon ≥ 50 kt publié ; lorsque la RSMC cesse de le publier
+   * (Batsirai retombe sous 50 kt le 6 février), la **dernière valeur publiée est
+   * prolongée** — méthode de persistance, jamais une valeur inventée. Reste `null`
+   * tant qu'aucun R50 n'a encore été documenté.
+   */
+  coreKm: number | null;
 }
 
 /** Intervalle d'alerte daté d'une commune (bornes en epoch ms). */
@@ -104,10 +116,11 @@ export function haversineKm(lon1: number, lat1: number, lon2: number, lat2: numb
 }
 
 /**
- * Échantillonne la trajectoire observée et ses rayons de vent. Entre deux points
- * consécutifs, la position du centre est interpolée linéairement ; un rayon n'est
- * interpolé que si les DEUX points bornes le publient — sinon il reste `null`
- * (aucune valeur inventée).
+ * Échantillonne la trajectoire observée et ses rayons de vent. La position du
+ * centre est interpolée linéairement entre deux points ; un rayon n'est interpolé
+ * que si les DEUX points bornes le publient — sinon il reste `null` (aucune valeur
+ * inventée). Le rayon du cœur (`coreKm`) est le R50 publié, par prolongation de la
+ * dernière valeur publiée lorsqu'il n'est plus documenté.
  */
 export function buildWindSamples(): WindSample[] {
   const radiiByTime = new Map(BATSIRAI_RADII.map((r) => [r.time, r]));
@@ -119,23 +132,26 @@ export function buildWindSamples(): WindSample[] {
     const point = BATSIRAI_TRACK[i];
     const next = BATSIRAI_TRACK[i + 1];
     const r0 = radiiByTime.get(point.time);
-    const r1 = next ? radiiByTime.get(next.time) : undefined;
     const t0 = Date.parse(point.time);
 
+    // Point de trajectoire exact : on reprend les valeurs publiées telles quelles.
+    samples.push({
+      t: t0,
+      lon: point.lon,
+      lat: point.lat,
+      r34: r0?.radius34ktKm ?? null,
+      r50: r0?.radius50ktKm ?? null,
+      r64: r0?.radius64ktKm ?? null,
+      coreKm: null,
+    });
+
     if (!next) {
-      samples.push({
-        t: t0,
-        lon: point.lon,
-        lat: point.lat,
-        r34: r0?.radius34ktKm ?? null,
-        r50: r0?.radius50ktKm ?? null,
-        r64: r0?.radius64ktKm ?? null,
-      });
       continue;
     }
 
+    const r1 = radiiByTime.get(next.time);
     const t1 = Date.parse(next.time);
-    for (let t = t0; t < t1; t += SAMPLE_STEP_MINUTES * 60_000) {
+    for (let t = t0 + SAMPLE_STEP_MINUTES * 60_000; t < t1; t += SAMPLE_STEP_MINUTES * 60_000) {
       const f = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
       samples.push({
         t,
@@ -144,28 +160,47 @@ export function buildWindSamples(): WindSample[] {
         r34: lerp(r0?.radius34ktKm, r1?.radius34ktKm, f),
         r50: lerp(r0?.radius50ktKm, r1?.radius50ktKm, f),
         r64: lerp(r0?.radius64ktKm, r1?.radius64ktKm, f),
+        coreKm: null,
       });
     }
   }
 
   samples.sort((a, b) => a.t - b.t);
+
+  // Prolongation du dernier R50 publié (cœur du cyclone) quand il n'est plus documenté.
+  let lastPublishedCore: number | null = null;
+  for (const sample of samples) {
+    if (sample.r50 != null) {
+      lastPublishedCore = sample.r50;
+    }
+    sample.coreKm = lastPublishedCore;
+  }
+
   return samples;
 }
 
 /**
  * Niveau d'une commune à un instant donné, d'après les rayons documentés.
- * Quand aucun seuil n'est publié à cet instant, le niveau précédent est conservé
- * (on ne bascule pas une commune sur une donnée absente).
+ *  - ROUGE : dans le R64 ou dans le cœur (R50 publié / prolongé) — « passage ».
+ *  - JAUNE : dans le R34 mais hors du cœur — « affectée ».
+ *  - VERT  : hors du champ de vent.
+ * Le cœur est plafonné par le R34 pour ne jamais dépasser la zone affectée.
+ * Quand aucun seuil n'est documenté à cet instant, le niveau précédent est
+ * conservé (on ne bascule pas une commune sur une donnée absente).
  */
 export function classifyWind(lon: number, lat: number, sample: WindSample, previous: Level): Level {
-  if (sample.r34 == null && sample.r50 == null && sample.r64 == null) {
+  if (sample.r34 == null && sample.r50 == null && sample.r64 == null && sample.coreKm == null) {
     return previous;
   }
   const distance = haversineKm(lon, lat, sample.lon, sample.lat);
-  if (
-    (sample.r64 != null && distance <= sample.r64) ||
-    (sample.r50 != null && distance <= sample.r50)
-  ) {
+  // Le cœur est plafonné par le R34 pour ne jamais dépasser la zone affectée.
+  const core =
+    sample.coreKm == null
+      ? null
+      : sample.r34 == null
+        ? sample.coreKm
+        : Math.min(sample.coreKm, sample.r34);
+  if ((sample.r64 != null && distance <= sample.r64) || (core != null && distance <= core)) {
     return 'ROUGE';
   }
   if (sample.r34 != null && distance <= sample.r34) {
@@ -176,9 +211,10 @@ export function classifyWind(lon: number, lat: number, sample: WindSample, previ
 
 /**
  * Intervalles temporels d'alerte d'une commune le long de la trajectoire :
- * JAUNE dans R34, ROUGE dans R50/R64, puis BLEU (danger résiduel) à partir de sa
- * sortie du champ de vent jusqu'à la fin de l'événement. Les intervalles ne se
- * chevauchent jamais : à chaque instant, un seul niveau dynamique est actif.
+ * JAUNE dans R34, ROUGE dans le cœur (R50/R64, R50 prolongé), puis BLEU (danger
+ * résiduel) à partir de sa sortie du champ de vent jusqu'à la fin de l'événement.
+ * Les intervalles ne se chevauchent jamais : à chaque instant, un seul niveau
+ * dynamique est actif.
  */
 export function windIntervalsForCommune(
   communeId: string,
@@ -231,15 +267,17 @@ const WIND_LEVEL_META: Record<
     name: WIND_SOURCE_NAME,
     url: WIND_SOURCE_URL,
     comment:
-      "Cyclone : commune à l'intérieur du rayon de vent ≥ 50 kt (R50/R64) documenté " +
-      'par la RSMC La Réunion le long de la trajectoire observée (IBTrACS v04r01).',
+      "Cyclone (passage) : commune à l'intérieur du cœur du cyclone — rayon de vent ≥ 50 kt " +
+      '(R50/R64) documenté par la RSMC La Réunion le long de la trajectoire observée ' +
+      '(IBTrACS v04r01). Après la dernière publication du R50, la dernière valeur publiée ' +
+      'est prolongée (persistance), sans valeur inventée.',
   },
   JAUNE: {
     name: WIND_SOURCE_NAME,
     url: WIND_SOURCE_URL,
     comment:
-      "Commune affectée : à l'intérieur du rayon de vent ≥ 34 kt (R34) mais hors du " +
-      'rayon ≥ 50 kt documenté (RSMC La Réunion / IBTrACS v04r01).',
+      "Commune affectée : à l'intérieur du rayon de vent ≥ 34 kt (R34) mais hors du cœur " +
+      '(hors R50/R64) documenté (RSMC La Réunion / IBTrACS v04r01).',
   },
   BLEU: {
     name: RESIDUAL_SOURCE_NAME,
@@ -448,7 +486,7 @@ export async function runBatsiraiAlertsSeed(): Promise<BatsiraiAlertsReport> {
 
     console.log(`  ✓ Niveau de base VERT (safe, hors champ de vent) : ${baseRows} lignes.`);
     console.log(
-      `  ✓ Zones dynamiques — ROUGE (≤ R50/R64) : ${wind.ROUGE} ; ` +
+      `  ✓ Zones dynamiques — ROUGE (cœur, R50/R64 prolongés) : ${wind.ROUGE} ; ` +
         `JAUNE (≤ R34) : ${wind.JAUNE} ; BLEU (sortie de rayon) : ${wind.BLEU} intervalles.`,
     );
     console.log(
