@@ -13,30 +13,38 @@ vi.mock('react-leaflet', async () => {
     MapContainer: ({ children }: { children: React.ReactNode }) =>
       React.createElement('div', { 'data-testid': 'map' }, children),
     TileLayer: () => null,
-    GeoJSON: ({ data }: { data: unknown }) =>
-      React.createElement('div', {
+    GeoJSON: ({
+      data,
+      style,
+    }: {
+      data: unknown;
+      style?: { dashArray?: string };
+    }) => {
+      // L'emprise documentée est une surface unique (`Feature`), pas une
+      // collection : elle est distinguée pour ne pas être comptée avec les
+      // couches « geojson » (vigilance, communes).
+      const payload = data as { type?: string; properties?: Record<string, unknown> } | null;
+      if (payload?.type === 'Feature' && payload.properties?.documentedPoints != null) {
+        return React.createElement('div', {
+          'data-testid': 'wind-swath-surface',
+          'data-points': String(payload.properties.documentedPoints),
+          'data-dash': style?.dashArray ?? '',
+        });
+      }
+      return React.createElement('div', {
         'data-testid': 'geojson',
         'data-features':
           data && typeof data === 'object' && 'features' in data
             ? (data as FeatureCollection).features.length
             : 0,
-      }),
+      });
+    },
     CircleMarker: () => React.createElement('div', { 'data-testid': 'track-point' }),
     Polyline: () => React.createElement('div', { 'data-testid': 'polyline' }),
-    // Comme pour Circle : l'entre-deux de l'emprise documentée porte la classe
-    // dédiée, les autres polygones de la carte sont distingués.
-    Polygon: ({ pathOptions }: { pathOptions?: { className?: string } }) =>
-      React.createElement('div', {
-        'data-testid':
-          pathOptions?.className === 'madarisk-wind-swath' ? 'wind-swath-belt' : 'polygon',
-      }),
-    // L'anneau de la lecture animée porte un contour ; les cercles de l'emprise
-    // documentée n'en ont pas (className dédiée) : on les distingue ici.
-    Circle: ({ pathOptions }: { pathOptions?: { className?: string } }) =>
-      React.createElement('div', {
-        'data-testid':
-          pathOptions?.className === 'madarisk-wind-swath' ? 'wind-swath-circle' : 'radius-circle',
-      }),
+    Polygon: () => React.createElement('div', { 'data-testid': 'polygon' }),
+    // L'anneau de la lecture animée est le seul cercle de cette carte : l'emprise
+    // documentée des vents est une surface GeoJSON unique.
+    Circle: () => React.createElement('div', { 'data-testid': 'radius-circle' }),
     Marker: ({
       position,
       children,
@@ -527,11 +535,10 @@ describe('EventHistoricalMapTab', () => {
     renderTab();
 
     await waitFor(() => {
-      expect(screen.getAllByTestId('wind-swath-circle')).toHaveLength(2);
+      expect(screen.getByTestId('wind-swath-surface')).toHaveAttribute('data-points', '2');
     });
-    // Les deux mesures publiées sont reliées : l'emprise est continue, pas une
-    // suite de cercles isolés.
-    expect(screen.getAllByTestId('wind-swath-belt')).toHaveLength(1);
+    // Les deux mesures publiées sont réunies en une seule surface, du premier au
+    // dernier point documenté, plutôt que deux disques isolés.
     expect(screen.getByText(/Emprise documentée des vents \(2 points\)/)).toBeTruthy();
   });
 
@@ -556,16 +563,14 @@ describe('EventHistoricalMapTab', () => {
     renderTab();
 
     await waitFor(() => {
-      expect(screen.getAllByTestId('wind-swath-circle').length).toBeGreaterThan(0);
+      expect(screen.getByTestId('wind-swath-surface')).toHaveAttribute('data-points', '2');
     });
-    expect(screen.getAllByTestId('wind-swath-belt')).toHaveLength(1);
 
     await user.click(screen.getByRole('checkbox', { name: /Emprise documentée des vents/ }));
 
     await waitFor(() => {
-      expect(screen.queryAllByTestId('wind-swath-circle')).toHaveLength(0);
+      expect(screen.queryAllByTestId('wind-swath-surface')).toHaveLength(0);
     });
-    expect(screen.queryAllByTestId('wind-swath-belt')).toHaveLength(0);
     // Le marqueur du cyclone reste affiché : seule l'emprise est retirée.
     expect(screen.getByTestId('cyclone-marker')).toBeTruthy();
   });

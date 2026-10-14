@@ -1,8 +1,9 @@
-import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   CircleMarker,
   GeoJSON,
   MapContainer,
+  Popup,
   TileLayer,
   Tooltip,
   ZoomControl,
@@ -10,14 +11,27 @@ import {
 } from 'react-leaflet';
 import { Link } from 'react-router-dom';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
-import type { Layer } from 'leaflet';
+import type { Layer, PathOptions } from 'leaflet';
 import L from 'leaflet';
 import { BookOpen, ChevronDown, ChevronUp, Layers, LocateFixed, RefreshCw, Snowflake } from 'lucide-react';
-import type { EventListItem, TrackStatePoint } from '@/types';
+import type {
+  EventCommuneAlertRow,
+  EventCommuneAlertsSummary,
+  EventListItem,
+  TrackStatePoint,
+} from '@/types';
 import { RISK_COLORS, RISK_LABELS } from '@/types';
 import { RISK_LEVELS } from '@/lib/eventMeta';
-import { availableWindRadiusKm, CYCLONE_VIOLET, CYCLONE_VIOLET_DEEP, observedSteps } from '@/lib/historical';
-import { useTrackPlayback } from '@/lib/useTrackPlayback';
+import {
+  availableWindRadiusKm,
+  COMMUNE_ALERT_COLORS,
+  COMMUNE_ALERT_LEGEND_ORDER,
+  COMMUNE_ALERT_LABELS,
+  CYCLONE_VIOLET,
+  CYCLONE_VIOLET_DEEP,
+  formatAntananarivo,
+  observedSteps,
+} from '@/lib/historical';
 import {
   communeStyle,
   CONE_AREA_FILL,
@@ -41,15 +55,46 @@ import {
   intersectingFeatureIds,
 } from '@/lib/forecastCone';
 import { cn } from '@/lib/utils';
+import { useTrackPlayback } from '@/lib/useTrackPlayback';
 import { CommuneMapSearch } from '@/components/crisis/CommuneMapSearch';
+import { CommuneAlertLayer } from '@/components/crisis/CommuneAlertLayer';
 import { ForecastConeLayer } from '@/components/crisis/ForecastConeLayer';
 import { CycloneMarker } from '@/components/events/CycloneMarker';
 import { CycloneWindSwath } from '@/components/events/CycloneWindSwath';
+import { TrackPointDetails } from '@/components/events/TrackPointDetails';
 
 type CommuneClickHandler = (communeId: string, name: string) => void;
 
+/**
+ * Position de lecture de la trajectoire, pilotée par la page : une seule horloge
+ * fait avancer le marqueur cyclone le long des points observés, en boucle. Les
+ * valeurs affichées restent celles du point observé de référence (`point`).
+ */
+export interface MapPlayback {
+  position: [number, number] | null;
+  point: TrackStatePoint | null;
+  nextPoint: TrackStatePoint | null;
+  interpolated: boolean;
+}
+
 /** Ensemble vide partagé : évite de recalculer / réallouer sans zone probable. */
 const NO_IDS: ReadonlySet<string> = new Set<string>();
+
+/** Map vide partagée : aucune alerte communale à afficher. */
+const NO_ALERTS: ReadonlyMap<string, EventCommuneAlertRow> = new Map();
+
+/**
+ * Style de mise en évidence de la commune sélectionnée. Fonction de RÉFÉRENCE
+ * stable : `react-leaflet` rejoue `setStyle` quand la prop `style` change
+ * d'identité, et la carte est re-rendue à chaque image de la lecture animée.
+ */
+const HIGHLIGHT_STYLE: () => PathOptions = () => ({
+  color: '#03224c',
+  weight: 3.5,
+  fillColor: '#03224c',
+  fillOpacity: 0.28,
+  opacity: 1,
+});
 
 interface CrisisMapProps {
   riskLayer: FeatureCollection | null;
@@ -75,6 +120,22 @@ interface CrisisMapProps {
   focusTarget: { geometry: unknown; nonce: number } | null;
   mapPhase: string;
   onMapPhaseChange: (phase: string) => void;
+  /** Niveaux d'alerte communaux actifs à `alertAt`, indexés par communeId. */
+  communeAlerts?: ReadonlyMap<string, EventCommuneAlertRow> | null;
+  /** Répartition par niveau + sources, affichée dans la légende. */
+  alertSummary?: EventCommuneAlertsSummary | null;
+  /** Instant consulté (ISO-8601) auquel se rapportent les niveaux affichés. */
+  alertAt?: string | null;
+  /**
+   * Lecture de la trajectoire pilotée par la page : position courante du
+   * marqueur et point observé de référence. `null` = la carte anime elle-même.
+   */
+  playback?: MapPlayback | null;
+  /**
+   * Déplace la lecture sur un point cliqué : le cyclone s'y place et poursuit
+   * la trajectoire depuis ce point (sans repartir du début).
+   */
+  onSeekTrackPoint?: (point: TrackStatePoint) => void;
   refreshing?: boolean;
   onRefresh?: () => void;
 }
@@ -129,12 +190,21 @@ function Legend({
   hasDocumentedRadius,
   hasWindSwath,
   hasProbableZone,
+  alertSummary,
+  alertsVisible,
+  alertAt,
 }: {
   hasDocumentedRadius: boolean;
   /** Emprise réellement visible : la légende ne l'annonce que si elle est dessinée. */
   hasWindSwath: boolean;
   /** Zone de position probable réellement dessinée (points de prévision datés). */
   hasProbableZone: boolean;
+  /** Répartition des alertes communales à l'instant consulté (null : pas de données). */
+  alertSummary: EventCommuneAlertsSummary | null;
+  /** La couche d'alerte est-elle réellement dessinée sur la carte ? */
+  alertsVisible: boolean;
+  /** Instant consulté auquel se rapportent les niveaux affichés. */
+  alertAt: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -187,6 +257,44 @@ function Legend({
                 </li>
               ))}
             </ul>
+            {alertSummary ? (
+              <>
+                <p className="mt-2 mb-1 text-[10px] tracking-wide text-muted uppercase">
+                  Niveaux d&apos;alerte cyclonique
+                </p>
+                <ul className="space-y-1">
+                  {COMMUNE_ALERT_LEGEND_ORDER.map((level) => (
+                    <li key={level} className="flex items-center gap-2">
+                      <span
+                        className="inline-block size-3 shrink-0 rounded-sm"
+                        style={{ background: COMMUNE_ALERT_COLORS[level] }}
+                      />
+                      <span className="flex-1">{COMMUNE_ALERT_LABELS[level]}</span>
+                      <span className="tabular-nums text-muted">
+                        {alertSummary.levels[level]}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {alertSummary.estimated > 0 ? (
+                  <p className="mt-1 text-[10px] leading-snug text-amber-700">
+                    {alertSummary.estimated} commune(s) colorée(s) par estimation spatiale :
+                    niveau hérité d&apos;un district ou d&apos;une région, non publié à
+                    l&apos;échelle communale (pointillés sur la carte).
+                  </p>
+                ) : null}
+                <p className="mt-1 text-[10px] leading-snug text-muted">
+                  {alertsVisible ? '' : 'Couche masquée. '}
+                  Niveaux actifs au {alertAt ? formatAntananarivo(alertAt) : '—'} (heure de
+                  Madagascar).
+                </p>
+                {alertSummary.sources.length > 0 ? (
+                  <p className="mt-1 border-t border-line pt-1.5 text-[10px] leading-snug text-muted">
+                    Sources : {alertSummary.sources.join(' · ')}
+                  </p>
+                ) : null}
+              </>
+            ) : null}
             <p className="mt-2 mb-1 text-[10px] tracking-wide text-muted uppercase">
               Autres couches
             </p>
@@ -198,8 +306,8 @@ function Legend({
               {hasWindSwath ? (
                 <li className="flex items-center gap-2">
                   <span
-                    className="inline-block h-3 w-4 rounded-sm"
-                    style={{ background: `${CYCLONE_VIOLET}1f` }}
+                    className="inline-block h-3 w-4 rounded-sm border border-dashed"
+                    style={{ borderColor: CYCLONE_VIOLET_DEEP, background: `${CYCLONE_VIOLET}2e` }}
                   />
                   Emprise documentée des vents (rayons publiés)
                 </li>
@@ -255,14 +363,22 @@ function Legend({
             </ul>
             {hasWindSwath ? (
               <p className="mt-1.5 border-t border-line pt-1.5 text-[10px] leading-snug text-muted">
-                Emprise documentée : chaque cercle reprend le rayon publié, et deux mesures
-                consécutives sont reliées par leurs tangentes. Aucune largeur n&apos;est mesurée
-                entre deux points datés — ce n&apos;est pas un cône d&apos;incertitude.
+                Emprise documentée : les disques des rayons publiés et leurs liaisons entre mesures
+                consécutives sont réunis en une seule surface, du premier au dernier point
+                documenté. Aucun rayon n&apos;est mesuré entre deux points datés — ce n&apos;est pas
+                un cône d&apos;incertitude.
               </p>
             ) : null}
             {hasProbableZone ? (
               <p className="mt-1.5 border-t border-line pt-1.5 text-[10px] leading-snug text-muted">
                 {FORECAST_CONE_NOTE}
+              </p>
+            ) : null}
+            {alertSummary ? (
+              <p className="mt-1.5 border-t border-line pt-1.5 text-[10px] leading-snug text-muted">
+                Les couleurs d&apos;alerte viennent uniquement d&apos;informations datées et
+                sourcées (bulletin officiel, impact observé, estimation signalée) — jamais
+                d&apos;une distance au cyclone. Une commune hors alerte reste grise.
               </p>
             ) : null}
           </div>
@@ -302,10 +418,12 @@ function LayerControls({
   showEvent,
   showSwath,
   showCone,
+  showAlerts,
   hasEvent,
   communesAreExposed,
   hasDocumentedRadius,
   hasProbableZone,
+  hasAlertData,
   onChange,
 }: {
   showRisks: boolean;
@@ -315,12 +433,14 @@ function LayerControls({
   showEvent: boolean;
   showSwath: boolean;
   showCone: boolean;
+  showAlerts: boolean;
   hasEvent: boolean;
   communesAreExposed: boolean;
   hasDocumentedRadius: boolean;
   hasProbableZone: boolean;
+  hasAlertData: boolean;
   onChange: (
-    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath' | 'cone',
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath' | 'cone' | 'alerts',
     value: boolean,
   ) => void;
 }) {
@@ -348,7 +468,7 @@ function LayerControls({
   }, [open]);
 
   const items: Array<{
-    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath' | 'cone';
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath' | 'cone' | 'alerts';
     label: string;
     checked: boolean;
     disabled?: boolean;
@@ -373,6 +493,12 @@ function LayerControls({
       label: 'Zone probable du centre',
       checked: showCone,
       disabled: !hasEvent || !hasProbableZone,
+    },
+    {
+      key: 'alerts',
+      label: 'Alertes cycloniques (communes)',
+      checked: showAlerts,
+      disabled: !hasAlertData,
     },
   ];
 
@@ -439,10 +565,11 @@ function LayerControls({
 }
 
 /**
- * Marqueur violet animé du centre cyclonique (salle de crise) : lecture de la
- * trajectoire OBSERVÉE, un segment parcouru toutes les 3 s puis reprise au
- * premier point. Seule la position est interpolée entre deux points vérifiés ;
- * les valeurs affichées restent celles du point observé de référence.
+ * Marqueur violet animé du centre cyclonique (repli) : lecture de la trajectoire
+ * OBSERVÉE, un segment parcouru toutes les 3 s puis reprise au premier point.
+ * Utilisé quand la page ne pilote pas la lecture ; seule la position est
+ * interpolée entre deux points vérifiés, les valeurs restent celles du point de
+ * référence.
  */
 function AnimatedCycloneMarker({
   points,
@@ -486,6 +613,11 @@ export function CrisisMap({
   focusTarget,
   mapPhase,
   onMapPhaseChange,
+  communeAlerts = null,
+  alertSummary = null,
+  alertAt = null,
+  playback = null,
+  onSeekTrackPoint,
   refreshing = false,
   onRefresh,
 }: CrisisMapProps) {
@@ -501,8 +633,12 @@ export function CrisisMap({
   // défaut, mais elle n'existe que si l'événement porte des points de prévision
   // dont l'échéance est datable.
   const [showCone, setShowCone] = useState(true);
+  // Niveaux d'alerte communaux : affichés par défaut dès que l'événement en
+  // porte (c'est la lecture « qui est sous alerte, quand »).
+  const [showAlerts, setShowAlerts] = useState(true);
 
-  // Points observés (jamais les points prévus) : base de la lecture animée.
+  // Points observés (jamais les points prévus) : base de l'emprise documentée et
+  // du choix par défaut du point consulté.
   const observedTrack = useMemo(() => observedSteps(trackPoints), [trackPoints]);
 
   // Rayon de vent réellement documenté (RSMC) : la zone d'influence du cyclone
@@ -557,7 +693,7 @@ export function CrisisMap({
   };
 
   const handleToggle = (
-    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath' | 'cone',
+    key: 'risks' | 'communes' | 'districts' | 'weather' | 'event' | 'swath' | 'cone' | 'alerts',
     value: boolean,
   ) => {
     if (key === 'risks') setShowRisks(value);
@@ -566,12 +702,89 @@ export function CrisisMap({
     else if (key === 'weather') setShowWeather(value);
     else if (key === 'swath') setShowSwath(value);
     else if (key === 'cone') setShowCone(value);
+    else if (key === 'alerts') setShowAlerts(value);
     else setShowEvent(value);
   };
 
   const resetView = () => {
     window.dispatchEvent(new Event('madarisk-reset-view'));
   };
+
+  // Niveaux d'alerte communaux : la couche ne colore les communes que si
+  // l'événement porte des données d'alerte ET que la couche est affichée.
+  const alertMap = communeAlerts ?? NO_ALERTS;
+  const hasAlertData = Boolean(alertSummary?.eventHasAlertData);
+  const alertsVisible = hasAlertData && showAlerts && showCommunes && Boolean(communeLayer);
+
+  /*
+   * Clé stable de la couche communale : ni l'instant consulté, ni la sélection
+   * n'y figurent. Seul un changement d'événement ou de données la reconstitue
+   * (react-leaflet ne rejoue pas `data` autrement). Les polygones ne sont donc
+   * jamais retirés entre deux points consultés — seuls les styles changent.
+   */
+  const communeLayerKey = `${activeEvent?.id ?? 'none'}-${communeLayer?.features?.length ?? 0}`;
+
+  /*
+   * Style administratif (hors mode alerte) : mémorisé pour rester stable tant
+   * que la sélection et la couche ne changent pas, afin que react-leaflet
+   * applique un `setStyle` ciblé plutôt qu'une reconstruction.
+   */
+  const communeStyleFor = useCallback(
+    (feature?: Feature) =>
+      communeStyle(feature, selectedCommuneId, Boolean(activeEvent), coneCommuneIds),
+    [selectedCommuneId, activeEvent, coneCommuneIds],
+  );
+
+  /*
+   * Styles risque / district : même précaution de stabilité que la couche
+   * communale. La carte est re-rendue à chaque image de la lecture animée ;
+   * une référence recréée déclencherait un `setStyle` global inutile.
+   */
+  const riskStyleFor = useCallback(
+    (feature?: Feature) => riskStyle(feature, selectedCommuneId, exposedCommuneIds),
+    [selectedCommuneId, exposedCommuneIds],
+  );
+  const districtStyleFor = useCallback(
+    (feature?: Feature) => districtStyle(feature, coneDistrictIds),
+    [coneDistrictIds],
+  );
+
+  /*
+   * Pastilles de trajectoire mémorisées : la lecture fait re-rendre la carte à
+   * chaque image mais ces pastilles ne changent qu'au passage d'un point au
+   * suivant. Évite un `setStyle` inutile sur chaque pastille à chaque image.
+   */
+  const activePointId = playback?.point?.id ?? null;
+  const trackPointNodes = useMemo(
+    () =>
+      trackPoints.map((pt) => {
+        const selected = pt.id === activePointId;
+        return (
+          <CircleMarker
+            key={pt.id}
+            center={[pt.latitude, pt.longitude]}
+            pathOptions={trackPointStyle(pt.trackType, selected)}
+            eventHandlers={
+              onSeekTrackPoint ? { click: () => onSeekTrackPoint(pt) } : undefined
+            }
+          >
+            <Tooltip>
+              {pt.trackType === 'OBSERVEE' ? 'Observé' : 'Prévu'} le{' '}
+              {formatAntananarivo(pt.observedAt)} (Madagascar)
+            </Tooltip>
+            <Popup>
+              <TrackPointDetails
+                point={pt}
+                eventName={activeEvent?.name ?? ''}
+                sourceName={activeEvent?.sourceName}
+                sourceUrl={activeEvent?.sourceUrl}
+              />
+            </Popup>
+          </CircleMarker>
+        );
+      }),
+    [trackPoints, activePointId, onSeekTrackPoint, activeEvent],
+  );
 
   // Le repli administratif ne compte pas comme une donnée d'exposition : un
   // événement sans exposition reste signalé comme tel, même si ses limites
@@ -638,13 +851,7 @@ export function CrisisMap({
               geometry: selectedCommuneGeometry,
             } as Feature<Geometry>
           }
-          style={() => ({
-            color: '#03224c',
-            weight: 3.5,
-            fillColor: '#03224c',
-            fillOpacity: 0.28,
-            opacity: 1,
-          })}
+          style={HIGHLIGHT_STYLE}
           interactive={false}
         />
       ) : null}
@@ -653,7 +860,7 @@ export function CrisisMap({
           <GeoJSON
           key={`risk-${selectedCommuneId ?? 'none'}-${riskLayer.features.length}`}
           data={riskLayer}
-          style={(feature) => riskStyle(feature, selectedCommuneId, exposedCommuneIds)}
+          style={riskStyleFor}
           onEachFeature={(feature: Feature<Geometry>, layer: Layer) => {
             const p = (feature.properties ?? {}) as Record<string, unknown>;
             const level = p.riskLevel ?? p.risk_level;
@@ -674,7 +881,7 @@ export function CrisisMap({
       {showDistricts && districtLayer ? (
         <GeoJSON
           data={districtLayer}
-          style={(feature) => districtStyle(feature, coneDistrictIds)}
+          style={districtStyleFor}
           onEachFeature={(feature: Feature<Geometry>, layer: Layer) => {
             const p = (feature.properties ?? {}) as Record<string, unknown>;
             layer.bindPopup(`<strong>${featureName(p) || 'District'}</strong>`);
@@ -682,13 +889,19 @@ export function CrisisMap({
         />
       ) : null}
 
-      {showCommunes && communeLayer ? (
-        <GeoJSON
-          key={`commune-${selectedCommuneId ?? 'none'}-${communeLayer.features.length}`}
+      {showCommunes && communeLayer && alertsVisible ? (
+        <CommuneAlertLayer
+          key={`communes-alerts-${communeLayerKey}`}
           data={communeLayer}
-          style={(feature) =>
-            communeStyle(feature, selectedCommuneId, Boolean(activeEvent), coneCommuneIds)
-          }
+          alerts={alertMap}
+          selectedId={selectedCommuneId}
+          onCommuneClick={onCommuneClick}
+        />
+      ) : showCommunes && communeLayer ? (
+        <GeoJSON
+          key={`communes-${communeLayerKey}`}
+          data={communeLayer}
+          style={communeStyleFor}
           onEachFeature={(feature: Feature<Geometry>, layer: Layer) => {
             const p = (feature.properties ?? {}) as Record<string, unknown>;
             const level = p.riskLevel ?? p.risk_level;
@@ -750,21 +963,17 @@ export function CrisisMap({
           {trackLayer ? (
             <GeoJSON data={trackLayer} style={trackStyle} />
           ) : null}
-          {trackPoints.length > 0 ? (
-            trackPoints.map((pt) => (
-              <CircleMarker
-                key={pt.id}
-                center={[pt.latitude, pt.longitude]}
-                pathOptions={trackPointStyle(pt.trackType)}
-              >
-                <Tooltip>
-                  {pt.trackType === 'OBSERVEE' ? 'Observé' : 'Prévu'} le{' '}
-                  {pt.observedAt ? new Date(pt.observedAt).toLocaleString('fr-FR') : '—'}
-                </Tooltip>
-              </CircleMarker>
-            ))
-          ) : null}
-          {observedTrack.length > 0 ? (
+          {trackPointNodes}
+          {playback?.position && playback.point ? (
+            <CycloneMarker
+              position={playback.position}
+              point={playback.point}
+              interpolated={playback.interpolated}
+              eventName={activeEvent.name}
+              sourceName={activeEvent.sourceName}
+              sourceUrl={activeEvent.sourceUrl}
+            />
+          ) : observedTrack.length > 0 ? (
             <AnimatedCycloneMarker
               points={observedTrack}
               eventName={activeEvent.name}
@@ -780,6 +989,9 @@ export function CrisisMap({
           hasDocumentedRadius={hasDocumentedRadius}
           hasWindSwath={hasDocumentedRadius && showEvent && showSwath}
           hasProbableZone={forecastCone !== null && showEvent && showCone}
+          alertSummary={alertSummary ?? null}
+          alertsVisible={alertsVisible}
+          alertAt={alertAt ?? null}
         />
       </CrisisMapOverlay>
       <CrisisMapOverlay position="top-right">
@@ -816,10 +1028,12 @@ export function CrisisMap({
             showEvent={showEvent}
             showSwath={showSwath}
             showCone={showCone}
+            showAlerts={showAlerts}
             hasEvent={Boolean(activeEvent)}
             communesAreExposed={communesAreExposed}
             hasDocumentedRadius={hasDocumentedRadius}
             hasProbableZone={forecastCone !== null}
+            hasAlertData={hasAlertData}
             onChange={handleToggle}
           />
           {activeEvent ? (

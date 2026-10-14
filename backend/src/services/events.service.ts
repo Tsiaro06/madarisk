@@ -8,6 +8,9 @@ import { exposureService } from './exposure.service';
 import {
   AreaGeoJson,
   CommuneImpactsResult,
+  EventCommuneAlertHistory,
+  EventCommuneAlertsResult,
+  EventCommuneAlertsSummary,
   EventDetail,
   EventListItem,
   EventStatus,
@@ -47,6 +50,14 @@ interface RequestContext {
 
 function getIp(req: RequestContext): string | null {
   return req.ip ?? req.socket?.remoteAddress ?? null;
+}
+
+/** Parse un paramètre `at` ISO-8601, rejette une date invalide en 400. */
+function parseAtIso(atIso: string): Date {
+  const d = new Date(atIso);
+  if (Number.isNaN(d.getTime()))
+    throw AppError.badRequest('Paramètre at invalide (ISO8601 requis)');
+  return d;
 }
 
 const STATUS_ORDER: Record<EventStatus, number> = {
@@ -384,6 +395,34 @@ export const eventsService = {
     if (Number.isNaN(d.getTime()))
       throw AppError.badRequest('Paramètre at invalide (ISO8601 requis)');
     return eventsRepository.listCommuneImpactsAt(id, d);
+  },
+
+  /** Niveaux d'alerte communaux actifs à un instant (couche + tooltip carte). */
+  async getCommuneAlertsAt(id: string, atIso: string): Promise<EventCommuneAlertsResult> {
+    await this.ensureExists(id);
+    return eventsRepository.listCommuneAlertsAt(id, parseAtIso(atIso));
+  },
+
+  /** Répartition par niveau à un instant (légende de la carte). */
+  async getCommuneAlertsSummary(id: string, atIso: string): Promise<EventCommuneAlertsSummary> {
+    await this.ensureExists(id);
+    return eventsRepository.getCommuneAlertsSummary(id, parseAtIso(atIso));
+  },
+
+  /** Historique traçable des alertes d'une commune (tooltip détaillé). */
+  async getCommuneAlertHistory(
+    id: string,
+    communeId: string,
+    atIso: string,
+  ): Promise<EventCommuneAlertHistory> {
+    await this.ensureExists(id);
+    const history = await eventsRepository.getCommuneAlertHistory(
+      id,
+      communeId,
+      parseAtIso(atIso),
+    );
+    if (!history) throw AppError.notFound('Commune introuvable');
+    return history;
   },
 
   async calculateArea(

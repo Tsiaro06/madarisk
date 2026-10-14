@@ -1,4 +1,15 @@
-import type { ImpactState, ObservedRiskLevel, RiskLevel, TrackStatePoint } from '@/types';
+import { polygon } from '@turf/helpers';
+import type { Feature, MultiPolygon, Polygon } from 'geojson';
+import type {
+  CommuneAlertInfoType,
+  CommuneAlertScope,
+  DisplayedCommuneAlertLevel,
+  ImpactState,
+  ObservedRiskLevel,
+  RiskLevel,
+  TrackStatePoint,
+} from '@/types';
+import { circlePolygon, mergePolygons } from '@/lib/geoShapes';
 
 /**
  * Palette des impacts OBSERVÉS d'un événement historique (Batsirai etc.) :
@@ -40,6 +51,89 @@ export const NOT_AFFECTED_FILL = '#94a3b8';
  * plus intense. Sert à n'afficher que les niveaux réellement présents en base.
  */
 export const VIGILANCE_LEVELS: RiskLevel[] = ['FAIBLE', 'MODERE', 'ELEVE', 'EXTREME'];
+
+/* --------------------------------------------------------------------------
+ * Niveaux officiels d'alerte cyclonique (salle de crise).
+ *
+ * VERT (menace vague, 2-5 j) · JAUNE (menace précise, 24-48 h) · ROUGE (danger
+ * imminent / passage / impact observé) · BLEU (dangers résiduels après passage)
+ * · GRIS (hors alerte, jamais stocké : absence de ligne active).
+ *
+ * La couleur vient TOUJOURS d'une information datée (bulletin officiel, impact
+ * observé, estimation spatiale signalée) — jamais d'une distance arbitraire au
+ * cyclone.
+ * ------------------------------------------------------------------------ */
+
+export const COMMUNE_ALERT_COLORS: Record<DisplayedCommuneAlertLevel, string> = {
+  VERT: '#16A34A',
+  JAUNE: '#EAB308',
+  ROUGE: '#DC2626',
+  BLEU: '#2563EB',
+  GRIS: '#D1D5DB',
+};
+
+/** Bordure plus foncée que le remplissage, pour chaque niveau. */
+export const COMMUNE_ALERT_BORDERS: Record<DisplayedCommuneAlertLevel, string> = {
+  VERT: '#15803D',
+  JAUNE: '#A16207',
+  ROUGE: '#991B1B',
+  BLEU: '#1D4ED8',
+  GRIS: '#9CA3AF',
+};
+
+/** Légende longue (définition du niveau) pour l'UI et les infobulles. */
+export const COMMUNE_ALERT_LABELS: Record<DisplayedCommuneAlertLevel, string> = {
+  VERT: 'Vert — menace vague (2 à 5 jours)',
+  JAUNE: 'Jaune — menace précise (24 à 48 h)',
+  ROUGE: 'Rouge — danger imminent ou impact observé',
+  BLEU: 'Bleu — dangers résiduels après le passage',
+  GRIS: 'Gris — hors alerte',
+};
+
+/** Libellé court (compteurs, infobulle). */
+export const COMMUNE_ALERT_SHORT_LABELS: Record<DisplayedCommuneAlertLevel, string> = {
+  VERT: 'Vert',
+  JAUNE: 'Jaune',
+  ROUGE: 'Rouge',
+  BLEU: 'Bleu',
+  GRIS: 'Hors alerte',
+};
+
+export const COMMUNE_ALERT_INFO_TYPE_LABELS: Record<CommuneAlertInfoType, string> = {
+  OFFICIELLE: 'Alerte officielle',
+  PREVISION: 'Prévision',
+  IMPACT_OBSERVE: 'Impact observé',
+  ESTIMATION: 'Estimation spatiale',
+};
+
+export const COMMUNE_ALERT_SCOPE_LABELS: Record<CommuneAlertScope, string> = {
+  COMMUNE: 'Commune',
+  DISTRICT: 'District',
+  REGION: 'Région',
+  EVENEMENT: 'Événement',
+};
+
+/** Ordre d'affichage de la légende : du plus fort au plus faible. */
+export const COMMUNE_ALERT_LEGEND_ORDER: DisplayedCommuneAlertLevel[] = [
+  'ROUGE',
+  'JAUNE',
+  'VERT',
+  'BLEU',
+  'GRIS',
+];
+
+/**
+ * Une information est-elle issue d'une estimation spatiale ? Oui si elle est
+ * déclarée telle, ou si elle a été publiée à une échelle supérieure à la commune
+ * (district / région / événement) : le niveau a alors été hérité, ce que l'UI
+ * doit signaler en clair.
+ */
+export function isEstimatedAlert(
+  scope: CommuneAlertScope,
+  infoType: CommuneAlertInfoType,
+): boolean {
+  return infoType === 'ESTIMATION' || scope !== 'COMMUNE';
+}
 
 /** Violet du marqueur cyclone (historique) — distinct du navy MadaRisk. */
 export const CYCLONE_VIOLET = '#7c3aed';
@@ -448,6 +542,66 @@ export function documentedWindBelts(
     });
   }
   return belts;
+}
+
+/** Propriétés posées sur la surface fusionnée (légende, tests, débogage). */
+export type WindSwathProperties = {
+  /** Nombre de mesures prises dans l'union — un rayon publié par mesure, jamais inventé. */
+  documentedPoints: number;
+};
+
+export type WindSwath = Feature<Polygon | MultiPolygon, WindSwathProperties>;
+
+/**
+ * Dernière surface calculée. L'union de dizaines de disques coûte quelques
+ * centaines de millisecondes : la garder d'un montage à l'autre (basculer la
+ * couche puis revenir, ou passer de la salle de crise à l'onglet historique du
+ * même événement) évite de refaire le calcul pour des mesures identiques.
+ */
+let lastSwathKey: string | null = null;
+let lastSwath: WindSwath | null = null;
+
+/**
+ * Emprise documentée des vents en UNE seule surface : l'union des disques
+ * publiés et des liaisons entre mesures consécutives, du premier au dernier
+ * point documenté.
+ *
+ * L'union n'est pas cosmétique : dessinés séparément, les disques se
+ * recouvriraient et leurs teintes s'additionneraient — des bandes plus denses
+ * au centre qui ne correspondent à aucune donnée — et la surface n'aurait pas de
+ * contour d'ensemble. La forme, elle, ne change pas : chaque disque garde le
+ * rayon publié pour sa date, une liaison ne fait que rejoindre deux mesures
+ * voisines par leurs tangentes extérieures, et rien n'est interpolé entre elles.
+ *
+ * `null` quand aucun point ne publie de rayon : une absence n'est pas un zéro.
+ */
+export function documentedWindSwath(points: readonly TrackStatePoint[]): WindSwath | null {
+  const circles = documentedWindCircles(points);
+  if (circles.length === 0) return null;
+
+  const key = circles
+    .map(
+      (measure) =>
+        `${measure.id}:${measure.latitude}:${measure.longitude}:${measure.radiusKm}`,
+    )
+    .join('|');
+  if (key === lastSwathKey) return lastSwath;
+
+  const shapes: Array<Feature<Polygon>> = circles.map((measure) =>
+    circlePolygon(measure.longitude, measure.latitude, measure.radiusKm),
+  );
+
+  // Les liaisons sont des quadrilatères [lat, lon] publiés par `documentedWindBelts` :
+  // remis en [lon, lat] et refermés, ils s'unissent aux disques qu'ils relient.
+  for (const belt of documentedWindBelts(circles)) {
+    const ring: Array<[number, number]> = belt.positions.map(([lat, lng]) => [lng, lat]);
+    ring.push(ring[0]);
+    shapes.push(polygon([ring]));
+  }
+
+  lastSwathKey = key;
+  lastSwath = mergePolygons(shapes, { documentedPoints: circles.length });
+  return lastSwath;
 }
 
 /** Mesure avec unité, ou « non disponible » quand la source ne la fournit pas. */

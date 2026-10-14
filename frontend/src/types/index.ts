@@ -354,6 +354,77 @@ export interface CommuneImpactsResult {
   communes: EventCommuneImpactRow[];
 }
 
+/** Niveaux officiels d'alerte cyclonique malgaches. */
+export type CommuneAlertLevel = 'VERT' | 'JAUNE' | 'ROUGE' | 'BLEU';
+/** Niveau affiché sur la carte : hors alerte (aucune ligne documentée) = GRIS. */
+export type DisplayedCommuneAlertLevel = CommuneAlertLevel | 'GRIS';
+export type CommuneAlertInfoType =
+  | 'OFFICIELLE'
+  | 'PREVISION'
+  | 'IMPACT_OBSERVE'
+  | 'ESTIMATION';
+/** Échelle à laquelle l'information d'alerte a été publiée ou construite. */
+export type CommuneAlertScope = 'COMMUNE' | 'DISTRICT' | 'REGION' | 'EVENEMENT';
+
+export interface EventCommuneAlertRow {
+  communeId: string;
+  communeName: string;
+  communeCode: string | null;
+  districtId: string | null;
+  districtName: string | null;
+  alertLevel: CommuneAlertLevel;
+  validFrom: string;
+  validTo: string | null;
+  infoType: CommuneAlertInfoType;
+  territoryScope: CommuneAlertScope;
+  sourceName: string | null;
+  sourceUrl: string | null;
+  comment: string | null;
+  confidence: number | null;
+}
+
+export interface EventCommuneAlertsResult {
+  eventId: string;
+  at: string;
+  count: number;
+  source: string | null;
+  method: string;
+  communes: EventCommuneAlertRow[];
+}
+
+export interface CommuneAlertLevelCounts {
+  VERT: number;
+  JAUNE: number;
+  ROUGE: number;
+  BLEU: number;
+  GRIS: number;
+}
+
+export interface EventCommuneAlertsSummary {
+  eventId: string;
+  at: string;
+  total: number;
+  levels: CommuneAlertLevelCounts;
+  /** Niveaux issus d'une estimation spatiale (héritage district/région ou dérivé). */
+  estimated: number;
+  eventHasAlertData: boolean;
+  sources: string[];
+  method: string;
+}
+
+export interface EventCommuneAlertHistoryRow extends EventCommuneAlertRow {
+  activeAt: boolean;
+}
+
+export interface EventCommuneAlertHistory {
+  eventId: string;
+  communeId: string;
+  communeName: string;
+  count: number;
+  method: string;
+  rows: EventCommuneAlertHistoryRow[];
+}
+
 export interface AlertListRow {
   id: string;
   eventId: string | null;

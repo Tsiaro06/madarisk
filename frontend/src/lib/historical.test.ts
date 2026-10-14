@@ -2,11 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   availableWindRadiusKm,
   clockBounds,
+  COMMUNE_ALERT_COLORS,
+  COMMUNE_ALERT_LEGEND_ORDER,
   deriveRiskFromWind,
   describeMovementDirection,
   documentedWindBelts,
   documentedWindCircles,
   documentedWindRadius,
+  documentedWindSwath,
   filterImpactsAt,
   formatAntananarivo,
   formatAntananarivoShort,
@@ -14,6 +17,7 @@ import {
   frameAt,
   framePosition,
   isAffectedAt,
+  isEstimatedAlert,
   observedSteps,
   segmentMinutesAt,
   toAntananarivoTime,
@@ -52,6 +56,30 @@ function turnSigns(positions: Array<[number, number]>): number[] {
       (current.y - previous.y) * (next.x - current.x);
     return Math.sign(cross);
   });
+}
+
+/** Étendue [minLon, minLat, maxLon, maxLat] des coordonnées d'une géométrie. */
+function geometryExtents(geometry: { coordinates: unknown }): [number, number, number, number] {
+  const positions: Array<[number, number]> = [];
+  const walk = (node: unknown): void => {
+    if (!Array.isArray(node)) return;
+    if (typeof node[0] === 'number' && typeof node[1] === 'number') {
+      positions.push([node[0], node[1]]);
+      return;
+    }
+    for (const child of node) walk(child);
+  };
+  walk(geometry.coordinates);
+
+  const [first] = positions;
+  let [minLon, minLat, maxLon, maxLat] = [first[0], first[1], first[0], first[1]];
+  for (const [lon, lat] of positions) {
+    minLon = Math.min(minLon, lon);
+    minLat = Math.min(minLat, lat);
+    maxLon = Math.max(maxLon, lon);
+    maxLat = Math.max(maxLat, lat);
+  }
+  return [minLon, minLat, maxLon, maxLat];
 }
 
 describe('deriveRiskFromWind', () => {
@@ -404,6 +432,72 @@ describe('rayon de vent et mesures manquantes', () => {
     expect(formatMeasure(undefined, 'km/h')).toBe('non disponible');
     expect(formatMeasure(185.4, 'km/h')).toBe('185,4 km/h');
   });
+
+  describe('documentedWindSwath (une seule surface)', () => {
+    const kmToLatDeg = (km: number) => km / 110.574;
+    const kmToLonDeg = (km: number, latitude: number) =>
+      km / (111.32 * Math.cos((latitude * Math.PI) / 180));
+
+    it('réunit les disques publiés et leurs liaisons en UN seul polygone', () => {
+      const swath = documentedWindSwath([
+        { ...base, id: 'p1', latitude: -20.5, longitude: 49.2, radius34ktKm: 300 },
+        { ...base, id: 'p2', latitude: -21.3, longitude: 48.3, radius34ktKm: 200 },
+      ]);
+
+      // Une seule géométrie pour tout l'événement : les deux mesures sont reliées.
+      expect(swath?.geometry.type).toBe('Polygon');
+      expect(swath?.properties.documentedPoints).toBe(2);
+    });
+
+    it('reste d’un seul tenant quand les disques sont disjoints', () => {
+      // Disques de 50 km espacés de plusieurs centaines de kilomètres : sans les
+      // liaisons documentées, la surface serait une collection de disques épars.
+      const swath = documentedWindSwath([
+        { ...base, id: 'p1', latitude: -20.5, longitude: 49.2, radius34ktKm: 50 },
+        { ...base, id: 'p2', latitude: -23.5, longitude: 46.0, radius34ktKm: 50 },
+      ]);
+
+      expect(swath?.geometry.type).toBe('Polygon');
+    });
+
+    it('fusionne un long relevé (union par paquets) en une seule surface', () => {
+      const long = Array.from({ length: 18 }, (_, index) => ({
+        ...base,
+        id: `p${index}`,
+        latitude: -20 - index * 0.4,
+        longitude: 49 - index * 0.3,
+        radius34ktKm: 60,
+      }));
+
+      const swath = documentedWindSwath(long);
+
+      expect(swath?.geometry.type).toBe('Polygon');
+      expect(swath?.properties.documentedPoints).toBe(18);
+    });
+
+    it('couvre exactement les rayons publiés, sans en inventer la largeur', () => {
+      const swath = documentedWindSwath([
+        { ...base, id: 'p1', latitude: -20.5, longitude: 49.2, radius34ktKm: 300 },
+        { ...base, id: 'p2', latitude: -21.3, longitude: 48.3, radius34ktKm: 200 },
+      ]);
+      const [minLon, minLat, maxLon, maxLat] = geometryExtents(swath!.geometry);
+
+      // Le disque de 300 km est le plus étendu : la surface va exactement de son
+      // bord ouest à son bord est, de son bord sud à son bord nord — pas plus.
+      expect(minLon).toBeCloseTo(49.2 - kmToLonDeg(300, -20.5), 1);
+      expect(maxLon).toBeCloseTo(49.2 + kmToLonDeg(300, -20.5), 1);
+      expect(minLat).toBeCloseTo(-20.5 - kmToLatDeg(300), 1);
+      expect(maxLat).toBeCloseTo(-20.5 + kmToLatDeg(300), 1);
+    });
+
+    it("n’affiche rien sans rayon publié, et garde une surface par mesure publiée", () => {
+      expect(documentedWindSwath([base, { ...base, id: 'p2' }])).toBeNull();
+
+      const single = documentedWindSwath([{ ...base, id: 'p1', radius34ktKm: 120 }]);
+      expect(single?.geometry.type).toBe('Polygon');
+      expect(single?.properties.documentedPoints).toBe(1);
+    });
+  });
 });
 
 describe('vigilanceLabel (zones de vigilance du bulletin)', () => {
@@ -465,5 +559,28 @@ describe('segmentMinutesAt (lecture visuelle : 3 s par segment)', () => {
   it('vaut 0 sur le dernier point (fin de trajectoire → boucle)', () => {
     expect(segmentMinutesAt(steps, startMs + 420 * 60_000)).toBe(0);
     expect(segmentMinutesAt([], 0)).toBe(0);
+  });
+});
+
+describe('niveaux d’alerte cyclonique communale', () => {
+  it('reprend les couleurs officielles et l’ordre de légende', () => {
+    expect(COMMUNE_ALERT_COLORS).toEqual({
+      VERT: '#16A34A',
+      JAUNE: '#EAB308',
+      ROUGE: '#DC2626',
+      BLEU: '#2563EB',
+      GRIS: '#D1D5DB',
+    });
+    expect(COMMUNE_ALERT_LEGEND_ORDER).toEqual(['ROUGE', 'JAUNE', 'VERT', 'BLEU', 'GRIS']);
+  });
+
+  it('signale comme estimation un niveau hérité d’une échelle supérieure', () => {
+    expect(isEstimatedAlert('COMMUNE', 'OFFICIELLE')).toBe(false);
+    expect(isEstimatedAlert('COMMUNE', 'IMPACT_OBSERVE')).toBe(false);
+    expect(isEstimatedAlert('COMMUNE', 'PREVISION')).toBe(false);
+    expect(isEstimatedAlert('COMMUNE', 'ESTIMATION')).toBe(true);
+    expect(isEstimatedAlert('DISTRICT', 'ESTIMATION')).toBe(true);
+    expect(isEstimatedAlert('REGION', 'OFFICIELLE')).toBe(true);
+    expect(isEstimatedAlert('EVENEMENT', 'PREVISION')).toBe(true);
   });
 });

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
@@ -9,8 +9,15 @@ import {
   territoriesApi,
   weatherApi,
 } from "@/api";
-import type { CommuneDetail, ExposedCommuneInfo, TrackStatePoint } from "@/types";
+import type {
+  CommuneDetail,
+  EventCommuneAlertRow,
+  ExposedCommuneInfo,
+  TrackStatePoint,
+} from "@/types";
 import { canManageOps } from "@/lib/roles";
+import { observedSteps, pointTimeMs } from "@/lib/historical";
+import { useTrackPlayback } from "@/lib/useTrackPlayback";
 import { useAuthStore } from "@/stores/authStore";
 import { ActiveEventProvider, useActiveEvent } from "@/stores/activeEvent";
 import { AlertBanner } from "@/components/ui/AlertBanner";
@@ -18,7 +25,7 @@ import { CrisisHeader } from "@/components/crisis/CrisisHeader";
 import { CrisisSideRail } from "@/components/crisis/CrisisSideRail";
 import { LeftPanel } from "@/components/crisis/LeftPanel";
 import { RightPanel } from "@/components/crisis/RightPanel";
-import { CrisisMap } from "@/components/crisis/CrisisMap";
+import { CrisisMap, type MapPlayback } from "@/components/crisis/CrisisMap";
 import { CreateEventModal } from "@/components/crisis/CreateEventModal";
 import { buildExposureIndex } from "@/lib/crisisData";
 import { cn, formatDate } from "@/lib/utils";
@@ -160,6 +167,83 @@ function CrisisRoomView() {
     refetchInterval: REFRESH_INTERVAL_MS,
   });
 
+  // Lecture automatique de la trajectoire observée : le cyclone part du premier
+  // point documenté, avance le long des points vérifiés puis reprend au début
+  // (boucle). Cliquer un point déplace la lecture à cet endroit.
+  const observedTrack = useMemo(
+    () => observedSteps(trackPointsQ.data ?? []),
+    [trackPointsQ.data],
+  );
+  const playbackState = useTrackPlayback(observedTrack, true);
+  // `setMinute` et `startMs` sont stables : ils servent de dépendances au déplacement.
+  const playbackSetMinute = playbackState.setMinute;
+  const playbackStartMs = playbackState.startMs;
+
+  // Instant consulté = celui du point observé de référence de la lecture : les
+  // niveaux d'alerte affichés suivent le cyclone, sans jamais écrire en base.
+  const alertAt = playbackState.point?.observedAt ?? null;
+
+  const mapPlayback: MapPlayback = {
+    position: playbackState.position,
+    point: playbackState.point,
+    nextPoint: playbackState.nextPoint,
+    interpolated: playbackState.interpolated,
+  };
+
+  // Cliquer un point déplace la lecture sur ce point : le cyclone s'y place et
+  // poursuit la trajectoire depuis là, puis boucle comme avant.
+  const seekTrackPoint = useCallback(
+    (point: TrackStatePoint) => {
+      playbackSetMinute(
+        Math.max(0, (pointTimeMs(point) - playbackStartMs) / 60_000),
+      );
+    },
+    [playbackSetMinute, playbackStartMs],
+  );
+
+  // Répartition des alertes à l'instant consulté : sert à la légende et à
+  // savoir si l'événement porte réellement des alertes documentées (pour ne pas
+  // confondre « événement sans alertes » et « instant hors période »).
+  const alertSummaryQ = useQuery({
+    queryKey: ["event", "commune-alerts-summary", activeEventId, alertAt],
+    queryFn: () => {
+      if (!activeEventId) throw new Error("Aucun événement sélectionné");
+      return eventsApi.communeAlertsSummary(
+        activeEventId,
+        alertAt ? { at: alertAt } : undefined,
+      );
+    },
+    enabled: Boolean(activeEventId && alertAt),
+    placeholderData: (prev) => prev,
+  });
+
+  const alertSummary =
+    alertSummaryQ.data && alertSummaryQ.data.eventId === activeEventId
+      ? alertSummaryQ.data
+      : null;
+  const alertMode = Boolean(alertSummary?.eventHasAlertData);
+
+  const alertsQ = useQuery({
+    queryKey: ["event", "commune-alerts", activeEventId, alertAt],
+    queryFn: () => {
+      if (!activeEventId) throw new Error("Aucun événement sélectionné");
+      return eventsApi.communeAlerts(
+        activeEventId,
+        alertAt ? { at: alertAt } : undefined,
+      );
+    },
+    enabled: Boolean(activeEventId && alertAt && alertMode),
+    placeholderData: (prev) => prev,
+  });
+
+  const alertMap = useMemo(() => {
+    const map = new Map<string, EventCommuneAlertRow>();
+    if (alertsQ.data && alertsQ.data.eventId === activeEventId) {
+      for (const row of alertsQ.data.communes) map.set(row.communeId, row);
+    }
+    return map;
+  }, [alertsQ.data, activeEventId]);
+
   const exposureQ = useQuery({
     queryKey: ["event", "exposure", activeEventId],
     queryFn: () =>
@@ -298,9 +382,31 @@ function CrisisRoomView() {
             focusTarget={focusTarget}
             mapPhase={mapPhase}
             onMapPhaseChange={setMapPhase}
+            communeAlerts={alertMap}
+            alertSummary={alertSummary}
+            alertAt={alertAt}
+            playback={mapPlayback}
+            onSeekTrackPoint={seekTrackPoint}
             refreshing={isFetchingAny > 0}
             onRefresh={() => void handleRefresh()}
           />
+
+          {alertMode && (alertsQ.isError || (alertsQ.isFetching && !alertsQ.data)) ? (
+            <div className="pointer-events-none absolute inset-x-0 bottom-3 z-[500] flex justify-center px-3">
+              <p
+                className={cn(
+                  "rounded-full border px-3 py-1 text-[11px] shadow-sm backdrop-blur",
+                  alertsQ.isError
+                    ? "border-rose-200 bg-rose-50/90 text-rose-700"
+                    : "border-slate-200/80 bg-white/90 text-muted",
+                )}
+              >
+                {alertsQ.isError
+                  ? "Niveaux d’alerte indisponibles — dernières données connues affichées."
+                  : "Chargement des niveaux d’alerte…"}
+              </p>
+            </div>
+          ) : null}
 
           {/* {!activeEventId ? (
             <div className="pointer-events-none absolute left-3 top-[3.75rem] z-[600] w-80 max-w-[calc(100%-1.5rem)] lg:top-14">
@@ -389,6 +495,8 @@ function CrisisRoomView() {
                   exposure={selectedExposure}
                   onClose={() => setMobileRight(false)}
                   onSelectEvent={handleSelectEvent}
+                  activeEventId={activeEventId}
+                  alertAt={alertAt}
                 />
               </div>
             </div>
@@ -410,6 +518,8 @@ function CrisisRoomView() {
               exposure={selectedExposure}
               onClose={() => setRightOpen(false)}
               onSelectEvent={handleSelectEvent}
+              activeEventId={activeEventId}
+              alertAt={alertAt}
             />
           ) : (
             <CrisisSideRail

@@ -203,10 +203,104 @@ export interface CommuneImpactsResult {
   communes: EventCommuneImpactRow[];
 }
 
+/**
+ * Niveau d'alerte cyclonique malgache. `GRIS` n'est jamais stocké : c'est
+ * l'absence de ligne active à l'instant consulté (commune hors alerte).
+ */
+export type CommuneAlertLevel = 'VERT' | 'JAUNE' | 'ROUGE' | 'BLEU';
+/** Niveau effectivement affiché, « GRIS » inclus (hors alerte). */
+export type DisplayedCommuneAlertLevel = CommuneAlertLevel | 'GRIS';
+
+/**
+ * Nature de l'information portée par une ligne d'alerte communale. Elle est
+ * conservée distincte du niveau : une alerte rouge officielle n'est pas un
+ * impact observé, et une estimation spatiale doit être signalée comme telle.
+ */
+export type CommuneAlertInfoType =
+  | 'OFFICIELLE'
+  | 'PREVISION'
+  | 'IMPACT_OBSERVE'
+  | 'ESTIMATION';
+
+/**
+ * Échelle à laquelle le niveau a été publié : `COMMUNE` lorsqu'elle est nommée
+ * par la source, `DISTRICT` / `REGION` / `EVENEMENT` lorsqu'il est hérité (la
+ * donnée est alors une estimation spatiale).
+ */
+export type CommuneAlertScope = 'COMMUNE' | 'DISTRICT' | 'REGION' | 'EVENEMENT';
+
+export interface EventCommuneAlertRow {
+  communeId: string;
+  communeName: string;
+  communeCode: string | null;
+  districtId: string | null;
+  districtName: string | null;
+  alertLevel: CommuneAlertLevel;
+  validFrom: string;
+  validTo: string | null;
+  infoType: CommuneAlertInfoType;
+  territoryScope: CommuneAlertScope;
+  sourceName: string | null;
+  sourceUrl: string | null;
+  comment: string | null;
+  confidence: number | null;
+}
+
+/** Niveaux actifs à un instant donné, par commune (couche carte). */
+export interface EventCommuneAlertsResult {
+  eventId: string;
+  at: string;
+  count: number;
+  source: string | null;
+  method: string;
+  communes: EventCommuneAlertRow[];
+}
+
+export interface CommuneAlertLevelCounts {
+  VERT: number;
+  JAUNE: number;
+  ROUGE: number;
+  BLEU: number;
+  /** Communes sans alerte active à l'instant consulté. */
+  GRIS: number;
+}
+
+/** Répartition par niveau à un instant, pour la légende de la carte. */
+export interface EventCommuneAlertsSummary {
+  eventId: string;
+  at: string;
+  total: number;
+  levels: CommuneAlertLevelCounts;
+  /** Communes dont le niveau provient d'une estimation spatiale (district/région/méthode). */
+  estimated: number;
+  /** Vrai dès que l'événement possède des alertes communales, même hors de la période active. */
+  eventHasAlertData: boolean;
+  sources: string[];
+  method: string;
+}
+
+/**
+ * Renseigne si le niveau du couple (événement, commune) est actif à l'instant
+ * `at`. Utilisé par l'endpoint « histoires d'alerte » d'une commune.
+ */
+export interface EventCommuneAlertHistoryRow extends EventCommuneAlertRow {
+  activeAt: boolean;
+}
+
+export interface EventCommuneAlertHistory {
+  eventId: string;
+  communeId: string;
+  communeName: string;
+  count: number;
+  rows: EventCommuneAlertHistoryRow[];
+  method: string;
+}
+
 export interface TrackGeoJson {
   type: 'FeatureCollection';
   features: EventTrackFeature[];
 }
+
 
 export interface EventTrackFeature {
   type: 'Feature';

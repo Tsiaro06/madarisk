@@ -15,6 +15,9 @@ import type {
   DashboardSummary,
   DistrictListItem,
   EventBilan,
+  EventCommuneAlertHistory,
+  EventCommuneAlertsResult,
+  EventCommuneAlertsSummary,
   EventListItem,
   EventsTimelineEntry,
   EventTimeline,
@@ -186,6 +189,20 @@ export const eventsApi = {
   /** Communes affectées documentées à une date/heure (premier impact ≤ at). */
   communeImpacts: (id: string, params?: { at?: string }) =>
     apiGet<CommuneImpactsResult>(`/events/${id}/commune-impacts`, { params }),
+  /** Niveaux d'alerte cyclonique par commune à une date/heure (salle de crise). */
+  communeAlerts: (id: string, params?: { at?: string }) =>
+    apiGet<EventCommuneAlertsResult>(`/events/${id}/communes-alerts`, { params }),
+  /** Répartition par niveau + sources, pour la légende (à une date/heure). */
+  communeAlertsSummary: (id: string, params?: { at?: string }) =>
+    apiGet<EventCommuneAlertsSummary>(`/events/${id}/communes-alerts/summary`, {
+      params,
+    }),
+  /** Historique traçable des alertes d'une commune (drapeau actif à `at`). */
+  communeAlertHistory: (id: string, communeId: string, params?: { at?: string }) =>
+    apiGet<EventCommuneAlertHistory>(
+      `/events/${id}/communes/${communeId}/alert-history`,
+      { params },
+    ),
   addTrack: (id: string, body: unknown) =>
     apiPost(`/events/${id}/tracks`, body),
   areas: (id: string) => apiGet<FeatureCollection>(`/events/${id}/areas`),

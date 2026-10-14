@@ -14,6 +14,7 @@ const api = vi.hoisted(() => ({
   weatherHistory: vi.fn(),
   weatherRefresh: vi.fn(),
   reportsCsv: vi.fn(),
+  communeAlertHistory: vi.fn(),
 }));
 
 vi.mock('@/api', () => ({
@@ -25,6 +26,7 @@ vi.mock('@/api', () => ({
     refresh: api.weatherRefresh,
   },
   reportsApi: { exportCsv: api.reportsCsv },
+  eventsApi: { communeAlertHistory: api.communeAlertHistory },
 }));
 
 function wrapper({ children }: { children: React.ReactNode }) {
@@ -111,6 +113,14 @@ beforeEach(() => {
     hourly: { time: [], temperatureC: [], precipitationMm: [] },
   });
   api.weatherHistory.mockResolvedValue({ data: [], meta: {} });
+  api.communeAlertHistory.mockResolvedValue({
+    eventId: 'evt-1',
+    communeId: 'c1',
+    communeName: 'Antananarivo',
+    count: 0,
+    method: '',
+    rows: [],
+  });
 });
 
 describe('RightPanel', () => {
@@ -151,5 +161,97 @@ describe('RightPanel', () => {
     );
     expect(await screen.findByText('Antananarivo')).toBeInTheDocument();
     expect(screen.getByText(/n'est pas exposée/)).toBeInTheDocument();
+  });
+
+  it("retrace l'historique des alertes cycloniques avec sources et niveaux", async () => {
+    const base = {
+      communeId: 'c1',
+      communeName: 'Antananarivo',
+      communeCode: '101',
+      districtId: 'd1',
+      districtName: 'Analamanga',
+      sourceUrl: null,
+      confidence: null,
+    };
+    api.communeAlertHistory.mockResolvedValue({
+      eventId: 'evt-1',
+      communeId: 'c1',
+      communeName: 'Antananarivo',
+      count: 2,
+      method: '',
+      rows: [
+        {
+          ...base,
+          alertLevel: 'ROUGE',
+          validFrom: '2022-02-04T00:00:00.000Z',
+          validTo: '2022-02-08T00:00:00.000Z',
+          infoType: 'ESTIMATION',
+          territoryScope: 'REGION',
+          sourceName: 'Bulletin Météo Madagascar du 4 février 2022',
+          comment: 'Niveau hérité de la région.',
+          activeAt: true,
+        },
+        {
+          ...base,
+          alertLevel: 'BLEU',
+          validFrom: '2022-02-08T00:00:00.000Z',
+          validTo: '2022-02-11T00:00:00.000Z',
+          infoType: 'ESTIMATION',
+          territoryScope: 'COMMUNE',
+          sourceName: 'Bulletin Météo Madagascar du 4 février 2022',
+          comment: null,
+          activeAt: false,
+        },
+      ],
+    });
+
+    render(
+      <RightPanel
+        communeId="c1"
+        detail={communeDetail}
+        detailLoading={false}
+        hasEvent
+        exposure={null}
+        onClose={vi.fn()}
+        onSelectEvent={vi.fn()}
+        activeEventId="evt-1"
+        alertAt="2022-02-05T12:00:00.000Z"
+      />,
+      { wrapper },
+    );
+
+    expect(await screen.findByText('Historique des alertes cycloniques')).toBeInTheDocument();
+    expect(screen.getByText('Rouge')).toBeInTheDocument();
+    expect(screen.getByText('Bleu')).toBeInTheDocument();
+    // La ligne active est mise en évidence, l'autre non.
+    expect(screen.getByText("Active à l'instant consulté")).toBeInTheDocument();
+    // Nature + échelle, source et commentaire affichés pour la traçabilité.
+    expect(screen.getByText(/Estimation spatiale · échelle Région/)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Bulletin Météo Madagascar du 4 février 2022/).length,
+    ).toBeGreaterThan(0);
+    expect(screen.getByText('Niveau hérité de la région.')).toBeInTheDocument();
+    // Les deux lignes sont des estimations spatiales : signalées comme telles.
+    expect(screen.getAllByText(/Niveau estimé \(hérité/)).toHaveLength(2);
+  });
+
+  it("n'affiche pas d'historique d'alerte sans données documentées", async () => {
+    render(
+      <RightPanel
+        communeId="c1"
+        detail={communeDetail}
+        detailLoading={false}
+        hasEvent
+        exposure={null}
+        onClose={vi.fn()}
+        onSelectEvent={vi.fn()}
+        activeEventId="evt-1"
+        alertAt="2022-02-05T12:00:00.000Z"
+      />,
+      { wrapper },
+    );
+
+    expect(await screen.findByText('Antananarivo')).toBeInTheDocument();
+    expect(screen.queryByText('Historique des alertes cycloniques')).toBeNull();
   });
 });

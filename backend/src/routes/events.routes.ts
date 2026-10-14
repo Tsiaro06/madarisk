@@ -91,6 +91,24 @@ router.get(
 );
 
 router.get(
+  '/:id/communes-alerts/summary',
+  validate({ params: eventIdParamsSchema, query: historicalAtQuerySchema }),
+  asyncHandler(eventsController.getCommuneAlertsSummary),
+);
+
+router.get(
+  '/:id/communes-alerts',
+  validate({ params: eventIdParamsSchema, query: historicalAtQuerySchema }),
+  asyncHandler(eventsController.getCommuneAlertsAt),
+);
+
+router.get(
+  '/:id/communes/:communeId/alert-history',
+  validate({ params: eventIdCommuneIdParamsSchema, query: historicalAtQuerySchema }),
+  asyncHandler(eventsController.getCommuneAlertHistory),
+);
+
+router.get(
   '/:id/track-state',
   validate({ params: eventIdParamsSchema, query: historicalAtQuerySchema }),
   asyncHandler(eventsController.getTrackState),

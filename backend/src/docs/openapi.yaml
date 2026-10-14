@@ -1666,6 +1666,138 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 
+  /events/{id}/communes-alerts:
+    get:
+      tags: [Événements]
+      summary: Niveaux d'alerte cyclonique par commune à une date/heure (salle de crise)
+      description: >-
+        Retourne, pour chaque commune portant une alerte documentée active à
+        l'instant `at`, une seule ligne : le niveau affiché (VERT/JAUNE/ROUGE/BLEU)
+        et sa traçabilité complète (validité, nature de l'information, portée,
+        source, commentaire, confiance). Préséance appliquée en cas de plusieurs
+        lignes actives : alerte officielle communale, puis impact observé daté,
+        puis niveau officiel hérité d'un district / d'une région (ESTIMATION), puis
+        prévision, puis estimation spatiale dérivée. Les communes absentes de la
+        réponse sont hors alerte (GRIS) : aucune commune n'est colorée d'après sa
+        seule distance au cyclone.
+      security:
+        - bearerAuth: []
+      operationId: getEventCommuneAlerts
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - {
+            name: at,
+            in: query,
+            required: false,
+            description: 'Date/heure ISO-8601. Par défaut : la date/heure courante.',
+            schema: { type: string, format: date-time },
+          }
+      responses:
+        '200':
+          description: Niveaux d'alerte communaux actifs à l'instant consulté
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/EventCommuneAlertsResult' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/communes-alerts/summary:
+    get:
+      tags: [Événements]
+      summary: Répartition des niveaux d'alerte communaux (légende)
+      description: >-
+        Compte les communes par niveau affiché à l'instant `at` (les communes sans
+        alerte active sont comptées comme GRIS), précise combien de niveaux
+        proviennent d'une estimation spatiale, liste les sources et indique si
+        l'événement possède des données d'alerte communale.
+      security:
+        - bearerAuth: []
+      operationId: getEventCommuneAlertsSummary
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - {
+            name: at,
+            in: query,
+            required: false,
+            description: 'Date/heure ISO-8601. Par défaut : la date/heure courante.',
+            schema: { type: string, format: date-time },
+          }
+      responses:
+        '200':
+          description: Répartition des niveaux d'alerte communaux
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/EventCommuneAlertsSummary' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /events/{id}/communes/{communeId}/alert-history:
+    get:
+      tags: [Événements]
+      summary: Historique des alertes d'une commune (traçabilité)
+      description: >-
+        Retourne toutes les lignes d'alerte documentées d'une commune pour
+        l'événement, triées chronologiquement, avec un drapeau `activeAt` indiquant
+        si la ligne est active à l'instant `at` (utile pour distinguer alertes
+        officielles, impacts observés et estimations).
+      security:
+        - bearerAuth: []
+      operationId: getEventCommuneAlertHistory
+      parameters:
+        - { $ref: '#/components/parameters/EventId' }
+        - name: communeId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - {
+            name: at,
+            in: query,
+            required: false,
+            description: 'Date/heure ISO-8601 de référence pour le drapeau actif.',
+            schema: { type: string, format: date-time },
+          }
+      responses:
+        '200':
+          description: Historique des alertes de la commune
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/EventCommuneAlertHistory' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
   /events/{id}/areas:
     get:
       tags: [Événements]
@@ -4694,6 +4826,97 @@ components:
         communes:
           type: array
           items: { $ref: '#/components/schemas/EventCommuneImpactRow' }
+    CommuneAlertLevel:
+      type: string
+      description: >-
+        Niveau d'alerte cyclonique malgache. VERT : menace vague (2 à 5 jours),
+        JAUNE : menace précise (24-48 h), ROUGE : danger imminent / passage,
+        BLEU : dangers résiduels après le passage. GRIS (hors alerte) n'est jamais
+        stocké : il correspond à l'absence de ligne active.
+      enum: [VERT, JAUNE, ROUGE, BLEU]
+    CommuneAlertInfoType:
+      type: string
+      description: >-
+        Nature de l'information : OFFICIELLE (bulletin nommant la commune),
+        PREVISION (zone de prévision documentée), IMPACT_OBSERVE (impact daté
+        observé), ESTIMATION (niveau hérité d'une échelle supérieure ou dérivé
+        spatialement).
+      enum: [OFFICIELLE, PREVISION, IMPACT_OBSERVE, ESTIMATION]
+    CommuneAlertScope:
+      type: string
+      description: Échelle à laquelle l'information a été publiée ou construite.
+      enum: [COMMUNE, DISTRICT, REGION, EVENEMENT]
+    EventCommuneAlertRow:
+      type: object
+      description: Niveau d'alerte affiché d'une commune à l'instant consulté, avec traçabilité
+      properties:
+        communeId: { type: string, format: uuid }
+        communeName: { type: string }
+        communeCode: { type: string, nullable: true }
+        districtId: { type: string, format: uuid, nullable: true }
+        districtName: { type: string, nullable: true }
+        alertLevel: { $ref: '#/components/schemas/CommuneAlertLevel' }
+        validFrom: { type: string, format: date-time }
+        validTo: { type: string, format: date-time, nullable: true }
+        infoType: { $ref: '#/components/schemas/CommuneAlertInfoType' }
+        territoryScope: { $ref: '#/components/schemas/CommuneAlertScope' }
+        sourceName: { type: string, nullable: true }
+        sourceUrl: { type: string, nullable: true }
+        comment: { type: string, nullable: true }
+        confidence: { type: number, nullable: true }
+    EventCommuneAlertsResult:
+      type: object
+      description: Une ligne par commune portant une alerte active à `at` (les autres communes sont GRIS)
+      properties:
+        eventId: { type: string, format: uuid }
+        at: { type: string, format: date-time }
+        count: { type: integer }
+        source: { type: string, nullable: true }
+        method: { type: string }
+        communes:
+          type: array
+          items: { $ref: '#/components/schemas/EventCommuneAlertRow' }
+    CommuneAlertLevelCounts:
+      type: object
+      description: Nombre de communes par niveau affiché (GRIS = hors alerte)
+      properties:
+        VERT: { type: integer }
+        JAUNE: { type: integer }
+        ROUGE: { type: integer }
+        BLEU: { type: integer }
+        GRIS: { type: integer }
+    EventCommuneAlertsSummary:
+      type: object
+      description: Répartition par niveau à un instant, pour la légende de la salle de crise
+      properties:
+        eventId: { type: string, format: uuid }
+        at: { type: string, format: date-time }
+        total: { type: integer }
+        levels: { $ref: '#/components/schemas/CommuneAlertLevelCounts' }
+        estimated: { type: integer, description: 'Niveaux issus d''une estimation spatiale' }
+        eventHasAlertData: { type: boolean }
+        sources:
+          type: array
+          items: { type: string }
+        method: { type: string }
+    EventCommuneAlertHistoryRow:
+      allOf:
+        - $ref: '#/components/schemas/EventCommuneAlertRow'
+        - type: object
+          properties:
+            activeAt: { type: boolean }
+    EventCommuneAlertHistory:
+      type: object
+      description: Historique traçable des alertes documentées d'une commune
+      properties:
+        eventId: { type: string, format: uuid }
+        communeId: { type: string, format: uuid }
+        communeName: { type: string }
+        count: { type: integer }
+        method: { type: string }
+        rows:
+          type: array
+          items: { $ref: '#/components/schemas/EventCommuneAlertHistoryRow' }
     PolygonGeometry:
       type: object
       description: Géométrie GeoJSON (Polygon ou MultiPolygon) représentant la zone d'influence tracée manuellement.

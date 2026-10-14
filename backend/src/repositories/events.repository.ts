@@ -1,7 +1,14 @@
 import { db } from '../config/database';
 import {
   AreaGeoJson,
+  CommuneAlertInfoType,
+  CommuneAlertScope,
   CommuneImpactsResult,
+  EventCommuneAlertHistory,
+  EventCommuneAlertHistoryRow,
+  EventCommuneAlertRow,
+  EventCommuneAlertsResult,
+  EventCommuneAlertsSummary,
   EventCommuneImpactRow,
   EventListItem,
   EventAlert,
@@ -63,6 +70,73 @@ const TRACK_STATE_COLUMNS = `
   radius_source, radius_measure_type, radius_quality, data_quality, confidence,
   created_at
 `;
+
+/**
+ * Rang de préséance appliqué quand une même commune porte plusieurs alertes
+ * actives au même instant (voir `listCommuneAlertsAt`). Du plus fort au plus
+ * faible :
+ *  1. bulletin officiel nommant la commune (OFFICIELLE) ;
+ *  2. impact observé daté (IMPACT_OBSERVE) — une commune réellement touchée est
+ *     rouge, même si son district / sa région n'était qu'en alerte jaune ou
+ *     n'était pas cité ;
+ *  3. bulletin officiel dont le niveau est hérité d'un district / d'une région
+ *     (ESTIMATION de portée DISTRICT/REGION/EVENEMENT) ;
+ *  4. zone de prévision documentée (PREVISION) ;
+ *  5. estimation spatiale dérivée de portée communale (ESTIMATION, ex. danger
+ *     résiduel après passage).
+ * À rang égal, la portée la plus locale tranche, puis la validité la plus
+ * récente.
+ */
+const ALERT_PRECEDENCE_SQL = `CASE h.info_type
+    WHEN 'OFFICIELLE' THEN 40
+    WHEN 'IMPACT_OBSERVE' THEN 30
+    WHEN 'ESTIMATION' THEN CASE
+      WHEN h.territory_scope IN ('DISTRICT', 'REGION', 'EVENEMENT') THEN 25
+      ELSE 10
+    END
+    WHEN 'PREVISION' THEN 20
+    ELSE 0
+  END DESC,
+  CASE h.territory_scope
+    WHEN 'COMMUNE' THEN 4 WHEN 'DISTRICT' THEN 3 WHEN 'REGION' THEN 2 ELSE 1
+  END DESC,
+  h.valid_from DESC`;
+
+/** Méthode descriptive renvoyée par les trois endpoints d'alertes communales. */
+const COMMUNE_ALERT_METHOD =
+  "Niveau d'alerte affiché à l'instant consulté : alerte officielle (communale ou héritée d'un " +
+  "district/d'une région), sinon impact observé daté, sinon zone de prévision ou estimation " +
+  'spatiale documentée. Aucune commune n\'est colorée à partir de sa seule distance au cyclone.';
+
+/**
+ * Normalise une ligne `event_commune_alert_history` (colonnes déjà aliasées en
+ * camelCase) en objet d'API. pg renvoie les timestamptz en Date JS : on force
+ * l'ISO-8601, la forme `String(Date)` casserait le parsing côté UI.
+ */
+function mapCommuneAlertRow(r: Record<string, unknown>): EventCommuneAlertRow {
+  const iso = (v: unknown): string => new Date(v as string | Date).toISOString();
+  const isoOrNull = (v: unknown): string | null =>
+    v === null || v === undefined ? null : new Date(v as string | Date).toISOString();
+  return {
+    communeId: String(r.communeId),
+    communeName: String(r.communeName),
+    communeCode:
+      r.communeCode !== null && r.communeCode !== undefined ? String(r.communeCode) : null,
+    districtId: r.districtId !== null && r.districtId !== undefined ? String(r.districtId) : null,
+    districtName:
+      r.districtName !== null && r.districtName !== undefined ? String(r.districtName) : null,
+    alertLevel: r.alertLevel as EventCommuneAlertRow['alertLevel'],
+    validFrom: iso(r.validFrom),
+    validTo: isoOrNull(r.validTo),
+    infoType: r.infoType as CommuneAlertInfoType,
+    territoryScope: r.territoryScope as CommuneAlertScope,
+    sourceName: r.sourceName !== null && r.sourceName !== undefined ? String(r.sourceName) : null,
+    sourceUrl: r.sourceUrl !== null && r.sourceUrl !== undefined ? String(r.sourceUrl) : null,
+    comment: r.comment !== null && r.comment !== undefined ? String(r.comment) : null,
+    confidence:
+      r.confidence !== null && r.confidence !== undefined ? parseFloat(String(r.confidence)) : null,
+  };
+}
 
 interface EventRow {
   id: string;
@@ -716,6 +790,171 @@ export const eventsRepository = {
         communes.length > 0
           ? `Communes dont le centre observé a atteint le territoire au plus tard à ${at.toISOString()} (données d'impact enregistrées, voir source/méthode par commune).`
           : `Aucune commune affectée documentée à ${at.toISOString()}.`,
+    };
+  },
+
+  /**
+   * Niveaux d'alerte communaux actifs à un instant donné : une seule ligne par
+   * commune (la plus prioritaire selon ALERT_PRECEDENCE_SQL). Aucune commune
+   * n'est colorée à partir de sa seule distance au cyclone : il faut une ligne
+   * documentée (bulletin officiel, impact observé ou estimation tracée).
+   */
+  async listCommuneAlertsAt(eventId: string, at: Date): Promise<EventCommuneAlertsResult> {
+    const result = await db.query<Record<string, unknown>>(
+      `SELECT resolved.* FROM (
+         SELECT DISTINCT ON (h.commune_id)
+           h.commune_id AS "communeId",
+           c.name AS "communeName",
+           c.admin_code AS "communeCode",
+           d.id AS "districtId",
+           d.name AS "districtName",
+           h.alert_level AS "alertLevel",
+           h.valid_from AS "validFrom",
+           h.valid_to AS "validTo",
+           h.info_type AS "infoType",
+           h.territory_scope AS "territoryScope",
+           h.source_name AS "sourceName",
+           h.source_url AS "sourceUrl",
+           h.comment AS "comment",
+           h.confidence AS "confidence"
+         FROM event_commune_alert_history h
+         JOIN communes c ON c.id = h.commune_id
+         LEFT JOIN districts d ON d.id = c.district_id
+         WHERE h.event_id = $1
+           AND h.valid_from <= $2
+           AND (h.valid_to IS NULL OR h.valid_to >= $2)
+         ORDER BY h.commune_id, ${ALERT_PRECEDENCE_SQL}
+       ) resolved
+       ORDER BY resolved."communeName" ASC`,
+      [eventId, at.toISOString()],
+    );
+
+    const communes = result.rows.map((r) => mapCommuneAlertRow(r));
+    return {
+      eventId,
+      at: at.toISOString(),
+      count: communes.length,
+      source: communes.find((c) => c.sourceName !== null)?.sourceName ?? null,
+      method: COMMUNE_ALERT_METHOD,
+      communes,
+    };
+  },
+
+  /**
+   * Répartition par niveau à un instant, pour la légende : chaque commune de la
+   * base est comptée une fois (GRIS = aucune ligne active). `eventHasAlertData`
+   * permet à l'UI de distinguer « événement sans alertes documentées » de
+   * « instant hors période d'alerte ».
+   */
+  async getCommuneAlertsSummary(eventId: string, at: Date): Promise<EventCommuneAlertsSummary> {
+    const result = await db.query<Record<string, unknown>>(
+      `WITH active AS (
+         SELECT DISTINCT ON (h.commune_id)
+           h.commune_id,
+           h.alert_level,
+           h.info_type,
+           h.territory_scope,
+           h.source_name
+         FROM event_commune_alert_history h
+         WHERE h.event_id = $1
+           AND h.valid_from <= $2
+           AND (h.valid_to IS NULL OR h.valid_to >= $2)
+         ORDER BY h.commune_id, ${ALERT_PRECEDENCE_SQL}
+       )
+       SELECT
+         (SELECT count(*)::int FROM communes) AS "total",
+         count(*) FILTER (WHERE alert_level = 'VERT')::int AS "VERT",
+         count(*) FILTER (WHERE alert_level = 'JAUNE')::int AS "JAUNE",
+         count(*) FILTER (WHERE alert_level = 'ROUGE')::int AS "ROUGE",
+         count(*) FILTER (WHERE alert_level = 'BLEU')::int AS "BLEU",
+         count(*) FILTER (
+           WHERE info_type = 'ESTIMATION' OR territory_scope <> 'COMMUNE'
+         )::int AS "estimated",
+         coalesce(
+           array_agg(DISTINCT source_name) FILTER (WHERE source_name IS NOT NULL),
+           '{}'
+         ) AS "sources",
+         (SELECT EXISTS (
+            SELECT 1 FROM event_commune_alert_history WHERE event_id = $1
+         )) AS "eventHasAlertData"
+       FROM active`,
+      [eventId, at.toISOString()],
+    );
+
+    const row = result.rows[0] ?? {};
+    const VERT = Number(row.VERT ?? 0);
+    const JAUNE = Number(row.JAUNE ?? 0);
+    const ROUGE = Number(row.ROUGE ?? 0);
+    const BLEU = Number(row.BLEU ?? 0);
+    const total = Number(row.total ?? 0);
+    const sources = Array.isArray(row.sources) ? (row.sources as string[]) : [];
+    return {
+      eventId,
+      at: at.toISOString(),
+      total,
+      levels: {
+        VERT,
+        JAUNE,
+        ROUGE,
+        BLEU,
+        GRIS: Math.max(0, total - VERT - JAUNE - ROUGE - BLEU),
+      },
+      estimated: Number(row.estimated ?? 0),
+      eventHasAlertData: Boolean(row.eventHasAlertData),
+      sources,
+      method: COMMUNE_ALERT_METHOD,
+    };
+  },
+
+  /**
+   * Historique complet et traçable d'une commune : toutes les lignes documentées
+   * (toutes natures confondues), triées chronologiquement, avec le drapeau
+   * « active à l'instant consulté ». Retourne `null` si la commune n'existe pas.
+   */
+  async getCommuneAlertHistory(
+    eventId: string,
+    communeId: string,
+    at: Date,
+  ): Promise<EventCommuneAlertHistory | null> {
+    const commune = await db.query<{ name: string }>('SELECT name FROM communes WHERE id = $1', [
+      communeId,
+    ]);
+    if (commune.rowCount === 0) return null;
+    const result = await db.query<Record<string, unknown>>(
+      `SELECT
+         h.commune_id AS "communeId",
+         c.name AS "communeName",
+         c.admin_code AS "communeCode",
+         d.id AS "districtId",
+         d.name AS "districtName",
+         h.alert_level AS "alertLevel",
+         h.valid_from AS "validFrom",
+         h.valid_to AS "validTo",
+         h.info_type AS "infoType",
+         h.territory_scope AS "territoryScope",
+         h.source_name AS "sourceName",
+         h.source_url AS "sourceUrl",
+         h.comment AS "comment",
+         h.confidence AS "confidence",
+         (h.valid_from <= $3 AND (h.valid_to IS NULL OR h.valid_to >= $3)) AS "activeAt"
+       FROM event_commune_alert_history h
+       JOIN communes c ON c.id = h.commune_id
+       LEFT JOIN districts d ON d.id = c.district_id
+       WHERE h.event_id = $1 AND h.commune_id = $2
+       ORDER BY h.valid_from ASC, h.alert_level ASC`,
+      [eventId, communeId, at.toISOString()],
+    );
+    const rows: EventCommuneAlertHistoryRow[] = result.rows.map((r) => ({
+      ...mapCommuneAlertRow(r),
+      activeAt: Boolean(r.activeAt),
+    }));
+    return {
+      eventId,
+      communeId,
+      communeName: commune.rows[0].name,
+      rows,
+      count: rows.length,
+      method: COMMUNE_ALERT_METHOD,
     };
   },
 

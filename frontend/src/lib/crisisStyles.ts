@@ -136,22 +136,29 @@ export function trackStyle(feature?: Feature | null): PathOptions {
   };
 }
 
-export function trackPointStyle(trackType: TrackTypeValue | null | undefined): CircleMarkerOptions {
-  return trackType === 'PREVUE'
-    ? {
-        radius: 5,
-        color: CRISIS_FORECAST_FILL,
-        weight: 2,
-        fillColor: CRISIS_FORECAST_POINT_FILL,
-        fillOpacity: 1,
-      }
-    : {
-        radius: 5,
-        color: TRACK_OBSERVED_EDGE,
-        weight: 2,
-        fillColor: TRACK_OBSERVED_FILL,
-        fillOpacity: 0.9,
-      };
+export function trackPointStyle(
+  trackType: TrackTypeValue | null | undefined,
+  /** Point consulté : même nature, mais élargi et cerné pour être repérable. */
+  selected = false,
+): CircleMarkerOptions {
+  const base: CircleMarkerOptions =
+    trackType === 'PREVUE'
+      ? {
+          radius: 5,
+          color: CRISIS_FORECAST_FILL,
+          weight: 2,
+          fillColor: CRISIS_FORECAST_POINT_FILL,
+          fillOpacity: 1,
+        }
+      : {
+          radius: 5,
+          color: TRACK_OBSERVED_EDGE,
+          weight: 2,
+          fillColor: TRACK_OBSERVED_FILL,
+          fillOpacity: 0.9,
+        };
+  if (!selected) return base;
+  return { ...base, radius: 8, weight: 3, color: SELECTED_BORDER };
 }
 
 /** Identifiant de district : le nom des propriétés varie selon l'endpoint. */

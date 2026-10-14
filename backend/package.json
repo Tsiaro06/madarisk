@@ -21,6 +21,7 @@
     "db:migrate": "tsx database/scripts/migrate.ts",
     "db:seed": "tsx database/scripts/seed.ts",
     "db:seed:batsirai": "tsx database/scripts/seed-batsirai.ts",
+    "db:seed:batsirai-alerts": "tsx database/scripts/seed-batsirai-alerts.ts",
     "db:generate:batsirai-radii": "tsx database/scripts/generate-batsirai-radii.ts",
     "db:check": "tsx database/scripts/check-database.ts",
     "db:import-population": "tsx database/scripts/import-commune-population.ts",

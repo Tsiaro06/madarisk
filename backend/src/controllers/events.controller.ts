@@ -99,6 +99,31 @@ export const eventsController = {
     res.status(200).json(successResponse(r, 'Impacts communaux au temps choisi'));
   },
 
+  getCommuneAlertsAt: async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.validatedParams as EventIdParams;
+    const { at } = (req.validatedQuery ?? {}) as { at?: string };
+    const r = await eventsService.getCommuneAlertsAt(id, at ?? new Date().toISOString());
+    res.status(200).json(successResponse(r, "Niveaux d'alerte communaux au temps choisi"));
+  },
+
+  getCommuneAlertsSummary: async (req: Request, res: Response): Promise<void> => {
+    const { id } = req.validatedParams as EventIdParams;
+    const { at } = (req.validatedQuery ?? {}) as { at?: string };
+    const r = await eventsService.getCommuneAlertsSummary(id, at ?? new Date().toISOString());
+    res.status(200).json(successResponse(r, "Répartition des niveaux d'alerte communaux"));
+  },
+
+  getCommuneAlertHistory: async (req: Request, res: Response): Promise<void> => {
+    const { id, communeId } = req.validatedParams as { id: string; communeId: string };
+    const { at } = (req.validatedQuery ?? {}) as { at?: string };
+    const r = await eventsService.getCommuneAlertHistory(
+      id,
+      communeId,
+      at ?? new Date().toISOString(),
+    );
+    res.status(200).json(successResponse(r, "Historique des alertes de la commune"));
+  },
+
   calculateArea: async (req: Request, res: Response): Promise<void> => {
     if (!req.user) throw AppError.unauthorized();
     const { id } = req.validatedParams as EventIdParams;

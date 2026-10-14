@@ -26,10 +26,11 @@ import {
   Thermometer,
   Wind,
 } from 'lucide-react';
-import { risksApi, weatherApi, reportsApi } from '@/api';
+import { risksApi, weatherApi, reportsApi, eventsApi } from '@/api';
 import { ApiClientError } from '@/api/client';
 import type {
   CommuneDetail,
+  EventCommuneAlertHistoryRow,
   EventStatus,
   EventType,
   ExposedCommuneInfo,
@@ -39,6 +40,15 @@ import type {
   WeatherObservation,
 } from '@/types';
 import { RISK_COLORS, RISK_LABELS } from '@/types';
+import {
+  COMMUNE_ALERT_BORDERS,
+  COMMUNE_ALERT_COLORS,
+  COMMUNE_ALERT_INFO_TYPE_LABELS,
+  COMMUNE_ALERT_SCOPE_LABELS,
+  COMMUNE_ALERT_SHORT_LABELS,
+  formatAntananarivo,
+  isEstimatedAlert,
+} from '@/lib/historical';
 import {
   EVENT_STATUS_LABELS,
   EVENT_STATUS_TONE,
@@ -64,7 +74,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
-import { formatDate, formatNumber } from '@/lib/utils';
+import { cn, formatDate, formatNumber } from '@/lib/utils';
 
 interface RightPanelProps {
   communeId: string | null;
@@ -74,6 +84,10 @@ interface RightPanelProps {
   exposure: ExposedCommuneInfo | null;
   onClose: () => void;
   onSelectEvent: (id: string) => void;
+  /** Événement actif : support de l'historique d'alerte cyclonique. */
+  activeEventId?: string | null;
+  /** Instant consulté dans la salle de crise : marque la ligne d'alerte active. */
+  alertAt?: string | null;
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -124,6 +138,8 @@ export function RightPanel({
   exposure,
   onClose,
   onSelectEvent,
+  activeEventId = null,
+  alertAt = null,
 }: RightPanelProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -193,6 +209,22 @@ export function RightPanel({
     queryKey: ['risks-commune', communeId],
     queryFn: () => (communeId ? risksApi.commune(communeId, { latest: true }) : null),
     enabled: Boolean(communeId) && hasEvent,
+  });
+
+  // Historique traçable des alertes cycloniques de la commune sur l'événement :
+  // chaque ligne documentée (niveau, validité, nature, source) est conservée ;
+  // `activeAt` marque celle qui s'applique à l'instant consulté sur la carte.
+  const alertHistoryQ = useQuery({
+    queryKey: ['event', 'commune-alert-history', activeEventId, communeId, alertAt],
+    queryFn: () => {
+      if (!activeEventId || !communeId) throw new Error('Aucun événement ou commune sélectionné');
+      return eventsApi.communeAlertHistory(
+        activeEventId,
+        communeId,
+        alertAt ? { at: alertAt } : undefined,
+      );
+    },
+    enabled: Boolean(activeEventId && communeId && hasEvent),
   });
 
   const refreshM = useMutation({
@@ -299,6 +331,10 @@ export function RightPanel({
   const historyDays = buildHistoryDays(historyQ.data ?? []);
   const risk = hasEvent ? riskQ.data : null;
   const riskLevel = hasEvent ? (risk?.riskLevel ?? detail.risk?.riskLevel) : null;
+  const alertHistory: EventCommuneAlertHistoryRow[] =
+    alertHistoryQ.data && alertHistoryQ.data.communeId === communeId
+      ? alertHistoryQ.data.rows
+      : [];
 
   const weatherMetrics = latest
     ? [
@@ -582,6 +618,76 @@ export function RightPanel({
                 </Button>
               </div>
             </AdministrativeInterventionPanel>
+          </Card>
+        ) : null}
+
+        {/* Historique des alertes cycloniques documentées */}
+        {alertHistory.length > 0 ? (
+          <Card title="Historique des alertes cycloniques" className="!p-4">
+            <p className="text-[11px] leading-snug text-muted">
+              Niveaux documentés pour cette commune pendant l&apos;événement.
+              {alertAt
+                ? ` Ligne active au ${formatAntananarivo(alertAt)} (heure de Madagascar).`
+                : ''}
+            </p>
+            <ul className="mt-3 space-y-2">
+              {alertHistory.map((row, i) => (
+                <li
+                  key={`${row.alertLevel}-${row.validFrom}-${i}`}
+                  className={cn(
+                    'rounded-lg border px-3 py-2',
+                    row.activeAt
+                      ? 'border-ink/25 bg-canvas/70 ring-1 ring-ink/10'
+                      : 'border-line bg-white',
+                  )}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        className="size-3 shrink-0 rounded-full"
+                        style={{ background: COMMUNE_ALERT_COLORS[row.alertLevel] }}
+                      />
+                      <span
+                        className="text-sm font-semibold"
+                        style={{ color: COMMUNE_ALERT_BORDERS[row.alertLevel] }}
+                      >
+                        {COMMUNE_ALERT_SHORT_LABELS[row.alertLevel]}
+                      </span>
+                    </span>
+                    {row.activeAt ? (
+                      <span className="rounded-full bg-ink/5 px-2 py-0.5 text-[10px] font-medium text-ink">
+                        Active à l&apos;instant consulté
+                      </span>
+                    ) : null}
+                  </div>
+                  <p className="mt-1 text-[11px] text-muted">
+                    {formatAntananarivo(row.validFrom)}
+                    {' → '}
+                    {row.validTo ? formatAntananarivo(row.validTo) : 'en cours'}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-muted">
+                    {COMMUNE_ALERT_INFO_TYPE_LABELS[row.infoType]} · échelle{' '}
+                    {COMMUNE_ALERT_SCOPE_LABELS[row.territoryScope]}
+                  </p>
+                  {row.sourceName ? (
+                    <p className="mt-0.5 text-[11px] text-muted">Source : {row.sourceName}</p>
+                  ) : null}
+                  {row.comment ? (
+                    <p className="mt-0.5 text-[11px] italic text-slate-600">{row.comment}</p>
+                  ) : null}
+                  {isEstimatedAlert(row.territoryScope, row.infoType) ? (
+                    <p className="mt-0.5 text-[11px] italic text-amber-700">
+                      Niveau estimé (hérité d&apos;une échelle supérieure) — signalé en pointillés
+                      sur la carte.
+                    </p>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-[10px] leading-snug text-muted">
+              Seules les informations datées et sourcées apparaissent ici ; une commune sans ligne
+              documentée reste hors alerte (gris) sur la carte.
+            </p>
           </Card>
         ) : null}
 

@@ -316,9 +316,10 @@ export function EventHistoricalMapTab({
           <span className="text-muted">
             — union des rayons de vent publiés par le RSMC, point par point, du premier au dernier
             point documenté (le plus large documenté est retenu quand plusieurs seuils existent), les
-            mesures consécutives étant reliées par leurs tangentes. Aucune largeur n&apos;est mesurée
-            entre deux points datés, et ce n&apos;est pas un cône d&apos;incertitude : aucune
-            incertitude de position n&apos;est publiée pour un événement observé.
+            mesures consécutives étant reliées par leurs tangentes : le tout forme une seule surface,
+            du début à la fin de la trajectoire. Aucun rayon n&apos;est mesuré entre deux points
+            datés, et ce n&apos;est pas un cône d&apos;incertitude : aucune incertitude de position
+            n&apos;est publiée pour un événement observé.
           </span>
         </label>
       ) : null}
@@ -388,8 +389,8 @@ export function EventHistoricalMapTab({
                 {showSwath && swathCount > 0 ? (
                   <li className="flex items-center gap-2">
                     <span
-                      className="inline-block size-3 rounded-sm"
-                      style={{ background: `${CYCLONE_VIOLET}1f` }}
+                      className="inline-block size-3 rounded-sm border border-dashed"
+                      style={{ borderColor: CYCLONE_VIOLET_DEEP, background: `${CYCLONE_VIOLET}2e` }}
                     />
                     Emprise documentée des vents
                   </li>

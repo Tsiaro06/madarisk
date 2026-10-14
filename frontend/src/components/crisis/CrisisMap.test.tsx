@@ -1,11 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { FeatureCollection } from 'geojson';
-import { CrisisMap } from './CrisisMap';
-import type { EventListItem, TrackStatePoint } from '@/types';
+import { CrisisMap, type MapPlayback } from './CrisisMap';
+import type {
+  EventCommuneAlertRow,
+  EventCommuneAlertsSummary,
+  EventListItem,
+  TrackStatePoint,
+} from '@/types';
 import {
   trackStyle,
   trackPointStyle,
@@ -21,13 +26,30 @@ vi.mock('react-leaflet', async () => {
     MapContainer: ({ children }: { children: React.ReactNode }) =>
       React.createElement('div', { 'data-testid': 'map' }, children),
     TileLayer: () => null,
-    GeoJSON: ({ data, interactive }: { data: unknown; interactive?: boolean }) => {
+    GeoJSON: ({
+      data,
+      interactive,
+      style,
+    }: {
+      data: unknown;
+      interactive?: boolean;
+      style?: { dashArray?: string };
+    }) => {
       // La zone probable est un `Feature` unique : elle est identifiée à part
       // pour que les autres couches GeoJSON restent comptées par `data-features`.
       const payload = data as { type?: string; properties?: Record<string, unknown> } | null;
       if (payload?.type === 'Feature' && payload.properties?.pointCount != null) {
         return React.createElement('div', {
           'data-testid': 'forecast-cone',
+          'data-interactive': String(interactive),
+        });
+      }
+      // L'emprise documentée des vents est elle aussi fusionnée en un `Feature`
+      // unique (union des disques publiés et de leurs liaisons).
+      if (payload?.type === 'Feature' && payload.properties?.documentedPoints != null) {
+        return React.createElement('div', {
+          'data-testid': 'wind-swath-surface',
+          'data-dash': style?.dashArray ?? '',
           'data-interactive': String(interactive),
         });
       }
@@ -39,12 +61,19 @@ vi.mock('react-leaflet', async () => {
             : 0,
       });
     },
-    CircleMarker: () => React.createElement('div', { 'data-testid': 'track-point' }),
-    Polygon: ({ pathOptions }: { pathOptions?: { className?: string } }) =>
+    CircleMarker: ({
+      eventHandlers,
+      pathOptions,
+    }: {
+      eventHandlers?: { click?: () => void };
+      pathOptions?: { radius?: number };
+    }) =>
       React.createElement('div', {
-        'data-testid':
-          pathOptions?.className === 'madarisk-wind-swath' ? 'wind-swath-belt' : 'polygon',
+        'data-testid': 'track-point',
+        'data-radius': String(pathOptions?.radius ?? ''),
+        onClick: eventHandlers?.click,
       }),
+    Polygon: () => React.createElement('div', { 'data-testid': 'polygon' }),
     Marker: ({
       children,
       position,
@@ -83,11 +112,8 @@ vi.mock('react-leaflet', async () => {
     }: {
       pathOptions?: { fillOpacity?: number; dashArray?: string; className?: string };
     }) => {
-      // Deux familles de cercles : l'anneau de la lecture animée (contour
-      // pointillé) et les cercles de l'emprise documentée (sans contour).
-      if (pathOptions?.className === 'madarisk-wind-swath') {
-        return React.createElement('div', { 'data-testid': 'wind-swath-circle' });
-      }
+      // Seul cercle de la salle de crise : l'anneau de la lecture animée. L'emprise
+      // documentée des vents est désormais une surface GeoJSON unique.
       return React.createElement('div', {
         'data-testid': 'cyclone-radius',
         'data-fill-opacity': String(pathOptions?.fillOpacity ?? ''),
@@ -139,7 +165,35 @@ const defaultProps = {
   onMapPhaseChange: vi.fn(),
   onRefresh: undefined as (() => void) | undefined,
   refreshing: false,
+  communeAlerts: null as ReadonlyMap<string, EventCommuneAlertRow> | null,
+  alertSummary: null as EventCommuneAlertsSummary | null,
+  alertAt: null as string | null,
+  playback: null as MapPlayback | null,
+  onSeekTrackPoint: vi.fn(),
 };
+
+/** Ligne d'alerte communale complète (tous les champs requis par le type). */
+function makeAlertRow(
+  overrides: Partial<EventCommuneAlertRow> = {},
+): EventCommuneAlertRow {
+  return {
+    communeId: 'cm-1',
+    communeName: 'Mananjary',
+    communeCode: 'MG-123',
+    districtId: 'd-1',
+    districtName: 'Mananjary',
+    alertLevel: 'ROUGE',
+    validFrom: '2022-02-04T00:00:00.000Z',
+    validTo: '2022-02-08T00:00:00.000Z',
+    infoType: 'OFFICIELLE',
+    territoryScope: 'COMMUNE',
+    sourceName: 'Bulletin Météo Madagascar du 4 février 2022',
+    sourceUrl: null,
+    comment: null,
+    confidence: null,
+    ...overrides,
+  };
+}
 
 /** Point de trajectoire complet (tous les champs requis par TrackStatePoint). */
 function makeTrackPoint(
@@ -311,14 +365,36 @@ describe('CrisisMap', () => {
   });
 });
 
-describe('marqueur cyclonique animé (trajectoire observée)', () => {
+describe('marqueur cyclonique (lecture de la trajectoire)', () => {
   beforeEach(() => {
-    // Lecture visuelle désactivée en test : pas de rAF, positions déterministes.
+    // Lecture visuelle neutralisée : la position reste sur le premier point.
     vi.spyOn(globalThis, 'requestAnimationFrame').mockReturnValue(0);
     vi.spyOn(globalThis, 'cancelAnimationFrame').mockImplementation(() => undefined);
   });
 
-  it('ancre le marqueur sur le premier point observé', () => {
+  it('suit la position de lecture fournie par la page', () => {
+    const point = makeTrackPoint(
+      'p2',
+      'OBSERVEE',
+      '2026-04-01T06:00:00.000Z',
+      -20.9,
+      48.4,
+    );
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2),
+        point,
+      ],
+      playback: { position: [-20.9, 48.4], point, nextPoint: null, interpolated: false },
+    });
+
+    const marker = screen.getByTestId('cyclone-marker');
+    expect(marker).toHaveAttribute('data-lat', '-20.9');
+    expect(marker).toHaveAttribute('data-lng', '48.4');
+    expect(marker.getAttribute('data-title')).toContain('Cyclone Batsirai');
+  });
+
+  it('anime lui-même la trajectoire depuis le premier point observé', () => {
     renderMap({
       trackPoints: [
         makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2),
@@ -329,10 +405,9 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
     const marker = screen.getByTestId('cyclone-marker');
     expect(marker).toHaveAttribute('data-lat', '-20.5');
     expect(marker).toHaveAttribute('data-lng', '49.2');
-    expect(marker.getAttribute('data-title')).toContain('Cyclone Batsirai');
   });
 
-  it("n'affiche aucun centre animé sans point observé", () => {
+  it("n'affiche aucun centre sans point observé", () => {
     renderMap({
       trackPoints: [
         makeTrackPoint('p1', 'PREVUE', '2026-04-02T00:00:00.000Z', -20.5, 49.2),
@@ -342,16 +417,61 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
     expect(screen.queryByTestId('cyclone-marker')).toBeNull();
   });
 
-  it('dessine la zone d\'influence quand un rayon de vent est documenté', () => {
+  it('remonte le point cliqué pour déplacer la lecture', () => {
+    const onSeekTrackPoint = vi.fn();
     renderMap({
+      onSeekTrackPoint,
       trackPoints: [
-        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2, {
-          radius34ktKm: 368.5,
-          radius50ktKm: 164.8,
-          radiusMeasureType: 'Rayon maximal des 4 quadrants',
-        }),
+        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2),
         makeTrackPoint('p2', 'OBSERVEE', '2026-04-01T06:00:00.000Z', -20.9, 48.4),
       ],
+    });
+
+    fireEvent.click(screen.getAllByTestId('track-point')[1]);
+    expect(onSeekTrackPoint).toHaveBeenCalledTimes(1);
+    expect(onSeekTrackPoint.mock.calls[0][0]).toMatchObject({ id: 'p2' });
+  });
+
+  it('met en évidence le point de référence courant', () => {
+    const point = makeTrackPoint(
+      'p2',
+      'OBSERVEE',
+      '2026-04-01T06:00:00.000Z',
+      -20.9,
+      48.4,
+    );
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2),
+        point,
+      ],
+      playback: { position: [-20.9, 48.4], point, nextPoint: null, interpolated: false },
+    });
+
+    const points = screen.getAllByTestId('track-point');
+    expect(points[1]).toHaveAttribute('data-radius', '8');
+    expect(points[0]).toHaveAttribute('data-radius', '5');
+  });
+
+  it('dessine la zone d\'influence quand un rayon de vent est documenté', () => {
+    const point = makeTrackPoint(
+      'p1',
+      'OBSERVEE',
+      '2026-04-01T00:00:00.000Z',
+      -20.5,
+      49.2,
+      {
+        radius34ktKm: 368.5,
+        radius50ktKm: 164.8,
+        radiusMeasureType: 'Rayon maximal des 4 quadrants',
+      },
+    );
+    renderMap({
+      trackPoints: [
+        point,
+        makeTrackPoint('p2', 'OBSERVEE', '2026-04-01T06:00:00.000Z', -20.9, 48.4),
+      ],
+      playback: { position: [-20.5, 49.2], point, nextPoint: null, interpolated: false },
     });
 
     const circle = screen.getByTestId('cyclone-radius');
@@ -361,11 +481,13 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
   });
 
   it('ne dessine aucune zone d\'influence sans rayon documenté', () => {
+    const point = makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2);
     renderMap({
       trackPoints: [
-        makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2),
+        point,
         makeTrackPoint('p2', 'OBSERVEE', '2026-04-01T06:00:00.000Z', -20.9, 48.4),
       ],
+      playback: { position: [-20.5, 49.2], point, nextPoint: null, interpolated: false },
     });
 
     expect(screen.queryByTestId('cyclone-radius')).toBeNull();
@@ -383,12 +505,18 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
           radius50ktKm: 250,
         }),
       ],
+      playback: {
+        position: [-20.5, 49.2],
+        point: makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2, {
+          radius34ktKm: 368.5,
+        }),
+        nextPoint: null,
+        interpolated: false,
+      },
     });
 
-    // Une emprise d'ensemble (2 cercles documentés reliés par 1 entre-deux continu)
-    // + l'anneau de la lecture animée.
-    expect(screen.getAllByTestId('wind-swath-circle')).toHaveLength(2);
-    expect(screen.getAllByTestId('wind-swath-belt')).toHaveLength(1);
+    // Une seule surface documentée (2 mesures reliées) + l'anneau du point consulté.
+    expect(screen.getAllByTestId('wind-swath-surface')).toHaveLength(1);
     expect(screen.getAllByTestId('cyclone-radius')).toHaveLength(1);
   });
 
@@ -403,19 +531,25 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
           radius34ktKm: 300,
         }),
       ],
+      playback: {
+        position: [-20.5, 49.2],
+        point: makeTrackPoint('p1', 'OBSERVEE', '2026-04-01T00:00:00.000Z', -20.5, 49.2, {
+          radius34ktKm: 368.5,
+        }),
+        nextPoint: null,
+        interpolated: false,
+      },
     });
 
     expect(screen.getByText(/Emprise documentée des vents/)).toBeTruthy();
-    expect(screen.getAllByTestId('wind-swath-circle')).toHaveLength(2);
-    expect(screen.getAllByTestId('wind-swath-belt')).toHaveLength(1);
+    expect(screen.getAllByTestId('wind-swath-surface')).toHaveLength(1);
 
     await user.click(screen.getByRole('button', { name: 'Afficher les couches' }));
     await user.click(
       screen.getByRole('checkbox', { name: /Emprise des vents/ }) as HTMLInputElement,
     );
 
-    expect(screen.queryAllByTestId('wind-swath-circle')).toHaveLength(0);
-    expect(screen.queryAllByTestId('wind-swath-belt')).toHaveLength(0);
+    expect(screen.queryAllByTestId('wind-swath-surface')).toHaveLength(0);
     expect(screen.queryByText(/Emprise documentée des vents/)).toBeNull();
     // L'anneau de la lecture animée reste affiché : seule l'emprise d'ensemble part.
     expect(screen.getByTestId('cyclone-radius')).toBeTruthy();
@@ -433,7 +567,7 @@ describe('marqueur cyclonique animé (trajectoire observée)', () => {
     expect(
       screen.getByRole('checkbox', { name: /Emprise des vents/ }) as HTMLInputElement,
     ).toBeDisabled();
-    expect(screen.queryAllByTestId('wind-swath-circle')).toHaveLength(0);
+    expect(screen.queryAllByTestId('wind-swath-surface')).toHaveLength(0);
   });
 
   it('n\'annonce la zone d\'influence en légende que si un rayon est documenté', () => {
@@ -623,5 +757,105 @@ describe('zone de position probable du centre (prévision)', () => {
 
     const intact = districtStyle(district, new Set(['d-9']));
     expect(intact.fillColor).toBe('#f8fafc');
+  });
+});
+
+describe('niveaux d’alerte cyclonique (salle de crise)', () => {
+  const alertSummary = {
+    eventId: 'evt-1',
+    at: '2022-02-04T17:00:00.000Z',
+    total: 20,
+    levels: { VERT: 3, JAUNE: 4, ROUGE: 5, BLEU: 0, GRIS: 8 },
+    estimated: 7,
+    eventHasAlertData: true,
+    sources: ['Bulletin Météo Madagascar du 4 février 2022'],
+    method: 'Niveau le plus prioritaire par commune à l’instant consulté.',
+  } satisfies EventCommuneAlertsSummary;
+
+  const communeLayer: FeatureCollection = {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: { communeId: 'cm-1' },
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]],
+        },
+      },
+    ],
+  };
+
+  it('ajoute à la légende les compteurs par niveau, la source et l’instant', async () => {
+    const user = userEvent.setup();
+    renderMap({
+      alertSummary,
+      alertAt: alertSummary.at,
+      communeLayer,
+      communeAlerts: new Map([['cm-1', makeAlertRow()]]),
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Afficher la légende' }));
+
+    expect(screen.getByText(/Niveaux d'alerte cyclonique/)).toBeInTheDocument();
+    expect(screen.getByText('Vert — menace vague (2 à 5 jours)')).toBeInTheDocument();
+    expect(screen.getByText('Jaune — menace précise (24 à 48 h)')).toBeInTheDocument();
+    expect(screen.getByText('Rouge — danger imminent ou impact observé')).toBeInTheDocument();
+    expect(screen.getByText('Bleu — dangers résiduels après le passage')).toBeInTheDocument();
+    expect(screen.getByText('Gris — hors alerte')).toBeInTheDocument();
+    // Chaque compteur est rendu à côté de son niveau.
+    expect(screen.getByText('Vert — menace vague (2 à 5 jours)').parentElement).toHaveTextContent(
+      '3',
+    );
+    expect(screen.getByText(/Sources : Bulletin Météo Madagascar/)).toBeInTheDocument();
+    // Les niveaux hérités sont explicitement signalés comme estimations.
+    expect(
+      screen.getByText(/7 commune\(s\) colorée\(s\) par estimation spatiale/),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Niveaux actifs au/)).toBeInTheDocument();
+  });
+
+  it('n’affiche aucune section d’alerte sans données d’alerte', async () => {
+    const user = userEvent.setup();
+    renderMap({});
+    await user.click(screen.getByRole('button', { name: 'Afficher la légende' }));
+    expect(screen.queryByText(/Niveaux d'alerte cyclonique/)).toBeNull();
+  });
+
+  it('n’active la couche « Alertes cycloniques » que si l’événement en porte', async () => {
+    const user = userEvent.setup();
+    const { unmount } = renderMap({ alertSummary });
+    await user.click(screen.getByRole('button', { name: 'Afficher les couches' }));
+    expect(
+      screen.getByRole('checkbox', { name: /Alertes cycloniques/ }),
+    ).toBeEnabled();
+    unmount();
+
+    renderMap({});
+    await user.click(screen.getByRole('button', { name: 'Afficher les couches' }));
+    expect(
+      screen.getByRole('checkbox', { name: /Alertes cycloniques/ }),
+    ).toBeDisabled();
+  });
+
+  it('positionne le marqueur sur le point de lecture courant', () => {
+    const point = makeTrackPoint(
+      'p2',
+      'OBSERVEE',
+      '2022-02-06T12:00:00.000Z',
+      -22.5,
+      47.1,
+    );
+    renderMap({
+      trackPoints: [
+        makeTrackPoint('p1', 'OBSERVEE', '2022-02-05T12:00:00.000Z', -21, 48),
+        point,
+      ],
+      playback: { position: [-22.5, 47.1], point, nextPoint: null, interpolated: false },
+    });
+
+    const marker = screen.getByTestId('cyclone-marker');
+    expect(marker).toHaveAttribute('data-lat', '-22.5');
+    expect(marker).toHaveAttribute('data-lng', '47.1');
   });
 });

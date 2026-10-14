@@ -1,42 +1,40 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { CycloneWindSwath } from './CycloneWindSwath';
+import { CYCLONE_VIOLET, CYCLONE_VIOLET_DEEP } from '@/lib/historical';
 import type { TrackStatePoint } from '@/types';
 
 vi.mock('react-leaflet', async () => {
   const React = await import('react');
   return {
-    Circle: ({
-      center,
-      radius,
-      pathOptions,
+    GeoJSON: ({
+      data,
+      style,
+      interactive,
     }: {
-      center?: [number, number];
-      radius?: number;
-      pathOptions?: { className?: string; stroke?: boolean; interactive?: boolean };
+      data?: { geometry?: { type?: string }; properties?: { documentedPoints?: number } };
+      style?: {
+        className?: string;
+        color?: string;
+        dashArray?: string;
+        fillColor?: string;
+        fillOpacity?: number;
+      };
+      interactive?: boolean;
     }) =>
       React.createElement('div', {
         'data-testid': 'wind-swath',
-        'data-lat': center ? String(center[0]) : '',
-        'data-lng': center ? String(center[1]) : '',
-        'data-radius': radius != null ? String(radius) : '',
-        'data-class': pathOptions?.className ?? '',
-        'data-stroke': String(pathOptions?.stroke),
-        'data-interactive': String(pathOptions?.interactive),
-      }),
-    Polygon: ({
-      positions,
-      pathOptions,
-    }: {
-      positions?: Array<[number, number]>;
-      pathOptions?: { className?: string; stroke?: boolean; interactive?: boolean };
-    }) =>
-      React.createElement('div', {
-        'data-testid': 'wind-swath-belt',
-        'data-vertices': positions ? String(positions.length) : '',
-        'data-class': pathOptions?.className ?? '',
-        'data-stroke': String(pathOptions?.stroke),
-        'data-interactive': String(pathOptions?.interactive),
+        'data-geometry': data?.geometry?.type ?? '',
+        'data-points':
+          data?.properties?.documentedPoints != null
+            ? String(data.properties.documentedPoints)
+            : '',
+        'data-class': style?.className ?? '',
+        'data-edge': style?.color ?? '',
+        'data-dash': style?.dashArray ?? '',
+        'data-fill': style?.fillColor ?? '',
+        'data-fill-opacity': style?.fillOpacity != null ? String(style.fillOpacity) : '',
+        'data-interactive': String(interactive),
       }),
   };
 });
@@ -71,28 +69,33 @@ function makePoint(overrides: Partial<TrackStatePoint> = {}): TrackStatePoint {
 }
 
 describe('CycloneWindSwath', () => {
-  it('dessine un cercle par mesure publiée et un entre-deux entre chaque paire', () => {
+  it('réunit les mesures publiées en une seule surface, sans forme pour un point muet', () => {
     render(
       <CycloneWindSwath
         points={[
           makePoint({ id: 'p1', radius34ktKm: 368.5, latitude: -21.0, longitude: 48.0 }),
           // Point muet : aucune forme inventée pour lui.
           makePoint({ id: 'p2', radius34ktKm: null, radius50ktKm: null }),
-          makePoint({ id: 'p3', radius50ktKm: 250, latitude: -22.2, longitude: 46.5 }),
+          makePoint({
+            id: 'p3',
+            radius34ktKm: null,
+            radius50ktKm: 250,
+            latitude: -22.2,
+            longitude: 46.5,
+          }),
         ]}
       />,
     );
 
-    // 2 mesures publiées → 2 disques et 1 liaison continue entre les deux.
-    const circles = screen.getAllByTestId('wind-swath');
-    expect(circles).toHaveLength(2);
-    expect(circles[0]).toHaveAttribute('data-radius', '368500');
-    const belts = screen.getAllByTestId('wind-swath-belt');
-    expect(belts).toHaveLength(1);
-    expect(belts[0]).toHaveAttribute('data-vertices', '4');
+    // Une seule géométrie pour tout l'événement (les mesures reliées entre elles),
+    // jamais une forme par point.
+    const surfaces = screen.getAllByTestId('wind-swath');
+    expect(surfaces).toHaveLength(1);
+    expect(surfaces[0]).toHaveAttribute('data-geometry', 'Polygon');
+    expect(surfaces[0]).toHaveAttribute('data-points', '2');
   });
 
-  it('rend la couche passive : ni contour, ni capture du clic/survol', () => {
+  it('trace un contour pointillé autour d’une surface translucide et passive', () => {
     render(
       <CycloneWindSwath
         points={[
@@ -102,14 +105,23 @@ describe('CycloneWindSwath', () => {
       />,
     );
 
-    for (const shape of [
-      ...screen.getAllByTestId('wind-swath'),
-      ...screen.getAllByTestId('wind-swath-belt'),
-    ]) {
-      expect(shape).toHaveAttribute('data-class', 'madarisk-wind-swath');
-      expect(shape).toHaveAttribute('data-stroke', 'false');
-      expect(shape).toHaveAttribute('data-interactive', 'false');
-    }
+    const surface = screen.getByTestId('wind-swath');
+    expect(surface).toHaveAttribute('data-class', 'madarisk-wind-swath');
+    expect(surface).toHaveAttribute('data-dash', '6 6');
+    expect(surface).toHaveAttribute('data-edge', CYCLONE_VIOLET_DEEP);
+    expect(surface).toHaveAttribute('data-fill', CYCLONE_VIOLET);
+    expect(surface).toHaveAttribute('data-fill-opacity', '0.18');
+    // Couche passive : ni clic ni survol capturés.
+    expect(surface).toHaveAttribute('data-interactive', 'false');
+  });
+
+  it('garde une surface unique avec une seule mesure publiée', () => {
+    render(<CycloneWindSwath points={[makePoint({ id: 'p1' })]} />);
+
+    const surfaces = screen.getAllByTestId('wind-swath');
+    expect(surfaces).toHaveLength(1);
+    expect(surfaces[0]).toHaveAttribute('data-geometry', 'Polygon');
+    expect(surfaces[0]).toHaveAttribute('data-points', '1');
   });
 
   it("n'affiche rien quand aucun point ne documente de rayon", () => {
@@ -122,15 +134,6 @@ describe('CycloneWindSwath', () => {
       />,
     );
 
-    // Une absence de mesure ne devient jamais un cercle de rayon nul.
     expect(screen.queryAllByTestId('wind-swath')).toHaveLength(0);
-    expect(screen.queryAllByTestId('wind-swath-belt')).toHaveLength(0);
-  });
-
-  it('ne dessine aucune liaison avec une seule mesure publiée', () => {
-    render(<CycloneWindSwath points={[makePoint({ id: 'p1' })]} />);
-
-    expect(screen.getAllByTestId('wind-swath')).toHaveLength(1);
-    expect(screen.queryAllByTestId('wind-swath-belt')).toHaveLength(0);
   });
 });

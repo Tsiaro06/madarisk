@@ -1,11 +1,10 @@
 import { booleanIntersects } from '@turf/boolean-intersects';
-import { circle } from '@turf/circle';
 import { convex } from '@turf/convex';
 import { featureCollection } from '@turf/helpers';
-import { union } from '@turf/union';
 import type { Feature, FeatureCollection, Geometry, MultiPolygon, Polygon } from 'geojson';
 import type { TrackStatePoint } from '@/types';
 import { featureId } from '@/lib/crisisStyles';
+import { circlePolygon, mergePolygons } from '@/lib/geoShapes';
 
 /**
  * Zone de position probable du centre (cône d'incertitude de trajectoire).
@@ -70,8 +69,6 @@ export type ForecastConeProperties = {
 
 export type ForecastCone = Feature<Polygon | MultiPolygon, ForecastConeProperties>;
 
-/** Nombre de sommets par cercle : assez fin pour un contour lisible. */
-const CIRCLE_STEPS = 64;
 const MS_PER_HOUR = 3_600_000;
 
 /**
@@ -162,43 +159,23 @@ export function buildCone(points: readonly ForecastConePoint[]): ForecastCone | 
   };
 
   const shapes = usable.map((point) =>
-    circle([point.longitude, point.latitude], point.radiusKm, {
-      steps: CIRCLE_STEPS,
-      units: 'kilometers',
-    }),
+    circlePolygon(point.longitude, point.latitude, point.radiusKm),
   );
-
-  // Une seule échéance : la zone est ce cercle, rien à relier.
-  if (shapes.length === 1) return { ...shapes[0], properties };
 
   // L'enveloppe convexe de chaque paire consécutive contient les deux cercles :
   // toutes les échéances sont couvertes, la première comme la dernière.
-  const pieces: Array<Feature<Polygon>> = [];
-  for (let index = 0; index < shapes.length - 1; index += 1) {
-    const hull = convex(featureCollection([shapes[index], shapes[index + 1]]));
-    pieces.push(hull ?? shapes[index]);
-  }
+  const pieces: Array<Feature<Polygon>> =
+    shapes.length === 1
+      ? // Une seule échéance : la zone est ce cercle, rien à relier.
+        shapes
+      : shapes.slice(0, -1).map((shape, index) => {
+          const hull = convex(featureCollection([shape, shapes[index + 1]]));
+          return hull ?? shape;
+        });
 
-  // Une seule liaison (deux échéances) : la zone est cette enveloppe. Passer
-  // par l'union la transformerait en multi-polygone sans rien changer à l'écran.
-  if (pieces.length === 1) return { ...pieces[0], properties };
-
-  try {
-    const merged = union(featureCollection(pieces));
-    if (merged) return { ...merged, properties };
-  } catch {
-    // Géométrie dégénérée : on rend les tronçons tels quels plutôt que rien.
-    // Superposés à l'écran, ils dessinent exactement la même zone.
-  }
-
-  return {
-    type: 'Feature',
-    properties,
-    geometry: {
-      type: 'MultiPolygon',
-      coordinates: pieces.map((piece) => piece.geometry.coordinates),
-    },
-  };
+  // L'union des tronçons donne une surface unique : un seul contour, et aucune
+  // bande plus dense là où deux échéances se chevauchent.
+  return mergePolygons(pieces, properties);
 }
 
 /** Boîte englobante [minLng, minLat, maxLng, maxLat]. */
