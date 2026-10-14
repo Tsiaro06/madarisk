@@ -57,6 +57,29 @@ const envSchema = z.object({
   DGM_MAPROOM_INGEST_CRON: z.string().default('0 6 * * *'),
   DGM_MAPROOM_MAX_DISTANCE_DEG: z.coerce.number().default(0.1),
 
+  // ── Veille cyclone temps réel ─────────────────────────────────────────────
+  // Détection/veille GDACS + trajectoire et rayons de vent documentés IBTrACS
+  // (agence RSMC La Réunion, IBTrACS v04r01 — la source exacte de Batsirai 2022).
+  //
+  // Le cycle est lent : les agences publient toutes les 6 h et le fichier IBTrACS
+  // ACTIVE pèse ~300 Ko. Une passe toutes les 3 h suffit et laisse la place aux
+  // relances manuelles.
+  CYCLONE_SYNC_CRON: z.string().default('15 */3 * * *'),
+  CYCLONE_GDACS_BASE_URL: z.string().default('https://www.gdacs.org'),
+  CYCLONE_IBTRACS_URL: z
+    .string()
+    .default(
+      'https://www.ncei.noaa.gov/data/international-best-track-archive-for-climate-stewardship-ibtracs/v04r01/access/csv/ibtracs.ACTIVE.list.v04r01.csv',
+    ),
+  CYCLONE_TIMEOUT_MS: z.coerce.number().default(30000),
+  // Zone de veille : « minLon,minLat,maxLon,maxLat » (degrés décimaux). Bassin
+  // sud-ouest de l'océan Indien : Madagascar et ses marges. Un cyclone n'est
+  // ingéré que si au moins un point de sa trajectoire entre dans ce rectangle.
+  CYCLONE_WATCH_BBOX: z.string().default('30,-40,80,5'),
+  // Au-delà de ce délai depuis le dernier point observé, un système n'est plus
+  // « ACTIF » mais « SUIVI ».
+  CYCLONE_ACTIVE_WINDOW_HOURS: z.coerce.number().min(1).default(24),
+
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-flash-latest'),
   GEMINI_TIMEOUT_MS: z.coerce.number().default(30000),
@@ -171,4 +194,3 @@ function withUrlOverrides(data: z.infer<typeof envSchema>) {
 }
 
 export const env = withUrlOverrides(parsed.data);
-
