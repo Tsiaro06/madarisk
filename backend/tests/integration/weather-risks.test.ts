@@ -742,7 +742,10 @@ describe('Risques - recalcul sans événement et configurations', () => {
         [isolatedId, sources.open_meteo, openMeteoAt, isoLat, isoLon],
       );
 
-      const contexts = await risksRepository.getRiskContexts({ communeIds: [isolatedId] });
+      const contexts = await risksRepository.getRiskContexts({
+        communeIds: [isolatedId],
+        eventId: null,
+      });
       const context = contexts.find((c) => c.communeId === isolatedId);
 
       expect(context).toBeDefined();

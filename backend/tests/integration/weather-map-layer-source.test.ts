@@ -1,9 +1,17 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
+import {
+  describe,
+  it,
+  expect,
+  beforeAll,
+  afterAll,
+  beforeEach,
+  vi,
+  type MockInstance,
+} from 'vitest';
 import { db } from '../../src/config/database';
 import { weatherRepository } from '../../src/repositories/weather.repository';
 import { openMeteoProvider } from '../../src/services/openmeteo.provider';
 import { weatherService } from '../../src/services/weather.service';
-import type { RequestContext } from '../../src/types/http.types';
 import type {
   BatchCommuneInput,
   WeatherProvider,
@@ -34,11 +42,15 @@ let communeId: string;
 let sourceId: string;
 /** Acteur réel : `refresh` écrit une trace d'audit à son nom. */
 let admin: { id: string; role: 'ADMIN' };
-/** Contexte de requête minimal : seuls `ip` et l'écriture d'audit sont lus. */
+/**
+ * Contexte de requête minimal : seuls `ip` et l'écriture d'audit sont lus.
+ * Chaque service déclare son propre `RequestContext` (non exporté) ; cette
+ * forme structurelle suffit donc à typer le stub.
+ */
 const requestContext = {
   ip: '127.0.0.1',
   socket: { remoteAddress: '127.0.0.1' },
-} as unknown as RequestContext;
+};
 
 /**
  * Insère `hours` lignes horaires synthétiques pour le début de `date`
@@ -69,7 +81,7 @@ async function insertHours(date: string, hours: number): Promise<void> {
 }
 
 describe('couche cartographique : source des données', () => {
-  let getForecastBatch: ReturnType<typeof vi.spyOn>;
+  let getForecastBatch: MockInstance<typeof openMeteoProvider.getForecastBatch>;
 
   beforeAll(async () => {
     const communes = await db.query<{ id: string }>(
@@ -124,7 +136,7 @@ describe('couche cartographique : source des données', () => {
     // Zéro appel fournisseur : c'est tout l'intérêt du changement.
     expect(getForecastBatch).not.toHaveBeenCalled();
 
-    const props = point?.properties as Record<string, number | string | null>;
+    const props = point?.properties as unknown as Record<string, number | string | null>;
     expect(props.observedAt).toBe(`${DATE_COVERED}T12:00`);
     expect(props.temperatureC).toBe(43); // max de 20..43
     expect(props.humidityPercent).toBe(71.5); // moyenne de 60..83
@@ -220,8 +232,7 @@ describe('couche cartographique : source des données', () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
         state = await weatherService.refreshStatus(started.refreshId);
       }
-      expect(state.status).toBe('SUCCESS');
-      expect(state.result).toEqual(result);
+      expect(state).toMatchObject({ status: 'SUCCESS', result });
     } finally {
       runRefresh.mockRestore();
     }
@@ -254,7 +265,7 @@ describe('couche cartographique : source des données', () => {
 
     expect(layer.features.length).toBeGreaterThan(0);
     for (const feature of layer.features) {
-      const props = feature.properties as Record<string, string>;
+      const props = feature.properties as unknown as Record<string, string>;
       expect(props.districtId).toBe(communes.rows[0].district_id);
     }
   });
