@@ -90,7 +90,7 @@ const envSchema = z.object({
   CYCLONE_STALE_RUN_HOURS: z.coerce.number().min(1).default(6),
 
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-flash-latest'),
+  GEMINI_MODEL: z.string().default('gemini-3.5-flash'),
   GEMINI_TIMEOUT_MS: z.coerce.number().default(30000),
   GEMINI_MAX_RETRIES: z.coerce.number().int().min(0).default(2),
   AI_SUPER_ADMIN_VIEW_CONVERSATIONS: z

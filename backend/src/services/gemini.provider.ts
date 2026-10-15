@@ -37,6 +37,17 @@ function toAppError(err: unknown): AppError {
   if (msg.includes('timeout') || msg.includes('abort') || msg.includes('deadline')) {
     return new AppError('Délai dépassé pour la génération IA', 504);
   }
+  // Modèle retiré ou inconnu : l'éditeur a retiré l'identifiant (ex. 2.0-flash,
+  // 2.5-flash). Erreur de configuration, donc NON transitoire : relancer la
+  // tentative ne sert à rien et seules l'administrateur agissant sur
+  // GEMINI_MODEL peuvent la réparer. Signalée explicitement plutôt que par le
+  // « Échec du service IA » générique, qui masquait la cause réelle.
+  if (msg.includes('404') || msg.includes('not found') || msg.includes('no longer available')) {
+    return new AppError(
+      'Modèle IA indisponible : GEMINI_MODEL est inconnu ou retiré par son éditeur',
+      502,
+    );
+  }
   if (msg.includes('429') || msg.includes('resource exhausted')) {
     return new AppError('Quota du fournisseur IA dépassé ; réessayez plus tard', 429);
   }
