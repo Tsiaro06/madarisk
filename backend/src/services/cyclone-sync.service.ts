@@ -149,6 +149,68 @@ async function applyDerivedProducts(eventId: string): Promise<DerivedOutcome> {
   };
 }
 
+interface CloseOutcome {
+  closed: number;
+  closedIds: string[];
+}
+
+/**
+ * Clôture les cyclones sortis de veille, puis borne leur coloration à la date de
+ * fin (mêmes règles que le cyclone historique Batsirai). N'est appelé que si les
+ * DEUX sources ont répondu : une agence muette ne doit jamais faire passer un
+ * cyclone vivant pour dissipé.
+ */
+async function closeStaleEvents(errors: string[]): Promise<CloseOutcome> {
+  const closedIds: string[] = [];
+  let stale: Awaited<ReturnType<typeof cycloneRepository.closeStaleWatchedEvents>>;
+
+  try {
+    stale = await cycloneRepository.closeStaleWatchedEvents(env.CYCLONE_STALE_WINDOW_HOURS);
+  } catch (err) {
+    errors.push(`clôture des sorties de veille : ${messageOf(err)}`);
+    logger.error({ err }, 'Cyclone : échec de la clôture des sorties de veille');
+    return { closed: 0, closedIds };
+  }
+
+  for (const event of stale) {
+    closedIds.push(event.eventId);
+    try {
+      await cycloneRepository.writeStatusHistory({
+        eventId: event.eventId,
+        fromStatus: event.previousStatus,
+        toStatus: 'CLOTURE',
+        reason:
+          `Sortie de veille : aucune source ne l'a revu depuis ` +
+          `${env.CYCLONE_STALE_WINDOW_HOURS} h`,
+        source: HISTORY_SOURCE,
+      });
+    } catch (err) {
+      errors.push(`historique de clôture ${event.name} : ${messageOf(err)}`);
+    }
+
+    // Borne la coloration à la fin : la commune repasse VERT/BLEU après le
+    // passage, comme pour un cyclone historique clos.
+    try {
+      await cycloneCommuneColoringService.applyToEvent(event.eventId);
+    } catch (err) {
+      errors.push(`coloration (clôture) ${event.name} : ${messageOf(err)}`);
+      logger.error(
+        { err, eventId: event.eventId },
+        'Cyclone : échec de la coloration à la clôture',
+      );
+    }
+  }
+
+  if (stale.length > 0) {
+    logger.info(
+      { closed: stale.length, events: stale.map((e) => `${e.name} (${e.eventId})`) },
+      'Cyclone : cyclones sortis de veille clôturés',
+    );
+  }
+
+  return { closed: stale.length, closedIds };
+}
+
 export const cycloneSyncService = {
   /**
    * Un cycle : veille GDACS + trajectoire/rayons IBTrACS -> événements et points
@@ -158,6 +220,19 @@ export const cycloneSyncService = {
   async run(trigger: 'SCHEDULED' | 'MANUAL' = 'SCHEDULED'): Promise<CycloneSyncSummary> {
     const startedAt = Date.now();
     const watch = parseWatchBbox(env.CYCLONE_WATCH_BBOX);
+
+    // Hygiène d'observabilité : un cycle tué en plein vol laisse une ligne
+    // RUNNING. On la solde avant d'ouvrir le nouveau cycle (best-effort : un
+    // échec ici ne doit pas empêcher l'ingestion).
+    try {
+      const interrupted = await cycloneRepository.failInterruptedRuns(env.CYCLONE_STALE_RUN_HOURS);
+      if (interrupted > 0) {
+        logger.warn({ interrupted }, 'Cyclone : cycles interrompus marqués FAILED');
+      }
+    } catch (err) {
+      logger.warn({ err }, 'Cyclone : nettoyage des cycles interrompus impossible');
+    }
+
     const runId = await cycloneRepository.startRun(trigger, SOURCES);
 
     const errors: string[] = [];
@@ -245,6 +320,17 @@ export const cycloneSyncService = {
         }
       }
 
+      // Clôture des sorties de veille — APRÈS avoir rafraîchi `last_seen_at` de
+      // tous les systèmes revus — et uniquement si les deux agences ont répondu.
+      // Un cyclone dissipé n'est clôturé qu'au bout de CYCLONE_STALE_WINDOW_HOURS.
+      let eventsClosed = 0;
+      const closedEventIds: string[] = [];
+      if (trackedResult.status === 'fulfilled' && watchedResult.status === 'fulfilled') {
+        const closeOutcome = await closeStaleEvents(errors);
+        eventsClosed = closeOutcome.closed;
+        closedEventIds.push(...closeOutcome.closedIds);
+      }
+
       await cycloneRepository.finishRun(runId, {
         systemsDetected,
         systemsTracked,
@@ -260,6 +346,7 @@ export const cycloneSyncService = {
           coloredEvents,
           coloredCommunes,
           alertsCreated,
+          eventsClosed,
         },
       });
 
@@ -273,13 +360,14 @@ export const cycloneSyncService = {
         coloredEvents,
         coloredCommunes,
         alertsCreated,
+        eventsClosed,
         durationMs: Date.now() - startedAt,
       };
 
       // Diffusion temps réel : les clients connectés (salle de crise) rafraîchissent
-      // leur état sans attendre le prochain scrutin. Rien à pousser si aucune
-      // donnée n'a été persistée (bassin calme ou sources muettes).
-      if (systemsTracked > 0) {
+      // leur état sans attendre le prochain scrutin. On pousse dès qu'un système a
+      // été persisté OU qu'un cyclone a été clôturé (sortie de veille).
+      if (systemsTracked > 0 || eventsClosed > 0) {
         realtimeService.publish('cyclone.sync', {
           runId,
           trigger,
@@ -290,9 +378,11 @@ export const cycloneSyncService = {
           coloredEvents,
           coloredCommunes,
           alertsCreated,
+          eventsClosed,
           errorsCount: errors.length,
           eventIds,
           liveEventIds,
+          closedEventIds,
         });
       }
 

@@ -126,6 +126,8 @@ export interface CycloneSyncSummary {
   coloredCommunes: number;
   /** Alertes automatiques créées par ce cycle. */
   alertsCreated: number;
+  /** Cyclones sortis de veille clôturés par ce cycle. */
+  eventsClosed: number;
   durationMs: number;
 }
 

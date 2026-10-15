@@ -79,6 +79,15 @@ const envSchema = z.object({
   // Au-delà de ce délai depuis le dernier point observé, un système n'est plus
   // « ACTIF » mais « SUIVI ».
   CYCLONE_ACTIVE_WINDOW_HOURS: z.coerce.number().min(1).default(24),
+  // Sortie de veille : un cyclone encore ouvert (ACTIF/SUIVI) dont AUCUNE source
+  // ne l'a revu depuis ce délai est clôturé automatiquement. Doit rester
+  // supérieur à la cadence du cycle (3 h) pour tolérer un cycle manqué ; 24 h
+  // laisse passer une panne d'agence sans clôturer un système bien vivant.
+  CYCLONE_STALE_WINDOW_HOURS: z.coerce.number().min(1).default(24),
+  // Cycle interrompu : un journal `cyclone_sync_runs` resté RUNNING au-delà de
+  // ce délai est marqué FAILED au démarrage du cycle suivant (processus tué en
+  // plein cycle). Très supérieur à la durée réelle d'un cycle (quelques minutes).
+  CYCLONE_STALE_RUN_HOURS: z.coerce.number().min(1).default(6),
 
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-flash-latest'),

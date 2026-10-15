@@ -382,4 +382,96 @@ describe('Synchronisation cyclone', () => {
       sources: 'IBTRACS+GDACS',
     });
   });
+
+  it('solde un cycle resté RUNNING (processus interrompu) au cycle suivant', async () => {
+    const inserted = await db.query<{ id: string }>(
+      `INSERT INTO cyclone_sync_runs (trigger, sources, started_at)
+       VALUES ('MANUAL', 'IBTRACS+GDACS', now() - interval '48 hours')
+       RETURNING id`,
+    );
+    const interruptedId = inserted.rows[0].id;
+    runIds.push(interruptedId);
+
+    setCycloneTrackProvider({ source: 'IBTRACS', listActiveSystems: async () => [] });
+    setCycloneWatchProvider({ source: 'GDACS', listWatchedSystems: async () => [] });
+
+    const summary = await cycloneSyncService.run('MANUAL');
+    runIds.push(summary.runId);
+
+    const row = await db.query<{
+      status: string;
+      finished_at: string | null;
+      error_message: string | null;
+    }>(`SELECT status, finished_at, error_message FROM cyclone_sync_runs WHERE id = $1`, [
+      interruptedId,
+    ]);
+    expect(row.rows[0].status).toBe('FAILED');
+    expect(row.rows[0].finished_at).not.toBeNull();
+    expect(row.rows[0].error_message).toContain('interrompu');
+  });
+
+  it('ne clôture PAS un cyclone quand une source est muette', async () => {
+    // L'événement est ACTIF et rattaché à la veille : on antidate sa dernière vue
+    // pour simuler un silence des agences.
+    await db.query(
+      `UPDATE cyclone_systems SET last_seen_at = now() - interval '48 hours' WHERE event_id = $1`,
+      [eventId],
+    );
+
+    // IBTrACS muet (rejet), GDACS répond vide : cycle partiel. Une source
+    // injoignable ne doit JAMAIS faire passer un cyclone pour dissipé.
+    setCycloneTrackProvider({
+      source: 'IBTRACS',
+      listActiveSystems: async () => {
+        throw new Error('IBTrACS indisponible (test)');
+      },
+    });
+    setCycloneWatchProvider({ source: 'GDACS', listWatchedSystems: async () => [] });
+
+    const summary = await cycloneSyncService.run('MANUAL');
+    runIds.push(summary.runId);
+
+    expect(summary.eventsClosed).toBe(0);
+    const event = await db.query<{ status: string }>(
+      `SELECT status FROM hazard_events WHERE id = $1`,
+      [eventId],
+    );
+    expect(event.rows[0].status).toBe('ACTIF');
+  });
+
+  it('clôture un cyclone sorti de veille et borne sa coloration à la fin', async () => {
+    // `last_seen_at` reste antidaté (48 h) : les deux sources répondent mais ne
+    // revoient plus ce système = sortie de veille.
+    setCycloneTrackProvider({ source: 'IBTRACS', listActiveSystems: async () => [] });
+    setCycloneWatchProvider({ source: 'GDACS', listWatchedSystems: async () => [] });
+
+    const summary = await cycloneSyncService.run('MANUAL');
+    runIds.push(summary.runId);
+
+    expect(summary.eventsClosed).toBeGreaterThanOrEqual(1);
+
+    const event = await db.query<{ status: string; ended_at: string | null }>(
+      `SELECT status, ended_at FROM hazard_events WHERE id = $1`,
+      [eventId],
+    );
+    expect(event.rows[0].status).toBe('CLOTURE');
+    expect(event.rows[0].ended_at).not.toBeNull();
+
+    // Coloration bornée : plus aucune ligne ouverte (valid_to NULL).
+    const open = await db.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM event_commune_alert_history
+        WHERE event_id = $1 AND valid_to IS NULL`,
+      [eventId],
+    );
+    expect(Number(open.rows[0].n)).toBe(0);
+
+    // Traçabilité : changement de statut SYSTÈME vers CLOTURE.
+    const history = await db.query<{ to_status: string; source: string }>(
+      `SELECT to_status, source FROM event_status_history
+        WHERE event_id = $1 ORDER BY recorded_at DESC LIMIT 1`,
+      [eventId],
+    );
+    expect(history.rows[0].to_status).toBe('CLOTURE');
+    expect(history.rows[0].source).toBe('CYCLONE_SYNC');
+  });
 });

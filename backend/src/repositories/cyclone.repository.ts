@@ -15,6 +15,25 @@ export interface CycloneSystemLink {
   rawMetadata: Record<string, unknown>;
 }
 
+/** Cyclone clôturé par sortie de veille (aucune source ne l'a revu). */
+export interface StaleCycloneEvent {
+  eventId: string;
+  name: string;
+  previousStatus: EventStatus;
+  endedAt: string;
+  lastObservedAt: string | null;
+  lastSeenAt: string;
+}
+
+interface StaleCycloneRow {
+  id: string;
+  name: string | null;
+  previous_status: string;
+  ended_at: string;
+  last_observed_at: string | null;
+  last_seen_at: string;
+}
+
 interface RunRow {
   id: string;
   started_at: string;
@@ -185,6 +204,73 @@ export const cycloneRepository = {
   },
 
   /**
+   * Clôture les cyclones sortis de veille.
+   *
+   * `linkSystem` rafraîchit `cyclone_systems.last_seen_at` à CHAQUE cycle : une
+   * veille fraîche est donc la preuve, entretenue par la base, que le système est
+   * toujours suivi par au moins une agence. On clôture un événement CYCLONE
+   * encore ouvert (ACTIF/SUIVI) dont AUCUNE identité source n'a été revue depuis
+   * `staleHours` — dissipation, ou disparition définitive des fils de veille.
+   *
+   * Deux garde-fous de non-invention :
+   *  • seuls les événements RATTACHÉS à la veille sont concernés (un événement
+   *    cyclone créé à la main, sans `cyclone_systems`, n'est jamais touché) ;
+   *  • `ended_at` est la date du dernier point de trajectoire DOCUMENTÉ (sinon la
+   *    date de dernière veille, sinon maintenant) — jamais une heure inventée.
+   *
+   * L'appelant ne déclenche cette clôture que lorsque les DEUX sources ont
+   * répondu : une agence muette ne doit jamais faire passer un cyclone vivant
+   * pour disparu.
+   */
+  async closeStaleWatchedEvents(staleHours: number): Promise<StaleCycloneEvent[]> {
+    const result = await db.query<StaleCycloneRow>(
+      `WITH watched AS (
+         SELECT e.id,
+                e.name,
+                e.status,
+                MAX(s.last_seen_at) AS last_seen_at
+           FROM hazard_events e
+           JOIN cyclone_systems s ON s.event_id = e.id
+          WHERE e.type = 'CYCLONE'
+            AND e.status IN ('ACTIF', 'SUIVI')
+          GROUP BY e.id, e.name, e.status
+       ),
+       stale AS (
+         SELECT w.id,
+                w.name,
+                w.status,
+                w.last_seen_at,
+                (SELECT MAX(t.observed_at)
+                   FROM event_tracks t
+                  WHERE t.event_id = w.id) AS last_observed_at
+           FROM watched w
+          WHERE w.last_seen_at < now() - make_interval(hours => $1::int)
+       )
+       UPDATE hazard_events e
+          SET status = 'CLOTURE',
+              ended_at = COALESCE(e.ended_at, stale.last_observed_at, stale.last_seen_at, now())
+         FROM stale
+        WHERE e.id = stale.id
+       RETURNING e.id,
+                 stale.name,
+                 stale.status::text AS previous_status,
+                 e.ended_at,
+                 stale.last_observed_at,
+                 stale.last_seen_at`,
+      [staleHours],
+    );
+
+    return result.rows.map((row) => ({
+      eventId: row.id,
+      name: row.name ?? 'Cyclone',
+      previousStatus: row.previous_status as EventStatus,
+      endedAt: new Date(row.ended_at).toISOString(),
+      lastObservedAt: row.last_observed_at ? new Date(row.last_observed_at).toISOString() : null,
+      lastSeenAt: new Date(row.last_seen_at).toISOString(),
+    }));
+  },
+
+  /**
    * UPSERT en lot des points de trajectoire observés.
    *
    * S'appuie sur l'index unique partiel `uq_event_tracks_observed`
@@ -247,6 +333,31 @@ export const cycloneRepository = {
     );
 
     return result.rowCount ?? points.length;
+  },
+
+  /**
+   * Marque FAILED les cycles restés RUNNING au-delà de `olderThanHours`.
+   *
+   * Un processus tué en plein cycle (`tsx watch`, veille machine, crash) laisse
+   * une ligne RUNNING éternelle qui fausserait l'observabilité (et l'âge du
+   * dernier cycle). Appelé au démarrage du cycle suivant ; le seuil très large
+   * (≫ durée réelle d'un cycle) garantit qu'on ne tue jamais un cycle en cours.
+   */
+  async failInterruptedRuns(olderThanHours: number): Promise<number> {
+    const result = await db.query(
+      `UPDATE cyclone_sync_runs
+          SET finished_at = now(),
+              status = 'FAILED',
+              errors_count = errors_count + 1,
+              error_message = COALESCE(
+                error_message,
+                'Cycle interrompu (processus arrêté avant la fin)'
+              )
+        WHERE status = 'RUNNING'
+          AND started_at < now() - make_interval(hours => $1::int)`,
+      [olderThanHours],
+    );
+    return result.rowCount ?? 0;
   },
 
   async startRun(trigger: string, sources: string): Promise<string> {
