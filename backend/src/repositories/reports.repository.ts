@@ -644,8 +644,8 @@ export const reportsRepository = {
   ): Promise<{
     event: Record<string, unknown> | null;
     areas: { type: 'FeatureCollection'; features: Array<Record<string, unknown>> };
-      exposedCommunes: Record<string, unknown>[];
-      exposedPopulation: number | null;
+    exposedCommunes: Record<string, unknown>[];
+    exposedPopulation: number | null;
     riskDistribution: Record<string, number>;
     riskCount: number;
     weather: {

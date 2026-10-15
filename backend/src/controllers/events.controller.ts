@@ -121,7 +121,7 @@ export const eventsController = {
       communeId,
       at ?? new Date().toISOString(),
     );
-    res.status(200).json(successResponse(r, "Historique des alertes de la commune"));
+    res.status(200).json(successResponse(r, 'Historique des alertes de la commune'));
   },
 
   calculateArea: async (req: Request, res: Response): Promise<void> => {

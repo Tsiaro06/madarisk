@@ -416,11 +416,7 @@ export const eventsService = {
     atIso: string,
   ): Promise<EventCommuneAlertHistory> {
     await this.ensureExists(id);
-    const history = await eventsRepository.getCommuneAlertHistory(
-      id,
-      communeId,
-      parseAtIso(atIso),
-    );
+    const history = await eventsRepository.getCommuneAlertHistory(id, communeId, parseAtIso(atIso));
     if (!history) throw AppError.notFound('Commune introuvable');
     return history;
   },

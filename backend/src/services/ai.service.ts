@@ -218,7 +218,7 @@ const AI_TOOLS: AITool[] = [
   {
     name: 'getHistoricalEvents',
     description:
-      "Événements historiques clos (ex. cyclone Batsirai 2022) : données passées, datées et sourcées, avec leurs bulletins météo et bilans. Jamais une situation temps réel.",
+      'Événements historiques clos (ex. cyclone Batsirai 2022) : données passées, datées et sourcées, avec leurs bulletins météo et bilans. Jamais une situation temps réel.',
     execute: async (parameters, _user) => {
       const params = historicalEventsParamsSchema.parse(parameters);
       const listed = await eventsRepository.list({ page: 1, limit: 50, status: 'CLOTURE' });

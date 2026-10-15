@@ -216,11 +216,7 @@ export type DisplayedCommuneAlertLevel = CommuneAlertLevel | 'GRIS';
  * conservée distincte du niveau : une alerte rouge officielle n'est pas un
  * impact observé, et une estimation spatiale doit être signalée comme telle.
  */
-export type CommuneAlertInfoType =
-  | 'OFFICIELLE'
-  | 'PREVISION'
-  | 'IMPACT_OBSERVE'
-  | 'ESTIMATION';
+export type CommuneAlertInfoType = 'OFFICIELLE' | 'PREVISION' | 'IMPACT_OBSERVE' | 'ESTIMATION';
 
 /**
  * Échelle à laquelle le niveau a été publié : `COMMUNE` lorsqu'elle est nommée
@@ -300,7 +296,6 @@ export interface TrackGeoJson {
   type: 'FeatureCollection';
   features: EventTrackFeature[];
 }
-
 
 export interface EventTrackFeature {
   type: 'Feature';

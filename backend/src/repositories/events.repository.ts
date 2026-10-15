@@ -106,7 +106,7 @@ const ALERT_PRECEDENCE_SQL = `CASE h.info_type
 const COMMUNE_ALERT_METHOD =
   "Niveau d'alerte affiché à l'instant consulté : alerte officielle (communale ou héritée d'un " +
   "district/d'une région), sinon impact observé daté, sinon zone de prévision ou estimation " +
-  'spatiale documentée. Aucune commune n\'est colorée à partir de sa seule distance au cyclone.';
+  "spatiale documentée. Aucune commune n'est colorée à partir de sa seule distance au cyclone.";
 
 /**
  * Normalise une ligne `event_commune_alert_history` (colonnes déjà aliasées en

@@ -874,8 +874,14 @@ export const weatherRepository = {
     };
   },
 
-  async hourlyCoverage(sourceId: string): Promise<{ communes: number; minHour: string | null; maxHour: string | null }> {
-    const result = await db.query<{ communes: string; minHour: string | null; maxHour: string | null }>(
+  async hourlyCoverage(
+    sourceId: string,
+  ): Promise<{ communes: number; minHour: string | null; maxHour: string | null }> {
+    const result = await db.query<{
+      communes: string;
+      minHour: string | null;
+      maxHour: string | null;
+    }>(
       `SELECT COUNT(DISTINCT commune_id)::text AS communes,
               MIN(hour_at)::text AS "minHour",
               MAX(hour_at)::text AS "maxHour"

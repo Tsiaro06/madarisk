@@ -22,7 +22,7 @@ interface RefreshParams {
 }
 
 export const weatherController = {
-refresh: async (req: Request, res: Response): Promise<void> => {
+  refresh: async (req: Request, res: Response): Promise<void> => {
     if (!req.user) throw AppError.unauthorized();
     const body = req.validatedBody as RefreshWeatherInput;
     const started = await weatherService.startRefresh(body, req.user, req);
@@ -31,7 +31,12 @@ refresh: async (req: Request, res: Response): Promise<void> => {
     // réponse qui exceededait le délai du navigateur.
     res
       .status(started.background ? 202 : 200)
-      .json(successResponse(started, started.background ? 'Synchronisation lancée' : 'Rafraîchissement météo terminé'));
+      .json(
+        successResponse(
+          started,
+          started.background ? 'Synchronisation lancée' : 'Rafraîchissement météo terminé',
+        ),
+      );
   },
 
   refreshStatus: (req: Request, res: Response): void => {
@@ -53,9 +58,7 @@ refresh: async (req: Request, res: Response): Promise<void> => {
   bulletins: async (req: Request, res: Response): Promise<void> => {
     const query = req.validatedQuery as WeatherBulletinsQuery;
     const bulletins = await weatherService.listBulletins(query);
-    res
-      .status(200)
-      .json(successResponse(bulletins, 'Bulletins météo historiques'));
+    res.status(200).json(successResponse(bulletins, 'Bulletins météo historiques'));
   },
 
   forecast: async (req: Request, res: Response): Promise<void> => {
