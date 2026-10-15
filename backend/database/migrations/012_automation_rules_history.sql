@@ -62,9 +62,14 @@ CREATE INDEX IF NOT EXISTS idx_hazard_detection_rules_hazard_type
 CREATE INDEX IF NOT EXISTS idx_hazard_detection_rules_portee
   ON hazard_detection_rules (region_id, district_id, commune_id);
 
+-- `set_updated_at` est le NOM DU TRIGGER ; la fonction à exécuter est
+-- `update_updated_at_column()` (créée par la migration 011). Appeler
+-- `set_updated_at()` échouait sur une base neuve (« la fonction
+-- set_updated_at() n'existe pas »), rendant le schéma irreproductible.
+DROP TRIGGER IF EXISTS set_updated_at ON hazard_detection_rules;
 CREATE TRIGGER set_updated_at
   BEFORE UPDATE ON hazard_detection_rules
-  FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- ── weather_sync_runs ─────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS weather_sync_runs (
