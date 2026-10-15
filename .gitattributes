@@ -1,0 +1,8 @@
+# Fins de ligne : contenu stocké en LF et vérifié en LF partout.
+#
+# Sans ce fichier, un checkout Windows (core.autocrlf=true) écrit du CRLF dans
+# le répertoire de travail. Prettier est configuré en `endOfLine: lf`
+# (backend/.prettierrc) : `npm run format:check` échoue alors sur des fichiers
+# pourtant conformes, ce qui rend la CI locale (Windows) trompeuse. La CI
+# (Linux) est sur du LF et ne voit pas le problème — d'où ce garde-fou.
+* text=auto eol=lf

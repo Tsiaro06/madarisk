@@ -1,0 +1,123 @@
+name: CI
+
+# Monorepo sans outillage partagé : les deux paquets sont vérifiés indépendamment
+# (backend : eslint + tsc + tsc tests + prettier + vitest ; frontend : oxlint +
+# vitest + build). Voir AGENTS.md pour l'ordre de vérification de référence.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Une seule exécution par branche/PR : les poussées rapprochées annulent la
+# précédente au lieu de consommer des minutes de runner.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ── Backend : contrôles statiques (aucune base de données requise) ─────────
+  backend-static:
+    name: Backend — lint / types / format
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Lint (eslint, 0 avertissement toléré)
+        run: npm run lint
+      - name: Types (src)
+        run: npm run typecheck
+      - name: Types (src + tests)
+        run: npm run typecheck:test
+      - name: Formatage (prettier --check)
+        run: npm run format:check
+
+  # ── Backend : suite unitaire sur une base PostGIS réelle ───────────────────
+  #
+  # `tests/unit` ne dépend PAS du référentiel territorial (119 districts /
+  # 1 579 communes) : celui-ci est chargé hors migrations (voir migration 004)
+  # et n'est pas versionné dans le dépôt. Il suffit donc de migrer et de seeder
+  # une base vierge.
+  #
+  # ⚠️ Les tests d'intégration (`tests/integration`) SONT exclus : plusieurs
+  # lisent de vraies communes (`FROM communes ORDER BY admin_code LIMIT 1`) ou
+  # vérifient l'intégrité du référentiel, qui est absent ici. Ils restent à
+  # exécuter en local contre la base de dev. Pour les activer en CI, voir la
+  # question ouverte : fournir un jeu de données territorial de test.
+  backend-unit:
+    name: Backend — tests unitaires (PostGIS)
+    runs-on: ubuntu-latest
+    needs: backend-static
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_DB: mada_risk
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d mada_risk"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mada_risk
+      JWT_ACCESS_SECRET: ci-access-secret-do-not-use-in-production
+      JWT_REFRESH_SECRET: ci-refresh-secret-do-not-use-in-production
+      # Pinne le mode publication : les tests attendent des alertes BROUILLON,
+      # quel que soit l'environnement (cf. vitest.config.ts).
+      ALERTS_AUTO_PUBLISH: 'false'
+      ENABLE_SCHEDULED_JOBS: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - name: Migrations
+        run: npm run db:migrate
+      - name: Seed (source météo, config de risque, comptes, règles)
+        run: npm run db:seed
+      - name: Tests unitaires
+        run: npx vitest run tests/unit
+
+  # ── Frontend : lint + tests + build (le build EST le typecheck) ────────────
+  frontend:
+    name: Frontend — lint / tests / build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Lint (oxlint)
+        run: npm run lint
+      - name: Tests (vitest)
+        run: npm test
+      - name: Build (tsc -b && vite build)
+        run: npm run build
