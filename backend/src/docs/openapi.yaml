@@ -4333,7 +4333,17 @@ components:
         application/json:
           schema: { $ref: '#/components/schemas/ValidationBody' }
     TooManyRequests:
-      description: Trop de requêtes (limite globale 100 / 15 min, login 10 / 15 min, refresh 30 / 15 min, IA 30 / 15 min)
+      description: >
+        Trop de requêtes (limite globale 100 / 15 min, login 10 / 15 min,
+        refresh 30 / 15 min, IA 30 / 15 min). Pour l'assistant IA, un quota
+        épuisé chez le fournisseur (Gemini) produit le même `429` : l'en-tête
+        `Retry-After` porte alors le délai de réarmement annoncé par le
+        fournisseur (offre gratuite : plafond journalier, donc plusieurs
+        heures), et la requête n'est pas relancée inutilement.
+      headers:
+        Retry-After:
+          description: Secondes à attendre avant de réessayer, quand la durée est connue.
+          schema: { type: integer, example: 23454 }
       content:
         application/json:
           schema: { $ref: '#/components/schemas/ErrorBody' }

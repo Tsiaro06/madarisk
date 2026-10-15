@@ -61,11 +61,49 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * Délai annoncé par le fournisseur avant que le quota redevienne disponible.
+ *
+ * Google le communique lui-même, sous deux formes : en clair dans le message
+ * (« Please retry in 6h30m53.5s ») et en champ structuré `retryDelay: "23453s"`.
+ * On lit ces valeurs au lieu de deviner une fenêtre : l'offre gratuite a un
+ * plafond **journalier**, et une fenêtre supposée « à la minute » annoncerait
+ * une heure de retour fausse de plusieurs heures.
+ *
+ * `null` si le délai n'est pas exploitable — on n'invente rien.
+ */
+export function parseProviderRetryAfter(err: unknown): number | null {
+  const message = err instanceof Error ? err.message : String(err);
+  const human = message.match(/retry in (?:(\d+)h)?(?:(\d+)m)?(\d+(?:\.\d+)?)s/i);
+  if (human) {
+    const hours = Number(human[1] ?? 0);
+    const minutes = Number(human[2] ?? 0);
+    const seconds = Number(human[3]);
+    const total = Math.ceil(hours * 3600 + minutes * 60 + seconds);
+    if (Number.isFinite(total) && total > 0) return total;
+  }
+  const structured = message.match(/"?retryDelay"?\s*[:=]\s*"?(\d+(?:\.\d+)?)s/i);
+  if (structured) {
+    const total = Math.ceil(Number(structured[1]));
+    if (Number.isFinite(total) && total > 0) return total;
+  }
+  return null;
+}
+
+/**
+ * Volontairement SANS le 429 (ni `resource_exhausted`).
+ *
+ * Un dépassement de quota ne se rattrape pas en 500 ms : le forfait gratuit
+ * compte 20 requêtes **par jour** et se réarme des heures plus tard, et même
+ * une limite « par minute » demande une soixantaine de secondes. Relancer
+ * immédiatement ne pouvait donc jamais réussir : cela ne faisait que doubler
+ * les appels refusés, retarder la réponse d'un utilisateur déjà bloqué et
+ * saturer les journaux. Le quota est désormais signalé tel quel, avec le délai
+ * annoncé par le fournisseur (`Retry-After`).
+ */
 function isRetryable(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
   return (
-    msg.includes('429') ||
-    msg.includes('resource_exhausted') ||
     msg.includes('500') ||
     msg.includes('502') ||
     msg.includes('503') ||
@@ -94,7 +132,15 @@ function toAppError(err: unknown): AppError {
     );
   }
   if (msg.includes('429') || msg.includes('resource exhausted')) {
-    return new AppError('Quota du fournisseur IA dépassé ; réessayez plus tard', 429);
+    // Le délai annoncé par le fournisseur devient un `Retry-After` : sans lui,
+    // le frontend ne peut proposer qu'un « réessayez plus tard » sans heure, et
+    // l'utilisateur reclique dans la minute sur un quota qui se réarme des
+    // heures plus tard.
+    const retryAfter = parseProviderRetryAfter(err) ?? undefined;
+    return AppError.tooManyRequests(
+      'Quota du fournisseur IA dépassé ; réessayez plus tard',
+      retryAfter,
+    );
   }
   if (msg.includes('401') || msg.includes('api key') || msg.includes('permission denied')) {
     return new AppError('Service IA non configuré ou clé invalide', 503);

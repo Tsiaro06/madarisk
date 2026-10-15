@@ -47,7 +47,7 @@ vi.mock('@google/generative-ai', () => {
 });
 
 import { env } from '../../src/config/env';
-import { GeminiAIProvider } from '../../src/services/gemini.provider';
+import { GeminiAIProvider, parseProviderRetryAfter } from '../../src/services/gemini.provider';
 import type { AIAnswerStep, AIRequest, AIToolDeclaration } from '../../src/types/ai.types';
 
 const request: AIRequest = {
@@ -189,6 +189,50 @@ describe('GeminiAIProvider - erreurs non transitoires', () => {
       message: expect.stringContaining('Modèle IA indisponible'),
     });
     expect(sdk.generateContent).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Message d'un quota épuisé, tel que Google le renvoie réellement (relevé sur
+ * un run live : forfait gratuit, plafond **journalier**).
+ */
+const QUOTA_MESSAGE =
+  '[GoogleGenerativeAI Error]: Error fetching from https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:streamGenerateContent?alt=sse: [429 Too Many Requests] You exceeded your current quota, please check your plan and billing details. ' +
+  '* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.6-flash\n' +
+  'Please retry in 6h30m53.559982807s.';
+
+describe('GeminiAIProvider - quota du fournisseur (429)', () => {
+  it('lit le délai annoncé en clair par le fournisseur', () => {
+    expect(parseProviderRetryAfter(new Error(QUOTA_MESSAGE))).toBe(23454);
+  });
+
+  it('lit aussi le champ structuré retryDelay', () => {
+    expect(parseProviderRetryAfter(new Error('[429] {"retryDelay":"23453s"}'))).toBe(23453);
+  });
+
+  it('n’invente aucun délai quand il est illisible', () => {
+    expect(parseProviderRetryAfter(new Error('[429 Too Many Requests] quota exceeded'))).toBeNull();
+  });
+
+  it('ne réessaie pas un quota épuisé et annonce le délai (Retry-After)', async () => {
+    sdk.generateContent.mockRejectedValue(new Error(QUOTA_MESSAGE));
+
+    await expect(provider.generateAnswer(request)).rejects.toMatchObject({
+      statusCode: 429,
+      retryAfterSeconds: 23454,
+    });
+    // Aucune relance : un quota journalier ne se rétablit pas en 500 ms.
+    expect(sdk.generateContent).toHaveBeenCalledTimes(1);
+  });
+
+  it('propage le délai de quota sur le chemin en flux, sans relance', async () => {
+    sdk.generateContentStream.mockRejectedValue(new Error(QUOTA_MESSAGE));
+
+    await expect(collect(provider.generateAnswerStream(request))).rejects.toMatchObject({
+      statusCode: 429,
+      retryAfterSeconds: 23454,
+    });
+    expect(sdk.generateContentStream).toHaveBeenCalledTimes(1);
   });
 });
 

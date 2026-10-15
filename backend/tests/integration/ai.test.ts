@@ -13,6 +13,7 @@ import {
   resetAiChatRateLimit,
   setAiChatRateLimit,
 } from '../../src/routes/ai.routes';
+import { AppError } from '../../src/utils/app-error';
 
 const KNOWN_TOOLS = [
   'searchTerritories',
@@ -24,11 +25,19 @@ const KNOWN_TOOLS = [
   'getEventExposedCommunes',
   'getLatestWeather',
   'getPublishedAlerts',
+  'getHistoricalEvents',
   'getDashboardSummary',
 ];
 
 let userA: { id: string; token: string };
 let userB: { id: string; token: string };
+/**
+ * Utilisateur dédié aux tests qui échouent volontairement : la limite de débit
+ * (30/15 min) se compte **par utilisateur** et n'est pas remise à zéro entre
+ * les tests, donc chaque requête compte. Isoler ces cas évite de faire déborder
+ * le budget de `userA` et de casser des tests sans rapport.
+ */
+let userQuota: { id: string; token: string };
 
 let eventId: string;
 let eventCode: string;
@@ -70,6 +79,7 @@ beforeAll(async () => {
 
   userA = await createUserAndLogin('ADMIN');
   userB = await createUserAndLogin('ADMIN');
+  userQuota = await createUserAndLogin('ADMIN');
 
   eventCode = `AI-${String(Date.now()).slice(-6)}-${Math.floor(Math.random() * 1000)}`;
   const created = await request(app)
@@ -96,7 +106,7 @@ afterAll(async () => {
   resetAiChatRateLimit();
   resetAIProvider();
 
-  const userIds = [userA.id, userB.id];
+  const userIds = [userA.id, userB.id, userQuota.id];
   await db.query(
     `DELETE FROM ai_conversations WHERE user_id = ANY($1::uuid[])`,
     [userIds],
@@ -494,6 +504,40 @@ describe('AI - réponse en flux (SSE)', () => {
       expect(res.text).not.toContain('event:');
     } finally {
       mock.available = true;
+    }
+  });
+
+  it('relaie un quota du fournisseur en 429 avec Retry-After, sans relance', async () => {
+    const quota = new MockAIProvider();
+    let calls = 0;
+    // Le fournisseur (gemini.provider) a déjà traduit le 429 de Gemini en
+    // AppError, avec le délai annoncé : c'est cette erreur que l'API doit
+    // relayer telle quelle, quota journalier à l'appui.
+    quota.generateAnswerStream = async function* () {
+      calls += 1;
+      throw AppError.tooManyRequests(
+        'Quota du fournisseur IA dépassé ; réessayez plus tard',
+        23454,
+      );
+    };
+    setAIProvider(quota);
+    try {
+      // En flux : l'échec survient avant tout événement, donc le statut HTTP
+      // reste signifiant (pas de 200 suivi d'un événement `error`).
+      const streamed = await chatStream(userQuota.token, 'Situation globale.');
+      expect(streamed.status).toBe(429);
+      expect(streamed.headers['retry-after']).toBe('23454');
+      expect(streamed.text).not.toContain('event:');
+
+      // En un bloc : le même délai doit être annoncé.
+      const whole = await chat(userQuota.token, 'Situation globale.');
+      expect(whole.status).toBe(429);
+      expect(whole.headers['retry-after']).toBe('23454');
+
+      // Aucune relance : deux requêtes, deux appels au fournisseur.
+      expect(calls).toBe(2);
+    } finally {
+      setAIProvider(mock);
     }
   });
 
