@@ -249,6 +249,75 @@ describe('AI - chat', () => {
   });
 });
 
+describe('AI - historique de conversation', () => {
+  it('réinjecte les échanges précédents dans la requête adressée au modèle', async () => {
+    const first = await chat(userA.token, 'Premier message de la conversation de test.');
+    const conversationId = first.body.data.conversationId as string;
+
+    const second = await chat(userA.token, 'Deuxième message.', conversationId);
+    expect(second.status).toBe(200);
+
+    expect(mock.lastRequest).not.toBeNull();
+    const history = mock.lastRequest!.context.history;
+
+    expect(history.length).toBeGreaterThanOrEqual(2);
+    expect(history[0]).toEqual({
+      role: 'user',
+      content: 'Premier message de la conversation de test.',
+    });
+    expect(history[history.length - 1]).toEqual({
+      role: 'model',
+      content: first.body.data.answer,
+    });
+    // La question en cours ne doit pas être dupliquée dans l'historique.
+    expect(history.some((turn) => turn.content === 'Deuxième message.')).toBe(false);
+  });
+
+  it('démarre avec un historique vide sur une nouvelle conversation', async () => {
+    const res = await chat(userA.token, 'Question isolée dans une conversation neuve.');
+    expect(res.status).toBe(200);
+    expect(res.body.data.conversationId).toBeDefined();
+
+    expect(mock.lastRequest).not.toBeNull();
+    expect(mock.lastRequest!.context.history).toEqual([]);
+  });
+
+  it('ne réinjecte pas les tours d outil (seulement les échanges utilisateur/modèle)', async () => {
+    const first = await chat(userA.token, 'Donne-moi la situation globale.');
+    const conversationId = first.body.data.conversationId as string;
+
+    const second = await chat(userA.token, 'Encore la situation globale.', conversationId);
+    expect(second.status).toBe(200);
+
+    for (const turn of mock.lastRequest!.context.history) {
+      expect(['user', 'model']).toContain(turn.role);
+      expect(turn.content.startsWith('{"tool"')).toBe(false);
+    }
+  });
+});
+
+describe('AI - datation des données', () => {
+  it('renseigne dataTimestamp dès qu un outil renvoie un horodatage', async () => {
+    const res = await chat(userA.token, 'Quelles sont les communes prioritaires ?');
+    expect(res.status).toBe(200);
+
+    expect(mock.lastRequest).not.toBeNull();
+    const serialized = JSON.stringify(mock.lastRequest!.context.toolResults);
+    const hasTimestamp =
+      /"(?:assessedAt|observedAt|publishedAt|updatedAt|lastUpdatedAt|startedAt|createdAt)":"/.test(
+        serialized,
+      );
+
+    if (hasTimestamp) {
+      // `pg` renvoie ces colonnes en objet `Date` : elles doivent être datées.
+      expect(typeof res.body.data.dataTimestamp).toBe('string');
+      expect(Number.isNaN(Date.parse(res.body.data.dataTimestamp as string))).toBe(false);
+    } else {
+      expect(res.body.data.dataTimestamp).toBeNull();
+    }
+  });
+});
+
 describe('AI - isolation et injection', () => {
   it('refuse l accès à la conversation d un autre utilisateur', async () => {
     const res = await chat(userA.token, 'Situation globale.');

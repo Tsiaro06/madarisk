@@ -21,6 +21,9 @@ import {
   AIChatResult,
   AIConversationDetail,
   AIConversationListItem,
+  AIMemoryTurn,
+  AIMessageRole,
+  AIMessageRow,
   AITool,
   AIToolResult,
   AuthUser,
@@ -64,7 +67,20 @@ Outils exécutés côté serveur (résultats dans les DONNÉES AUTORISÉES) :
 - getLatestWeather : dernières observations météorologiques d'une commune
 - getPublishedAlerts : alertes publiées et encore actives
 - getHistoricalEvents : événements historiques clos (ex. cyclone Batsirai 2022) et leurs bulletins/bilans sourcés
-- getDashboardSummary : synthèse globale de la plateforme`;
+- getDashboardSummary : synthèse globale de la plateforme
+
+MANUEL DE LECTURE DE LA PLATEFORME (vocabulaire et seuils : emploie ces libellés exacts, jamais de synonymes inventés) :
+- Territoires : régions, puis districts, puis communes. Chaque outil renvoie l'identifiant (UUID) et le nom : cite le nom, jamais l'UUID seul.
+- Types d'événement : CYCLONE, INONDATION, SECHERESSE, FORTE_PLUIE, VENT_VIOLENT, GLISSEMENT_TERRAIN, FEU_VEGETATION, AUTRE.
+- Statuts d'événement : BROUILLON, PREVISION, ACTIF, SUIVI, CLOTURE (clos).
+- Statuts d'alerte : BROUILLON, PUBLIEE (publiée), ARCHIVEE (archivée), EXPIREE (expirée).
+- Gravité d'un événement ou d'une alerte (« severity ») : FAIBLE, MODEREE, ELEVEE, EXTREME.
+- Niveau de risque d'une commune (« riskLevel ») : FAIBLE, MODERE, ELEVE, EXTREME. Gravité et niveau de risque sont deux échelles distinctes : MODEREE ne se dit jamais d'un niveau de risque, MODERE ne se dit jamais d'une gravité.
+- Score de risque d'une commune (0 à 100) : moyenne pondérée par défaut (pluie 30 %, vent 25 %, proximité 20 %, vulnérabilité 15 %, exposition 10 %), multipliée puis par l'intensité de l'événement actif (FAIBLE 1, MODEREE 1.25, ELEVEE 1.5, EXTREME 2 ; 1 sans événement) et par la phase (AVANT 0.7, PENDANT 1, APRES 0.5, RETABLISSEMENT 0.3), bornée à 100.
+- Seuils de présentation par défaut (configurables par l'administrateur) : score ≥ 80 → niveau EXTREME, libellé affiché « EXTRÊME » (#DC2626) ; ≥ 60 → ELEVE, affiché « IMPORTANT » (#F97316) ; ≥ 40 → MODERE, affiché « VIGILANCE » (#EAB308) ; ≥ 20 → MODERE, affiché « FAIBLE » (#22C55E) ; < 20 → FAIBLE, affiché « SUIVI » (#3B82F6). Un même niveau de risque porte donc deux libellés d'affichage possibles : rapporte le niveau ET le libellé tels qu'ils figurent dans les données.
+- Couleurs des communes sur la carte cyclonique : ROUGE = cœur du cyclone (rayon ≥ 50/64 kt publié, dernière valeur du R50 prolongée le long de la trajectoire) ; JAUNE = dans le rayon ≥ 34 kt (R34) mais hors du cœur (« affectée ») ; VERT = hors du champ de vent documenté ; BLEU = sortie du R34 (danger résiduel) ; GRIS = aucune ligne d'alerte active.
+- Rayons de vent R34, R50 et R64 (kilomètres) : publiés exclusivement par la RSMC La Réunion (IBTrACS v04r01) ; un rayon non publié vaut null et n'est jamais estimé ni interpolé.
+- Traçabilité : toute donnée porte source_name et source_url — cite-les quand elles sont fournies ; une valeur ou un seuil non publié vaut null.`;
 
 const searchParamsSchema = z
   .object({
@@ -410,6 +426,61 @@ function makeTitle(message: string): string {
   return cleaned.length > 80 ? `${cleaned.slice(0, 80)}…` : cleaned;
 }
 
+const MEMORY_MAX_TURNS = 12;
+const MEMORY_MAX_CHARS = 16000;
+const MEMORY_TURN_MAX_CHARS = 4000;
+
+function toMemoryRole(role: AIMessageRole): AIMemoryTurn['role'] | null {
+  if (role === 'UTILISATEUR') return 'user';
+  if (role === 'ASSISTANT') return 'model';
+  return null;
+}
+
+/**
+ * Historique de conversation à transmettre au modèle, construit à partir des
+ * messages persistés. Exportée pour les tests unitaires.
+ *
+ * - `UTILISATEUR` → `user`, `ASSISTANT` → `model`. Les messages `OUTIL` sont
+ *   ignorés : ce ne sont que des extraits tronqués (500 caractères) des données
+ *   du tour courant, déjà transmises en clair par le provider, et les rejouer
+ *   ferait croire à une suite de questions.
+ * - Les tours de même rôle sont fusionnés (un échec entre deux messages peut
+ *   laisser deux tours utilisateur consécutifs) et le premier tour est garanti
+ *   `user` : un historique démarrant par `model` est refusé par le fournisseur.
+ * - Borné en nombre de tours puis en caractères, en partant des plus récents.
+ */
+export function buildMemory(messages: AIMessageRow[]): AIMemoryTurn[] {
+  const merged: AIMemoryTurn[] = [];
+  for (const message of messages) {
+    const role = toMemoryRole(message.role);
+    if (!role) continue;
+
+    const content = message.content.slice(0, MEMORY_TURN_MAX_CHARS);
+    const last = merged[merged.length - 1];
+    if (last && last.role === role) {
+      last.content = `${last.content}\n${content}`.slice(0, MEMORY_TURN_MAX_CHARS);
+    } else {
+      merged.push({ role, content });
+    }
+  }
+
+  const recent = merged.slice(-MEMORY_MAX_TURNS);
+  let budget = MEMORY_MAX_CHARS;
+  const turns: AIMemoryTurn[] = [];
+  for (let index = recent.length - 1; index >= 0; index--) {
+    const turn = recent[index];
+    const content = turn.content.length <= budget ? turn.content : turn.content.slice(-budget);
+    if (content.length === 0) break;
+    turns.unshift({ role: turn.role, content });
+    budget -= content.length;
+    if (budget <= 0) break;
+  }
+
+  if (turns[0]?.role === 'model') turns.shift();
+
+  return turns;
+}
+
 function selectTools(message: string): ToolName[] {
   const q = normalize(message);
   const selected = new Set<ToolName>();
@@ -498,13 +569,27 @@ async function resolveParameters(
   }
 }
 
-function computeDataTimestamp(toolResults: AIToolResult[]): string | null {
+/**
+ * Horodatage (UTC) des données renvoyées par les outils : la plus récente de
+ * toutes les dates trouvées. Exportée pour les tests unitaires.
+ *
+ * Point délicat : `pg` renvoie les `timestamptz` en objet `Date` (aucun
+ * `setTypeParser` n'est installé), alors que `JSON.stringify` les convertit
+ * implicitement en chaîne ISO. Ne tester que `typeof === 'string'` faisait donc
+ * échouer silencieusement ce calcul : `dataTimestamp` restait `null` et
+ * l'assistant annonçait « DATE DES DONNÉES : inconnue » alors que le contexte
+ * contenait des horodatages.
+ */
+export function computeDataTimestamp(toolResults: AIToolResult[]): string | null {
   const dates: string[] = [];
   for (const entry of toolResults) {
     collectDateValues(entry.result, 0, dates);
   }
-  if (dates.length === 0) return null;
-  return new Date(Math.max(...dates.map((d) => Date.parse(d)))).toISOString();
+  const timestamps = dates
+    .map((value) => Date.parse(value))
+    .filter((timestamp) => !Number.isNaN(timestamp));
+  if (timestamps.length === 0) return null;
+  return new Date(Math.max(...timestamps)).toISOString();
 }
 
 const DATE_KEYS = [
@@ -518,9 +603,16 @@ const DATE_KEYS = [
 ];
 
 function collectDateValues(value: unknown, depth: number, out: string[]): void {
-  if (value === null || value === undefined || typeof value !== 'object' || depth > 3) {
+  if (value === null || value === undefined || depth > 3) {
     return;
   }
+  // Un objet `Date` est une date par nature : il est retenu quel que soit le nom
+  // de la clé qui le porte (c'est le cas de `assessedAt`, `observedAt`, etc.).
+  if (value instanceof Date) {
+    if (!Number.isNaN(value.getTime())) out.push(value.toISOString());
+    return;
+  }
+  if (typeof value !== 'object') return;
   if (Array.isArray(value)) {
     for (const item of value) {
       collectDateValues(item, depth + 1, out);
@@ -528,7 +620,13 @@ function collectDateValues(value: unknown, depth: number, out: string[]): void {
     return;
   }
   for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-    if (typeof val === 'string' && DATE_KEYS.includes(key) && !Number.isNaN(Date.parse(val))) {
+    if (val instanceof Date) {
+      if (!Number.isNaN(val.getTime())) out.push(val.toISOString());
+    } else if (
+      typeof val === 'string' &&
+      DATE_KEYS.includes(key) &&
+      !Number.isNaN(Date.parse(val))
+    ) {
       out.push(val);
     } else if (val && typeof val === 'object') {
       collectDateValues(val, depth + 1, out);
@@ -557,6 +655,10 @@ export const aiService = {
       input.conversationId,
       input.message,
     );
+
+    // Historique lu AVANT d'enregistrer la question courante : sinon la question
+    // en cours se retrouverait à la fois dans l'historique et dans la question.
+    const history = buildMemory(await aiRepository.listMessages(conversationId));
 
     await aiRepository.addMessage({
       conversationId,
@@ -632,7 +734,7 @@ export const aiService = {
     const aiResponse = await provider.generateAnswer({
       question: input.message,
       systemPrompt: SYSTEM_PROMPT,
-      context: { toolResults, dataTimestamp },
+      context: { toolResults, dataTimestamp, history },
     });
 
     const answer = aiResponse.answer;

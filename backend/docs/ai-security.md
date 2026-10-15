@@ -21,6 +21,26 @@ Documente l'intégration de l'assistant IA (Gemini) de MadaRisk Map : contexte, 
 | GET | `/ai/conversations/:id` | Détail (messages) |
 | DELETE | `/ai/conversations/:id` | Suppression — 204 |
 
+## Contexte et mémoire
+
+### Mémoire de la conversation
+
+Chaque appel réinjecte au modèle les tours **précédents** de la conversation (`conversationId`), traduits en rôles `user` / `model` par `buildMemory()` (`src/services/ai.service.ts`) :
+
+- les messages `OUTIL` sont **exclus** : ce ne sont que des extraits tronqués (500 caractères) des données du tour courant, déjà transmises en clair ; les rejouer ferait croire à une suite de questions ;
+- tours de même rôle fusionnés, et premier tour garanti `user` (le fournisseur refuse un historique démarrant par `model`) ;
+- bornes : **12 tours** et **16 000 caractères** (4 000 maximum par tour), les plus récents conservés ;
+- la question en cours n'est jamais dupliquée dans l'historique (il est lu avant l'enregistrement du message) ;
+- seules les données du **tour courant** sont transmises : la mémoire ne fait remonter aucune donnée périmée qui serait présentée comme actuelle.
+
+### Manuel de la plateforme dans le prompt
+
+Le prompt système embarque un manuel de lecture (vocabulaire et seuils) pour que l'assistant nomme les choses comme la plateforme : types d'événement, statuts, distinction **gravité** (`MODEREE`…) / **niveau de risque** (`MODERE`…) — deux échelles différentes —, pondérations et seuils par défaut du score de risque, libellés d'affichage (SUIVI / FAIBLE / VIGILANCE / IMPORTANT / EXTRÊME), code couleur cyclonique (ROUGE = cœur R50/R64, JAUNE = R34 hors cœur, VERT = hors champ de vent, BLEU = sortie du R34, GRIS = aucune ligne active), rayons R34/R50/R64 publiés par la RSMC La Réunion (IBTrACS v04r01) et règle de non-invention (`null` plutôt qu'une valeur estimée).
+
+### Datation des données
+
+`dataTimestamp` est la date **la plus récente** trouvée dans les résultats des outils. `pg` renvoie les colonnes `timestamptz` en objet `Date` (aucun `setTypeParser` n'est installé) : la collecte accepte donc les `Date` **et** les chaînes, faute de quoi l'horodatage ressortait systématiquement `null` et l'assistant annonçait « DATE DES DONNÉES : inconnue » alors que le contexte contenait des horodatages.
+
 ## Sécurité
 
 ### Politique de sûreté (safety policy)
@@ -62,4 +82,4 @@ Les protections **réellement appliquées aujourd'hui** sont celles du prompt sy
 
 ## Tests
 
-Le module dispose de tests couvrant : réponse non configurée (`503`), limite de débit (`429`), accès aux conversations par rôle (propriétaire vs tiers `404`), et chaîne « question → réponse persistée ».
+Le module dispose de tests couvrant : réponse non configurée (`503`), limite de débit (`429`), accès aux conversations par rôle (propriétaire vs tiers `404`), chaîne « question → réponse persistée », réinjection de l'historique (et historique vide sur conversation neuve) et datation des données (`dataTimestamp` renseigné dès qu'un outil renvoie un horodatage). Les fonctions `buildMemory()` et `computeDataTimestamp()` sont couvertes par des tests unitaires dédiés (`tests/unit/ai-memory.test.ts`).
