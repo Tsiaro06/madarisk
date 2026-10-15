@@ -9,6 +9,12 @@ export const aiChatBodySchema = z.object({
     .trim()
     .min(1, 'Le message est requis')
     .max(5000, 'Message trop long (5000 caractères maximum)'),
+  /**
+   * Réponse en flux (SSE) plutôt qu'en un seul bloc JSON. Optionnel : le
+   * comportement historique reste le défaut, les clients existants ne changent
+   * pas.
+   */
+  stream: z.boolean().optional(),
 });
 
 export const conversationListQuerySchema = z.object({

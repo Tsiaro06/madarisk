@@ -4045,9 +4045,13 @@ paths:
       summary: Poser une question à l'assistant IA
       description: |
         Analyse la base de renseignement (événements, alertes actives, risques, météo) et répond.
+
         - Limité à 30 requêtes / 15 min par utilisateur (headers `RateLimit-*`).
-        - Les réponses passent par la politique de sûreté de Gemini.
-        - Retourne `503` si l'IA n'est pas configurée (`AI_PROVIDER` absent) ou indisponible.
+        - Les seuils de sûreté du fournisseur sont fixés explicitement par le serveur.
+        - Retourne `503` si l'IA n'est pas configurée (clé du fournisseur absente) ou indisponible.
+        - Réponse en un bloc par défaut (JSON) ; avec `stream: true`, la réponse est un flux
+          `text/event-stream` dont les événements sont `meta`, `chunk`, `done` et, en cas
+          d'échec après le démarrage du flux, `error`.
       security:
         - bearerAuth: []
       operationId: aiChat
@@ -4068,12 +4072,21 @@ paths:
                   type: string
                   format: uuid
                   description: Poursuivre une conversation existante (sinon nouvelle conversation).
+                stream:
+                  type: boolean
+                  default: false
+                  description: |
+                    Diffuser la réponse au fil de sa génération (Server-Sent Events) au lieu
+                    de l'envoyer d'un bloc. Les données et la réponse restent identiques :
+                    seule la restitution change.
             examples:
               aiQuestionExample:
                 $ref: '#/components/examples/aiQuestion'
       responses:
         '200':
-          description: Réponse de l'assistant
+          description: |
+            Réponse de l'assistant. `application/json` sans `stream`, `text/event-stream`
+            avec `stream: true`.
           content:
             application/json:
               schema:
@@ -4085,9 +4098,40 @@ paths:
                     type: object
                     properties:
                       conversationId: { type: string, format: uuid }
-                      reply: { type: string }
+                      answer: { type: string }
+                      internalSources:
+                        type: array
+                        items: { type: string }
+                      dataTimestamp:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      limitations:
+                        type: array
+                        items: { type: string }
+            text/event-stream:
+              schema:
+                type: string
+                description: |
+                  Flux SSE. Chaque événement porte une ligne `event:` suivie d'une ligne
+                  `data:` contenant un objet JSON :
+
+                  - `meta` : `{ conversationId, internalSources, dataTimestamp, limitations }`,
+                    émis en tête de flux (les outils sont exécutés avant la génération).
+                  - `chunk` : `{ text }`, un morceau de la réponse.
+                  - `done` : `{ conversationId }`, fin normale du flux.
+                  - `error` : `{ message, status }`, échec survenu après le démarrage du flux.
+
+                  Une erreur de préparation (service non configuré, conversation inconnue)
+                  survient avant les en-têtes SSE et garde donc un statut HTTP normal
+                  (`503`, `404`…) au lieu d'un `200` suivi d'un événement `error`.
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Conversation introuvable ou appartenant à un autre utilisateur.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ErrorBody' }
         '422':
           $ref: '#/components/responses/ValidationError'
         '429':

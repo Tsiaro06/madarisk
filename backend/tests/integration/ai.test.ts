@@ -396,6 +396,131 @@ describe('AI - isolation et injection', () => {
   });
 });
 
+describe('AI - réponse en flux (SSE)', () => {
+  /** Découpe une réponse SSE en couples (événement, données) — comme le client. */
+  function parseSse(text: string): Array<{ event: string; data: string }> {
+    return text
+      .split('\n\n')
+      .map((frame) => frame.trim())
+      .filter((frame) => frame.length > 0)
+      .map((frame) => {
+        let event = 'message';
+        const dataLines: string[] = [];
+        for (const line of frame.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim();
+          else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
+        }
+        return { event, data: dataLines.join('\n') };
+      });
+  }
+
+  async function chatStream(token: string, message: string, conversationId?: string) {
+    return request(app)
+      .post('/api/v1/ai/chat')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ conversationId, message, stream: true });
+  }
+
+  it('émet les métadonnées, le texte en plusieurs morceaux puis la fin', async () => {
+    const res = await chatStream(userA.token, 'Situation globale.');
+
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/event-stream');
+
+    const events = parseSse(res.text);
+    const types = events.map((event) => event.event);
+
+    expect(types[0]).toBe('meta');
+    expect(types[types.length - 1]).toBe('done');
+    expect(types.filter((t) => t === 'chunk').length).toBeGreaterThanOrEqual(2);
+    expect(types).not.toContain('error');
+
+    const meta = JSON.parse(events[0].data) as {
+      conversationId: string;
+      internalSources: string[];
+      limitations: string[];
+    };
+    expect(typeof meta.conversationId).toBe('string');
+    expect(Array.isArray(meta.internalSources)).toBe(true);
+
+    // Les morceaux recomposés doivent donner exactement la réponse du modèle.
+    const answer = events
+      .filter((event) => event.event === 'chunk')
+      .map((event) => (JSON.parse(event.data) as { text: string }).text)
+      .join('');
+    expect(answer).toBe(mock.answer);
+
+    const done = JSON.parse(events[events.length - 1].data) as { conversationId: string };
+    expect(done.conversationId).toBe(meta.conversationId);
+  });
+
+  it('persiste la réponse complète, pas un fragment', async () => {
+    const res = await chatStream(userA.token, 'Donne-moi la situation globale.');
+    const events = parseSse(res.text);
+    const conversationId = (
+      JSON.parse(events[0].data) as { conversationId: string }
+    ).conversationId;
+
+    const stored = await db.query<{ role: string; content: string }>(
+      `SELECT role, content FROM ai_messages
+       WHERE conversation_id = $1 AND role = 'ASSISTANT'
+       ORDER BY created_at DESC LIMIT 1`,
+      [conversationId],
+    );
+    expect(stored.rows[0].content).toBe(mock.answer);
+  });
+
+  it('continue une conversation existante en flux', async () => {
+    const first = await chatStream(userA.token, 'Situation globale.');
+    const conversationId = (
+      JSON.parse(parseSse(first.text)[0].data) as { conversationId: string }
+    ).conversationId;
+
+    const second = await chatStream(userA.token, 'Encore la situation globale.', conversationId);
+    expect(second.status).toBe(200);
+
+    const meta = JSON.parse(parseSse(second.text)[0].data) as { conversationId: string };
+    expect(meta.conversationId).toBe(conversationId);
+    expect(mock.lastRequest!.context.history.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('renvoie une erreur HTTP (et non un flux) si la préparation échoue', async () => {
+    mock.available = false;
+    try {
+      const res = await chatStream(userA.token, 'Situation globale.');
+      // Les en-têtes SSE ne sont pas encore envoyés : le statut reste signifiant.
+      expect(res.status).toBe(503);
+      expect(res.body.message).toBe('Service IA non configuré.');
+      expect(res.text).not.toContain('event:');
+    } finally {
+      mock.available = true;
+    }
+  });
+
+  it('signale par un événement error une panne survenue après le démarrage du flux', async () => {
+    const failing = new MockAIProvider();
+    // Le flux échoue après le premier morceau : plus d'erreur HTTP possible.
+    failing.generateAnswerStream = async function* () {
+      yield 'Début de réponse';
+      throw new Error('panne');
+    };
+    setAIProvider(failing);
+    try {
+      const res = await chatStream(userA.token, 'Situation globale.');
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/event-stream');
+
+      const events = parseSse(res.text);
+      expect(events[0].event).toBe('meta');
+      expect(events[events.length - 1].event).toBe('error');
+      const errorPayload = JSON.parse(events[events.length - 1].data) as { message: string };
+      expect(errorPayload.message).toBe('Échec du service IA');
+    } finally {
+      setAIProvider(mock);
+    }
+  });
+});
+
 describe('AI - rate limit', () => {
   it('limite plus strictement le point /ai/chat (429)', async () => {
     setAiChatRateLimit({ max: 2 });

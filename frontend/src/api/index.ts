@@ -6,6 +6,7 @@ import {
   apiDelete,
   apiBlob,
 } from "./client";
+import { streamAiChat, type AiStreamHandlers } from "./ai-stream";
 import type {
   AlertListRow,
   AuthTokens,
@@ -336,6 +337,15 @@ export const aiApi = {
       message,
       conversationId,
     }),
+  /**
+   * Variante en flux : la réponse s'affiche au fil de sa génération. Les erreurs
+   * remontent en `ApiClientError`, comme `chat`.
+   */
+  chatStream: (
+    accessToken: string | null,
+    body: { message: string; conversationId?: string },
+    handlers: AiStreamHandlers,
+  ) => streamAiChat(accessToken, body, handlers),
   conversations: (params?: Record<string, number | undefined>) =>
     apiGetPage("/ai/conversations", { params }),
   conversation: (id: string) => apiGet(`/ai/conversations/${id}`),

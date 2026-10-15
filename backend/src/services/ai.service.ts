@@ -19,11 +19,13 @@ import { EventListItem } from '../types/event.types';
 import { TerritorySearchResult } from '../types/territory.types';
 import {
   AIChatResult,
+  AIChatStreamEvent,
   AIConversationDetail,
   AIConversationListItem,
   AIMemoryTurn,
   AIMessageRole,
   AIMessageRow,
+  AIRequest,
   AITool,
   AIToolResult,
   AuthUser,
@@ -643,6 +645,106 @@ function getIp(req: RequestContext): string | null {
   return req.ip ?? req.socket?.remoteAddress ?? null;
 }
 
+interface PreparedTurn {
+  toolResults: AIToolResult[];
+  limitations: string[];
+  dataTimestamp: string | null;
+  history: AIMemoryTurn[];
+}
+
+/**
+ * Prépare un tour de conversation : lit l'historique, enregistre la question,
+ * exécute les outils sélectionnés, persiste leurs résultats et date les données.
+ *
+ * Partagé par `chat` et `chatStream` : un tour doit se dérouler à l'identique,
+ * que la réponse soit renvoyée d'un bloc ou en flux.
+ */
+async function prepareTurn(
+  user: AuthUser,
+  message: string,
+  conversationId: string,
+): Promise<PreparedTurn> {
+  // Historique lu AVANT d'enregistrer la question courante : sinon la question
+  // en cours se retrouverait à la fois dans l'historique et dans la question.
+  const history = buildMemory(await aiRepository.listMessages(conversationId));
+
+  await aiRepository.addMessage({
+    conversationId,
+    role: 'UTILISATEUR',
+    content: message,
+    tokenCount: estimateTokens(message),
+  });
+
+  const selected = selectTools(message);
+  const collected = new Map<string, unknown>();
+  const toolResults: AIToolResult[] = [];
+  const limitations: string[] = [];
+
+  if (detectInjection(message)) {
+    limitations.push(
+      "Tentative d'instructions contradictoires détectée et neutralisée. La question a été traitée comme une simple donnée.",
+    );
+  }
+
+  for (const name of selected) {
+    let parameters: unknown;
+    try {
+      parameters = await resolveParameters(name, collected, message);
+    } catch (err) {
+      logger.warn({ err, tool: name }, 'Outil IA : échec de résolution des paramètres');
+      limitations.push(`Paramètres non résolus pour l'outil « ${name} ».`);
+      continue;
+    }
+    if (parameters === SKIP) continue;
+
+    const tool = toolByName.get(name);
+    if (!tool) continue;
+
+    try {
+      const rawResult = await tool.execute(parameters, user);
+      const result = rawResult ?? null;
+      collected.set(name, result);
+      toolResults.push({ tool: name, result });
+      if (isEmptyData(result)) {
+        limitations.push(
+          `Aucune donnée disponible dans la plateforme pour la demande (outil « ${name} »).`,
+        );
+      }
+    } catch (err) {
+      if (err instanceof ZodError) {
+        limitations.push(`Paramètres invalides pour l'outil « ${name} ».`);
+        continue;
+      }
+      if (isNotFound(err)) {
+        limitations.push(
+          `Aucune donnée disponible dans la plateforme pour la demande (outil « ${name} »).`,
+        );
+        continue;
+      }
+      logger.warn({ err, tool: name }, "Outil IA : échec d'exécution");
+      limitations.push(`Données de l'outil « ${name} » indisponibles pour cette analyse.`);
+    }
+  }
+
+  for (const entry of toolResults) {
+    const content = serializeToolResults([entry]).slice(0, 500);
+    await aiRepository.addMessage({
+      conversationId,
+      role: 'OUTIL',
+      content,
+      tokenCount: estimateTokens(content),
+      metadata: { tool: entry.tool },
+    });
+  }
+
+  return {
+    toolResults,
+    limitations,
+    dataTimestamp: computeDataTimestamp(toolResults),
+    history,
+  };
+}
+
 export const aiService = {
   async chat(user: AuthUser, input: AiChatBody): Promise<AIChatResult> {
     const provider = getAIProvider();
@@ -656,104 +758,107 @@ export const aiService = {
       input.message,
     );
 
-    // Historique lu AVANT d'enregistrer la question courante : sinon la question
-    // en cours se retrouverait à la fois dans l'historique et dans la question.
-    const history = buildMemory(await aiRepository.listMessages(conversationId));
-
-    await aiRepository.addMessage({
-      conversationId,
-      role: 'UTILISATEUR',
-      content: input.message,
-      tokenCount: estimateTokens(input.message),
-    });
-
-    const selected = selectTools(input.message);
-    const collected = new Map<string, unknown>();
-    const toolResults: AIToolResult[] = [];
-    const limitations: string[] = [];
-
-    if (detectInjection(input.message)) {
-      limitations.push(
-        "Tentative d'instructions contradictoires détectée et neutralisée. La question a été traitée comme une simple donnée.",
-      );
-    }
-
-    for (const name of selected) {
-      let parameters: unknown;
-      try {
-        parameters = await resolveParameters(name, collected, input.message);
-      } catch (err) {
-        logger.warn({ err, tool: name }, 'Outil IA : échec de résolution des paramètres');
-        limitations.push(`Paramètres non résolus pour l'outil « ${name} ».`);
-        continue;
-      }
-      if (parameters === SKIP) continue;
-
-      const tool = toolByName.get(name);
-      if (!tool) continue;
-
-      try {
-        const rawResult = await tool.execute(parameters, user);
-        const result = rawResult ?? null;
-        collected.set(name, result);
-        toolResults.push({ tool: name, result });
-        if (isEmptyData(result)) {
-          limitations.push(
-            `Aucune donnée disponible dans la plateforme pour la demande (outil « ${name} »).`,
-          );
-        }
-      } catch (err) {
-        if (err instanceof ZodError) {
-          limitations.push(`Paramètres invalides pour l'outil « ${name} ».`);
-          continue;
-        }
-        if (isNotFound(err)) {
-          limitations.push(
-            `Aucune donnée disponible dans la plateforme pour la demande (outil « ${name} »).`,
-          );
-          continue;
-        }
-        logger.warn({ err, tool: name }, "Outil IA : échec d'exécution");
-        limitations.push(`Données de l'outil « ${name} » indisponibles pour cette analyse.`);
-      }
-    }
-
-    for (const entry of toolResults) {
-      const content = serializeToolResults([entry]).slice(0, 500);
-      await aiRepository.addMessage({
-        conversationId,
-        role: 'OUTIL',
-        content,
-        tokenCount: estimateTokens(content),
-        metadata: { tool: entry.tool },
-      });
-    }
-
-    const dataTimestamp = computeDataTimestamp(toolResults);
+    const turn = await prepareTurn(user, input.message, conversationId);
 
     const aiResponse = await provider.generateAnswer({
       question: input.message,
       systemPrompt: SYSTEM_PROMPT,
-      context: { toolResults, dataTimestamp, history },
+      context: {
+        toolResults: turn.toolResults,
+        dataTimestamp: turn.dataTimestamp,
+        history: turn.history,
+      },
     });
 
+    const internalSources = turn.toolResults.map((entry) => entry.tool);
     const answer = aiResponse.answer;
+
     await aiRepository.addMessage({
       conversationId,
       role: 'ASSISTANT',
       content: answer,
       tokenCount: estimateTokens(answer),
-      metadata: { internalSources: toolResults.map((entry) => entry.tool), dataTimestamp },
+      metadata: { internalSources, dataTimestamp: turn.dataTimestamp },
     });
     await aiRepository.touchConversation(conversationId);
 
     return {
       conversationId,
       answer,
-      internalSources: toolResults.map((entry) => entry.tool),
-      dataTimestamp,
-      limitations,
+      internalSources,
+      dataTimestamp: turn.dataTimestamp,
+      limitations: turn.limitations,
     };
+  },
+
+  /**
+   * Variante en flux de `chat` : mêmes étapes de préparation (conversation,
+   * outils, datation), puis émission d'événements SSE. Les métadonnées partent
+   * en tête de flux car elles sont déjà connues ; le texte suit morceau par
+   * morceau ; la réponse complète n'est persistée qu'à la fin, pour ne pas
+   * stocker un message tronqué si le client interrompt la connexion.
+   */
+  async *chatStream(
+    user: AuthUser,
+    input: AiChatBody,
+  ): AsyncGenerator<AIChatStreamEvent, void, unknown> {
+    const provider = getAIProvider();
+    if (!provider.isAvailable()) {
+      throw new AppError('Service IA non configuré.', 503);
+    }
+
+    const conversationId = await this.resolveOrCreateConversation(
+      user,
+      input.conversationId,
+      input.message,
+    );
+
+    const turn = await prepareTurn(user, input.message, conversationId);
+    const internalSources = turn.toolResults.map((entry) => entry.tool);
+
+    yield {
+      type: 'meta',
+      data: {
+        conversationId,
+        internalSources,
+        dataTimestamp: turn.dataTimestamp,
+        limitations: turn.limitations,
+      },
+    };
+
+    const request: AIRequest = {
+      question: input.message,
+      systemPrompt: SYSTEM_PROMPT,
+      context: {
+        toolResults: turn.toolResults,
+        dataTimestamp: turn.dataTimestamp,
+        history: turn.history,
+      },
+    };
+
+    let answer = '';
+    if (provider.generateAnswerStream) {
+      for await (const chunk of provider.generateAnswerStream(request)) {
+        answer += chunk;
+        yield { type: 'chunk', data: { text: chunk } };
+      }
+    } else {
+      // Fournisseur sans support du flux : la réponse arrive d'un seul bloc.
+      const response = await provider.generateAnswer(request);
+      answer = response.answer;
+      yield { type: 'chunk', data: { text: answer } };
+    }
+
+    await aiRepository.addMessage({
+      conversationId,
+      role: 'ASSISTANT',
+      content: answer,
+      tokenCount: estimateTokens(answer),
+      metadata: { internalSources, dataTimestamp: turn.dataTimestamp },
+    });
+    await aiRepository.touchConversation(conversationId);
+
+    yield { type: 'done', data: { conversationId } };
   },
 
   async resolveOrCreateConversation(

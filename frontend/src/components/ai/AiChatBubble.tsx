@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { Bot, Send, User, X, MessageCircle } from 'lucide-react';
 import { aiApi } from '@/api';
 import { ApiClientError } from '@/api/client';
+import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { cn } from '@/lib/utils';
@@ -26,12 +27,18 @@ export function AiChatBubble() {
   const [unavailable, setUnavailable] = useState(false);
   const [retryAfter, setRetryAfter] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME]);
+  // Réponse en cours de génération : affichée aussitôt, puis remplacée par le
+  // message définitif. `streamedRef` évite de relire un état périmé au moment
+  // où la mutation se termine.
+  const [streamedAnswer, setStreamedAnswer] = useState<string | null>(null);
+  const streamedRef = useRef('');
+  const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!open) return;
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, open]);
+  }, [messages, streamedAnswer, open]);
 
   useEffect(() => {
     if (retryAfter <= 0) return;
@@ -39,14 +46,39 @@ export function AiChatBubble() {
     return () => window.clearInterval(t);
   }, [retryAfter]);
 
+  // Une requête en vol est interrompue si le composant disparaît : inutile de
+  // continuer à lire un flux dont plus personne n'affichera le résultat.
+  useEffect(() => () => abortRef.current?.abort(), []);
+
   const chatM = useMutation({
-    mutationFn: (message: string) => aiApi.chat(message, conversationId),
+    mutationFn: (message: string) => {
+      streamedRef.current = '';
+      setStreamedAnswer('');
+      const controller = new AbortController();
+      abortRef.current = controller;
+      return aiApi.chatStream(
+        useAuthStore.getState().accessToken,
+        { message, conversationId },
+        {
+          onChunk: (text) => {
+            streamedRef.current += text;
+            setStreamedAnswer(streamedRef.current);
+          },
+          signal: controller.signal,
+        },
+      );
+    },
     onSuccess: (data) => {
       setConversationId(data.conversationId);
-      setMessages((prev) => [...prev, { role: 'assistant', content: data.answer }]);
+      const answer = streamedRef.current;
+      // Repli : si le flux s'est terminé sans morceau exploitable, on n'ajoute
+      // pas de bulle vide.
+      if (answer) setMessages((prev) => [...prev, { role: 'assistant', content: answer }]);
+      setStreamedAnswer(null);
       setUnavailable(false);
     },
     onError: (err) => {
+      setStreamedAnswer(null);
       if (err instanceof ApiClientError) {
         if (err.status === 503) {
           setUnavailable(true);
@@ -131,6 +163,22 @@ export function AiChatBubble() {
                 ) : null}
               </div>
             ))}
+
+            {streamedAnswer !== null ? (
+              <div className="flex gap-2 justify-start">
+                <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-brand text-white">
+                  <Bot className="size-3.5" />
+                </span>
+                <div className="max-w-[82%] whitespace-pre-wrap rounded-2xl border border-line bg-surface px-3 py-2 text-sm leading-relaxed text-ink shadow-sm">
+                  {streamedAnswer}
+                  <span
+                    className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-brand align-middle"
+                    aria-hidden="true"
+                  />
+                  <span className="sr-only">Réponse en cours de génération…</span>
+                </div>
+              </div>
+            ) : null}
           </div>
 
           {unavailable ? (
