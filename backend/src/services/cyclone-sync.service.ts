@@ -4,6 +4,8 @@ import { cycloneRepository } from '../repositories/cyclone.repository';
 import { eventsRepository } from '../repositories/events.repository';
 import { getCycloneTrackProvider, getCycloneWatchProvider } from './cyclone/cyclone-provider';
 import { buildIngestionPlans, parseWatchBbox } from './cyclone/cyclone.logic';
+import { cycloneCommuneColoringService } from './cyclone-commune-coloring.service';
+import { automaticAlertService } from './automatic-alerts.service';
 import type { CycloneIngestionPlan, CycloneSyncSummary } from '../types/cyclone.types';
 import { AppError } from '../utils/app-error';
 
@@ -50,7 +52,7 @@ async function resolveEventId(plan: CycloneIngestionPlan): Promise<string | null
 
 async function persistPlan(
   plan: CycloneIngestionPlan,
-): Promise<{ created: boolean; points: number }> {
+): Promise<{ created: boolean; points: number; eventId: string }> {
   const description = describePlan(plan);
   let eventId = await resolveEventId(plan);
   const created = eventId === null;
@@ -110,7 +112,40 @@ async function persistPlan(
   }
 
   const points = await cycloneRepository.upsertObservedTrackPoints(eventId, plan.points);
-  return { created, points };
+  return { created, points, eventId };
+}
+
+interface DerivedOutcome {
+  colored: boolean;
+  affectedCommunes: number;
+  alertsCreated: number;
+}
+
+/**
+ * Produits dérivés d'un cyclone ingéré, calculés APRÈS la persistance de sa
+ * trajectoire : coloration communale (salle de crise) puis alertes automatiques
+ * pour les communes encore dans le champ de vent. Isolé pour qu'un échec ici
+ * n'invalide jamais l'ingestion déjà persistée.
+ */
+async function applyDerivedProducts(eventId: string): Promise<DerivedOutcome> {
+  const coloring = await cycloneCommuneColoringService.applyToEvent(eventId);
+  if (!coloring.colored || coloring.affectedCommuneIds.length === 0) {
+    return { colored: coloring.colored, affectedCommunes: 0, alertsCreated: 0 };
+  }
+
+  // Une alerte par commune dans le champ de vent (JAUNE/ROUGE) : le reste de la
+  // chaîne (déduplication, brouillon/publication) est porté par le service dédié.
+  const result = await automaticAlertService.generateForEvent({
+    eventId,
+    trigger: 'SYNC',
+    communeIds: coloring.affectedCommuneIds,
+  });
+
+  return {
+    colored: true,
+    affectedCommunes: coloring.affectedCommuneIds.length,
+    alertsCreated: result.created,
+  };
 }
 
 export const cycloneSyncService = {
@@ -165,19 +200,40 @@ export const cycloneSyncService = {
       let eventsCreated = 0;
       let eventsUpdated = 0;
       let trackPoints = 0;
+      let coloredEvents = 0;
+      let coloredCommunes = 0;
+      let alertsCreated = 0;
 
       for (const plan of plans) {
+        let outcome: { created: boolean; points: number; eventId: string };
         try {
-          const outcome = await persistPlan(plan);
-          systemsTracked += 1;
-          if (outcome.created) eventsCreated += 1;
-          else eventsUpdated += 1;
-          trackPoints += outcome.points;
+          outcome = await persistPlan(plan);
         } catch (err) {
           errors.push(`${plan.name} : ${messageOf(err)}`);
           logger.error(
             { err, system: plan.sourceSystemId },
             'Cyclone : échec de persistance d’un système (les autres sont conservés)',
+          );
+          continue;
+        }
+
+        systemsTracked += 1;
+        if (outcome.created) eventsCreated += 1;
+        else eventsUpdated += 1;
+        trackPoints += outcome.points;
+
+        // Produits dérivés : un échec de coloration/alerte n'annule pas
+        // l'ingestion, mais fait finir le cycle en PARTIAL (remonté dans errors).
+        try {
+          const derived = await applyDerivedProducts(outcome.eventId);
+          if (derived.colored) coloredEvents += 1;
+          coloredCommunes += derived.affectedCommunes;
+          alertsCreated += derived.alertsCreated;
+        } catch (err) {
+          errors.push(`coloration ${plan.name} : ${messageOf(err)}`);
+          logger.error(
+            { err, system: plan.sourceSystemId },
+            'Cyclone : échec de la coloration communale (ingestion conservée)',
           );
         }
       }
@@ -190,7 +246,14 @@ export const cycloneSyncService = {
         trackPoints,
         errorsCount: errors.length,
         errorMessage: errors.length > 0 ? errors.join(' | ') : null,
-        details: { watch, tracked: tracked.length, watched: watched.length },
+        details: {
+          watch,
+          tracked: tracked.length,
+          watched: watched.length,
+          coloredEvents,
+          coloredCommunes,
+          alertsCreated,
+        },
       });
 
       const summary: CycloneSyncSummary = {
@@ -200,6 +263,9 @@ export const cycloneSyncService = {
         eventsCreated,
         eventsUpdated,
         trackPoints,
+        coloredEvents,
+        coloredCommunes,
+        alertsCreated,
         durationMs: Date.now() - startedAt,
       };
 

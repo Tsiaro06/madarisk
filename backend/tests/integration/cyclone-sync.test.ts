@@ -98,6 +98,16 @@ async function eventIdFor(eventCode: string): Promise<string | null> {
 }
 
 async function purge(): Promise<void> {
+  // Les alertes automatiques du cycle (une par commune dans le champ de vent)
+  // sont rattachées à l'événement ; `alerts.event_id` est `ON DELETE SET NULL`,
+  // il faut donc les supprimer AVANT l'événement pour ne pas laisser d'orphelines.
+  await db.query(
+    `DELETE FROM alerts
+      WHERE event_id IN (
+        SELECT id FROM hazard_events WHERE event_code = $1 OR event_code = $2
+      )`,
+    [EVENT_CODE, 'CYCLONE-GDACS-9000002-1'],
+  );
   await db.query(`DELETE FROM hazard_events WHERE event_code = $1 OR event_code = $2`, [
     EVENT_CODE,
     'CYCLONE-GDACS-9000002-1',
@@ -187,6 +197,58 @@ describe('Synchronisation cyclone', () => {
     );
     expect(history.rows.length).toBeGreaterThanOrEqual(1);
     expect(history.rows[0].actor_type).toBe('SYSTEM');
+  });
+
+  it('colore les communes à partir des rayons publiés (salle de crise)', async () => {
+    const summary = await cycloneSyncService.run('MANUAL');
+    runIds.push(summary.runId);
+
+    // Un point à ~120 km des côtes est, avec R34 publié : des communes entrent
+    // dans le champ de vent (JAUNE) puis en sortent (BLEU). Le niveau de base
+    // VERT couvre toutes les communes.
+    expect(summary.coloredEvents).toBe(1);
+    expect(summary.coloredCommunes).toBeGreaterThan(0);
+
+    const counts = await db.query<{ alert_level: string; n: string }>(
+      `SELECT alert_level, COUNT(*)::text AS n
+         FROM event_commune_alert_history
+        WHERE event_id = $1
+        GROUP BY alert_level`,
+      [eventId],
+    );
+    const byLevel = Object.fromEntries(counts.rows.map((r) => [r.alert_level, Number(r.n)]));
+    expect(byLevel.VERT).toBeGreaterThan(0);
+    expect(byLevel.JAUNE).toBeGreaterThan(0);
+    expect(byLevel.BLEU).toBeGreaterThan(0);
+    // Aucun rayon R50/R64 n'est publié pour ce système : jamais de ROUGE inventé.
+    expect(byLevel.ROUGE ?? 0).toBe(0);
+
+    // Les niveaux sont tracés jusqu'à la source RSMC (jamais une valeur nue).
+    const source = await db.query<{ source_name: string }>(
+      `SELECT DISTINCT source_name FROM event_commune_alert_history WHERE event_id = $1`,
+      [eventId],
+    );
+    expect(source.rows).toHaveLength(1);
+    expect(source.rows[0].source_name).toContain('RSMC La Réunion');
+    expect(source.rows[0].source_name).toContain(SID);
+  });
+
+  it('génère une alerte automatique par commune actuellement dans le champ de vent', async () => {
+    const alerts = await db.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM alerts WHERE event_id = $1 AND is_automatic = true`,
+      [eventId],
+    );
+    expect(Number(alerts.rows[0].n)).toBeGreaterThan(0);
+
+    // Rejouer un cycle ne duplique pas les alertes (déduplication par cible).
+    const before = Number(alerts.rows[0].n);
+    const summary = await cycloneSyncService.run('MANUAL');
+    runIds.push(summary.runId);
+    const after = await db.query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM alerts WHERE event_id = $1 AND is_automatic = true`,
+      [eventId],
+    );
+    expect(Number(after.rows[0].n)).toBe(before);
   });
 
   it('est idempotent : rejouer ne duplique ni l’événement ni la trajectoire', async () => {

@@ -120,6 +120,12 @@ export interface CycloneSyncSummary {
   eventsCreated: number;
   eventsUpdated: number;
   trackPoints: number;
+  /** Événements dont la coloration communale a été (re)calculée. */
+  coloredEvents: number;
+  /** Communes dans le champ de vent au dernier point (alertes déclenchées). */
+  coloredCommunes: number;
+  /** Alertes automatiques créées par ce cycle. */
+  alertsCreated: number;
   durationMs: number;
 }
 

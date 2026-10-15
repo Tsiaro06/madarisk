@@ -22,6 +22,11 @@ export function radiusSourceForSid(sid: string): string {
   return `RSMC La Réunion (Météo-France) — IBTrACS v04r01 (${sid})`;
 }
 
+/** Fiche de traçabilité IBTrACS d'un système (source affichée des rayons). */
+export function ibtracsSystemUrl(sid: string): string {
+  return `https://ncics.org/ibtracs/index.php?name=v04r01-${encodeURIComponent(sid)}`;
+}
+
 /** Nom de source affiché sur l'événement (traçabilité). */
 export const IBTRACS_SOURCE_NAME = 'IBTrACS v04r01 (RSMC La Réunion)';
 export const GDACS_SOURCE_NAME = 'GDACS';

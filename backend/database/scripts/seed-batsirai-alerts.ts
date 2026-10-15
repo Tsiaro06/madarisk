@@ -69,193 +69,43 @@ const RESIDUAL_SOURCE_URL =
 type Level = 'VERT' | 'JAUNE' | 'ROUGE' | 'BLEU';
 type Scope = 'COMMUNE' | 'DISTRICT' | 'REGION' | 'EVENEMENT';
 
-/** Pas d'échantillonnage de la trajectoire (minutes) pour dater entrées/sorties. */
-const SAMPLE_STEP_MINUTES = 15;
+/**
+ * Logique de coloration vent PARTAGÉE avec l'ingestion temps réel : le seed ne
+ * doit pas en diverger. Les types et fonctions pures vivent dans
+ * `src/services/cyclone/cyclone-coloring.logic.ts` et sont ré-exportés ici pour
+ * que le seed reste la référence lisible de Batsirai 2022.
+ */
+import {
+  buildWindSamples as sampleWindAnchors,
+  classifyWind,
+  SAMPLE_STEP_MINUTES,
+  windIntervalsForCommune,
+  type CommuneAlertInterval,
+  type WindAnchor,
+  type WindSample,
+} from '../../src/services/cyclone/cyclone-coloring.logic';
 
-/** Point d'échantillonnage du centre et de ses rayons de vent documentés. */
-export interface WindSample {
-  /** Horodatage epoch (ms, UTC). */
-  t: number;
-  /** Longitude du centre. */
-  lon: number;
-  /** Latitude du centre. */
-  lat: number;
-  /** Rayon du vent ≥ 34 kt (km) publié, ou null si absent. */
-  r34: number | null;
-  /** Rayon du vent ≥ 50 kt (km) publié, ou null si absent. */
-  r50: number | null;
-  /** Rayon du vent ≥ 64 kt (km) publié, ou null si absent. */
-  r64: number | null;
-  /**
-   * Rayon du cœur (« passage du cyclone ») utilisé pour le ROUGE, en km.
-   * Correspond au rayon ≥ 50 kt publié ; lorsque la RSMC cesse de le publier
-   * (Batsirai retombe sous 50 kt le 6 février), la **dernière valeur publiée est
-   * prolongée** — méthode de persistance, jamais une valeur inventée. Reste `null`
-   * tant qu'aucun R50 n'a encore été documenté.
-   */
-  coreKm: number | null;
-}
-
-/** Intervalle d'alerte daté d'une commune (bornes en epoch ms). */
-export interface AlertInterval {
-  communeId: string;
-  level: Level;
-  from: number;
-  to: number;
-}
-
-/** Distance en kilomètres entre deux points géographiques (formule de haversine). */
-export function haversineKm(lon1: number, lat1: number, lon2: number, lat2: number): number {
-  const earthRadiusKm = 6371.0088;
-  const rad = (deg: number) => (deg * Math.PI) / 180;
-  const dLat = rad(lat2 - lat1);
-  const dLon = rad(lon2 - lon1);
-  const a =
-    Math.sin(dLat / 2) ** 2 + Math.cos(rad(lat1)) * Math.cos(rad(lat2)) * Math.sin(dLon / 2) ** 2;
-  return 2 * earthRadiusKm * Math.asin(Math.min(1, Math.sqrt(a)));
-}
+export { classifyWind, windIntervalsForCommune, type WindSample };
+export type AlertInterval = CommuneAlertInterval;
 
 /**
- * Échantillonne la trajectoire observée et ses rayons de vent. La position du
- * centre est interpolée linéairement entre deux points ; un rayon n'est interpolé
- * que si les DEUX points bornes le publient — sinon il reste `null` (aucune valeur
- * inventée). Le rayon du cœur (`coreKm`) est le R50 publié, par prolongation de la
- * dernière valeur publiée lorsqu'il n'est plus documenté.
+ * Échantillonne la trajectoire observée de Batsirai et ses rayons de vent
+ * documentés (mêmes fonctions pures que l'ingestion temps réel).
  */
 export function buildWindSamples(): WindSample[] {
   const radiiByTime = new Map(BATSIRAI_RADII.map((r) => [r.time, r]));
-  const samples: WindSample[] = [];
-  const lerp = (a: number | null | undefined, b: number | null | undefined, f: number) =>
-    a != null && b != null ? a + (b - a) * f : null;
-
-  for (let i = 0; i < BATSIRAI_TRACK.length; i += 1) {
-    const point = BATSIRAI_TRACK[i];
-    const next = BATSIRAI_TRACK[i + 1];
-    const r0 = radiiByTime.get(point.time);
-    const t0 = Date.parse(point.time);
-
-    // Point de trajectoire exact : on reprend les valeurs publiées telles quelles.
-    samples.push({
-      t: t0,
+  const anchors: WindAnchor[] = BATSIRAI_TRACK.map((point) => {
+    const radii = radiiByTime.get(point.time);
+    return {
+      t: Date.parse(point.time),
       lon: point.lon,
       lat: point.lat,
-      r34: r0?.radius34ktKm ?? null,
-      r50: r0?.radius50ktKm ?? null,
-      r64: r0?.radius64ktKm ?? null,
-      coreKm: null,
-    });
-
-    if (!next) {
-      continue;
-    }
-
-    const r1 = radiiByTime.get(next.time);
-    const t1 = Date.parse(next.time);
-    for (let t = t0 + SAMPLE_STEP_MINUTES * 60_000; t < t1; t += SAMPLE_STEP_MINUTES * 60_000) {
-      const f = t1 > t0 ? (t - t0) / (t1 - t0) : 0;
-      samples.push({
-        t,
-        lon: point.lon + (next.lon - point.lon) * f,
-        lat: point.lat + (next.lat - point.lat) * f,
-        r34: lerp(r0?.radius34ktKm, r1?.radius34ktKm, f),
-        r50: lerp(r0?.radius50ktKm, r1?.radius50ktKm, f),
-        r64: lerp(r0?.radius64ktKm, r1?.radius64ktKm, f),
-        coreKm: null,
-      });
-    }
-  }
-
-  samples.sort((a, b) => a.t - b.t);
-
-  // Prolongation du dernier R50 publié (cœur du cyclone) quand il n'est plus documenté.
-  let lastPublishedCore: number | null = null;
-  for (const sample of samples) {
-    if (sample.r50 != null) {
-      lastPublishedCore = sample.r50;
-    }
-    sample.coreKm = lastPublishedCore;
-  }
-
-  return samples;
-}
-
-/**
- * Niveau d'une commune à un instant donné, d'après les rayons documentés.
- *  - ROUGE : dans le R64 ou dans le cœur (R50 publié / prolongé) — « passage ».
- *  - JAUNE : dans le R34 mais hors du cœur — « affectée ».
- *  - VERT  : hors du champ de vent.
- * Le cœur est plafonné par le R34 pour ne jamais dépasser la zone affectée.
- * Quand aucun seuil n'est documenté à cet instant, le niveau précédent est
- * conservé (on ne bascule pas une commune sur une donnée absente).
- */
-export function classifyWind(lon: number, lat: number, sample: WindSample, previous: Level): Level {
-  if (sample.r34 == null && sample.r50 == null && sample.r64 == null && sample.coreKm == null) {
-    return previous;
-  }
-  const distance = haversineKm(lon, lat, sample.lon, sample.lat);
-  // Le cœur est plafonné par le R34 pour ne jamais dépasser la zone affectée.
-  const core =
-    sample.coreKm == null
-      ? null
-      : sample.r34 == null
-        ? sample.coreKm
-        : Math.min(sample.coreKm, sample.r34);
-  if ((sample.r64 != null && distance <= sample.r64) || (core != null && distance <= core)) {
-    return 'ROUGE';
-  }
-  if (sample.r34 != null && distance <= sample.r34) {
-    return 'JAUNE';
-  }
-  return 'VERT';
-}
-
-/**
- * Intervalles temporels d'alerte d'une commune le long de la trajectoire :
- * JAUNE dans R34, ROUGE dans le cœur (R50/R64, R50 prolongé), puis BLEU (danger
- * résiduel) à partir de sa sortie du champ de vent jusqu'à la fin de l'événement.
- * Les intervalles ne se chevauchent jamais : à chaque instant, un seul niveau
- * dynamique est actif.
- */
-export function windIntervalsForCommune(
-  communeId: string,
-  lon: number,
-  lat: number,
-  samples: WindSample[],
-  eventEndMs: number,
-): AlertInterval[] {
-  const intervals: AlertInterval[] = [];
-  if (samples.length === 0) {
-    return intervals;
-  }
-
-  let previous: Level = 'VERT';
-  let current: Level | null = null;
-  let runStart = samples[0].t;
-  let lastExit: number | null = null;
-
-  for (const sample of samples) {
-    const level = classifyWind(lon, lat, sample, previous);
-    previous = level;
-    if (level !== current) {
-      if ((current === 'ROUGE' || current === 'JAUNE') && sample.t > runStart) {
-        intervals.push({ communeId, level: current, from: runStart, to: sample.t });
-        lastExit = sample.t;
-      }
-      current = level;
-      runStart = sample.t;
-    }
-  }
-
-  const lastSampleTime = samples[samples.length - 1].t;
-  if ((current === 'ROUGE' || current === 'JAUNE') && lastSampleTime > runStart) {
-    intervals.push({ communeId, level: current, from: runStart, to: lastSampleTime });
-    lastExit = lastSampleTime;
-  }
-  if (lastExit != null && lastExit < eventEndMs) {
-    intervals.push({ communeId, level: 'BLEU', from: lastExit, to: eventEndMs });
-  }
-
-  return intervals;
+      r34: radii?.radius34ktKm ?? null,
+      r50: radii?.radius50ktKm ?? null,
+      r64: radii?.radius64ktKm ?? null,
+    };
+  });
+  return sampleWindAnchors(anchors, SAMPLE_STEP_MINUTES);
 }
 
 /** Métadonnées (source + commentaire) associées à chaque niveau dynamique. */
@@ -346,7 +196,8 @@ async function insertAlertIntervals(
       params.push(
         interval.communeId,
         new Date(interval.from).toISOString(),
-        new Date(interval.to).toISOString(),
+        // Batsirai est clos : `to` est toujours daté (jamais null ici).
+        interval.to === null ? null : new Date(interval.to).toISOString(),
       );
       return (
         `($1, $${offset}, ${sqlLiteral(level)}, ` +
