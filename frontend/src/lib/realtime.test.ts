@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSseFrames } from './realtime';
+import { invalidationKeysForEvent, parseSseFrames } from './realtime';
 
 describe('parseSseFrames', () => {
   it('extrait une frame complète event + data', () => {
@@ -38,5 +38,34 @@ describe('parseSseFrames', () => {
   it('reconstitue les data sur plusieurs lignes', () => {
     const { frames } = parseSseFrames('data: ligne1\ndata: ligne2\n\n');
     expect(frames).toEqual([{ event: 'message', data: 'ligne1\nligne2' }]);
+  });
+});
+
+describe('invalidationKeysForEvent', () => {
+  it('invalide le fil d’alertes pour tout événement alert.*', () => {
+    expect(invalidationKeysForEvent('alert.created')).toEqual([['alerts']]);
+    expect(invalidationKeysForEvent('alert.updated')).toEqual([['alerts']]);
+    expect(invalidationKeysForEvent('alert.archived')).toEqual([['alerts']]);
+  });
+
+  it('invalide événements et tableau de bord pour une détection', () => {
+    expect(invalidationKeysForEvent('detection.run')).toEqual([
+      ['events'],
+      ['dashboard'],
+    ]);
+  });
+
+  it('rafraîchit trajectoire, coloration et élus pour un cycle cyclone', () => {
+    const keys = invalidationKeysForEvent('cyclone.sync');
+    // `event` (préfixe) couvre track, track-points, commune-alerts, exposure.
+    expect(keys).toContainEqual(['events']);
+    expect(keys).toContainEqual(['event']);
+    expect(keys).toContainEqual(['dashboard']);
+    expect(keys).toContainEqual(['alerts']);
+    expect(keys).toContainEqual(['active-event']);
+  });
+
+  it('n’invalide rien pour un type inconnu', () => {
+    expect(invalidationKeysForEvent('inconnu')).toEqual([]);
   });
 });

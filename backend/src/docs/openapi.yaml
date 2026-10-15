@@ -47,7 +47,7 @@ tags:
   - name: Détection automatique
     description: Règles de détection automatique des aléas météo (SUPER_ADMIN)
   - name: Temps réel
-    description: Flux Server-Sent Events des alertes et détections (GET /stream)
+    description: Flux Server-Sent Events des alertes, détections et cyclones (GET /stream)
   - name: Alertes
     description: Alertes publiques et communications de crise (Phase 9)
   - name: Tableau de bord
@@ -3275,14 +3275,16 @@ paths:
   /stream:
     get:
       tags: [Temps réel]
-      summary: Flux Server-Sent Events (alertes et détections)
+      summary: Flux Server-Sent Events (alertes, détections, cyclones)
       description: >
         Flux SSE temps réel : événements alert.created, alert.updated,
-        alert.archived et detection.run. Le client doit maintenir la connexion
-        ouverte (le serveur envoie un commentaire ": ping" toutes les 25 s) et
-        se reconnecter avec un backoff (le champ retry est envoyé : 5000 ms).
-        L'event source du navigateur ne supporte pas Authorization : lire ce
-        flux via fetch() + ReadableStream reader avec l'en-tête Bearer.
+        alert.archived, detection.run et cyclone.sync (un cycle de veille cyclone
+        a persisté trajectoire, coloration communale et alertes). Le client doit
+        maintenir la connexion ouverte (le serveur envoie un commentaire
+        ": ping" toutes les 25 s) et se reconnecter avec un backoff (le champ
+        retry est envoyé : 5000 ms). L'event source du navigateur ne supporte pas
+        Authorization : lire ce flux via fetch() + ReadableStream reader avec
+        l'en-tête Bearer.
       security:
         - bearerAuth: []
       operationId: streamEvents

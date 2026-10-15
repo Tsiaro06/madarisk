@@ -6,6 +6,7 @@ import { getCycloneTrackProvider, getCycloneWatchProvider } from './cyclone/cycl
 import { buildIngestionPlans, parseWatchBbox } from './cyclone/cyclone.logic';
 import { cycloneCommuneColoringService } from './cyclone-commune-coloring.service';
 import { automaticAlertService } from './automatic-alerts.service';
+import { realtimeService } from './realtime.service';
 import type { CycloneIngestionPlan, CycloneSyncSummary } from '../types/cyclone.types';
 import { AppError } from '../utils/app-error';
 
@@ -203,6 +204,10 @@ export const cycloneSyncService = {
       let coloredEvents = 0;
       let coloredCommunes = 0;
       let alertsCreated = 0;
+      // Événements touchés par ce cycle (diffusion temps réel) et sous-ensemble
+      // encore ACTIF : la salle de crise s'y raccroche automatiquement.
+      const eventIds: string[] = [];
+      const liveEventIds: string[] = [];
 
       for (const plan of plans) {
         let outcome: { created: boolean; points: number; eventId: string };
@@ -218,6 +223,8 @@ export const cycloneSyncService = {
         }
 
         systemsTracked += 1;
+        eventIds.push(outcome.eventId);
+        if (plan.status === 'ACTIF') liveEventIds.push(outcome.eventId);
         if (outcome.created) eventsCreated += 1;
         else eventsUpdated += 1;
         trackPoints += outcome.points;
@@ -268,6 +275,26 @@ export const cycloneSyncService = {
         alertsCreated,
         durationMs: Date.now() - startedAt,
       };
+
+      // Diffusion temps réel : les clients connectés (salle de crise) rafraîchissent
+      // leur état sans attendre le prochain scrutin. Rien à pousser si aucune
+      // donnée n'a été persistée (bassin calme ou sources muettes).
+      if (systemsTracked > 0) {
+        realtimeService.publish('cyclone.sync', {
+          runId,
+          trigger,
+          systemsTracked,
+          eventsCreated,
+          eventsUpdated,
+          trackPoints,
+          coloredEvents,
+          coloredCommunes,
+          alertsCreated,
+          errorsCount: errors.length,
+          eventIds,
+          liveEventIds,
+        });
+      }
 
       logger.info(
         { ...summary, errorsCount: errors.length },

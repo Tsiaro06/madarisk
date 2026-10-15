@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle } from "lucide-react";
@@ -18,6 +18,7 @@ import type {
 import { canManageOps } from "@/lib/roles";
 import { observedSteps, pointTimeMs } from "@/lib/historical";
 import { useTrackPlayback } from "@/lib/useTrackPlayback";
+import { useLiveCycloneQuery } from "@/lib/useLiveCyclone";
 import { useAuthStore } from "@/stores/authStore";
 import { ActiveEventProvider, useActiveEvent } from "@/stores/activeEvent";
 import { AlertBanner } from "@/components/ui/AlertBanner";
@@ -64,6 +65,21 @@ function CrisisRoomView() {
 
   const role = useAuthStore((s) => s.user?.role);
   const canCreate = canManageOps(role);
+
+  // Mode « en direct » : on se raccroche automatiquement au cyclone actif dès
+  // qu'il est détecté, tant que l'opérateur n'a rien sélectionné. On mémorise le
+  // dernier identifiant vu pour ne pas ressusciter un choix volontairement vidé
+  // (« Aucun événement ») ni re-sélectionner le même cyclone à chaque scrutin.
+  const liveCycloneQ = useLiveCycloneQuery();
+  const liveCyclone = liveCycloneQ.data?.data?.[0] ?? null;
+  const lastLiveCycloneId = useRef<string | null>(null);
+  useEffect(() => {
+    if (!liveCycloneQ.isFetched) return;
+    const currentId = liveCyclone?.id ?? null;
+    const isNew = currentId !== lastLiveCycloneId.current;
+    lastLiveCycloneId.current = currentId;
+    if (!activeEventId && currentId && isNew) setActiveEventId(currentId);
+  }, [liveCycloneQ.isFetched, liveCyclone, activeEventId, setActiveEventId]);
 
   const detailQ = useQuery<CommuneDetail | null>({
     queryKey: ["commune-detail", selectedCommuneId],

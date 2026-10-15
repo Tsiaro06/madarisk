@@ -172,6 +172,15 @@ export const matchingApi = {
 export const eventsApi = {
   list: (params?: Record<string, string | number | undefined>) =>
     apiGetPage<EventListItem[]>("/events", { params }),
+  /**
+   * Cyclone en cours le plus récent (type CYCLONE, statut ACTIF, le plus
+   * récemment démarré). Alimente la sélection automatique « en direct » de la
+   * salle de crise : jamais de données inventées, la liste vient de l'API.
+   */
+  liveCyclone: () =>
+    apiGetPage<EventListItem[]>("/events", {
+      params: { type: "CYCLONE", status: "ACTIF", page: 1, limit: 1 },
+    }),
   get: (id: string) => apiGet(`/events/${id}`),
   create: (body: unknown) => apiPost<EventListItem>("/events", body),
   update: (id: string, body: unknown) =>

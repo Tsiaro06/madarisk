@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { db } from '../../src/config/database';
 import { cycloneSyncService } from '../../src/services/cyclone-sync.service';
+import { realtimeService } from '../../src/services/realtime.service';
 import {
   resetCycloneProviders,
   setCycloneTrackProvider,
@@ -338,6 +339,36 @@ describe('Synchronisation cyclone', () => {
     expect(tracks.rows).toHaveLength(1);
     expect(tracks.rows[0].radius_34kt_km).toBeNull();
     expect(tracks.rows[0].radius_source).toBeNull();
+  });
+
+  it('diffuse « cyclone.sync » aux clients temps réel après un cycle', async () => {
+    setCycloneTrackProvider({
+      source: 'IBTRACS',
+      listActiveSystems: async () => [system(POINTS_V1)],
+    });
+    setCycloneWatchProvider({ source: 'GDACS', listWatchedSystems: async () => [] });
+
+    const publish = vi.spyOn(realtimeService, 'publish');
+    try {
+      const summary = await cycloneSyncService.run('MANUAL');
+      runIds.push(summary.runId);
+
+      const frames = publish.mock.calls.filter(([type]) => type === 'cyclone.sync');
+      expect(frames).toHaveLength(1);
+      const payload = frames[0][1] as {
+        runId: string;
+        systemsTracked: number;
+        eventIds: string[];
+        liveEventIds: string[];
+      };
+      expect(payload.runId).toBe(summary.runId);
+      expect(payload.systemsTracked).toBe(1);
+      // L'événement ACTIF est annoncé : la salle de crise peut s'y raccrocher.
+      expect(payload.eventIds).toContain(eventId);
+      expect(payload.liveEventIds).toContain(eventId);
+    } finally {
+      publish.mockRestore();
+    }
   });
 
   it('enregistre le cycle dans le journal d’observabilité', async () => {

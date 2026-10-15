@@ -11,7 +11,7 @@ import { logger } from '../config/logger';
  */
 
 export type RealtimeEventType =
-  'alert.created' | 'alert.updated' | 'alert.archived' | 'detection.run';
+  'alert.created' | 'alert.updated' | 'alert.archived' | 'detection.run' | 'cyclone.sync';
 
 export interface RealtimeEvent {
   type: RealtimeEventType;

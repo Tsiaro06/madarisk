@@ -4,6 +4,7 @@ import { ChevronsUpDown, Radio, X, Zap } from 'lucide-react';
 import { eventsApi } from '@/api';
 import type { EventListItem } from '@/types';
 import { useActiveEvent } from '@/stores/activeEvent';
+import { useLiveCyclone } from '@/lib/useLiveCyclone';
 import { cn } from '@/lib/utils';
 import { EVENT_STATUS_TONE, EVENT_TYPE_LABELS } from '@/lib/eventMeta';
 import { Badge } from '@/components/ui/Badge';
@@ -12,6 +13,10 @@ export function EventSelector({ className }: { className?: string }) {
   const { activeEventId, setActiveEventId, activeEvent, activeEventLoading } = useActiveEvent();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  // Marque l'événement affiché comme « en direct » quand il correspond au
+  // cyclone ACTIF le plus récent (même requête partagée que la salle de crise).
+  const liveCyclone = useLiveCyclone();
+  const isLive = Boolean(activeEventId && liveCyclone?.id === activeEventId);
 
   const listQ = useQuery({
     queryKey: ['events', 'selector'],
@@ -54,10 +59,21 @@ export function EventSelector({ className }: { className?: string }) {
         aria-expanded={open}
         aria-haspopup="listbox"
       >
-        <Radio className={cn('size-5 shrink-0', activeEventId ? 'text-brand' : 'text-muted')} />
+        <Radio
+          className={cn(
+            'size-5 shrink-0',
+            isLive ? 'text-red-600' : activeEventId ? 'text-brand' : 'text-muted',
+          )}
+        />
         <span className="min-w-0 flex-1 truncate text-left font-medium">
           {activeEventLoading ? 'Chargement…' : label}
         </span>
+        {isLive ? (
+          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700">
+            <span className="madarisk-live-dot" aria-hidden />
+            En direct
+          </span>
+        ) : null}
         <ChevronsUpDown className="size-5 shrink-0 opacity-70" />
       </button>
 
