@@ -1,10 +1,23 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { Content, SafetySetting } from '@google/generative-ai';
-import { HarmBlockThreshold, HarmCategory } from '@google/generative-ai';
+import type { Content, FunctionDeclaration, SafetySetting } from '@google/generative-ai';
+import {
+  FunctionCallingMode,
+  HarmBlockThreshold,
+  HarmCategory,
+  SchemaType,
+} from '@google/generative-ai';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { AppError } from '../utils/app-error';
-import { AIProvider, AIRequest, AIResponse, AIToolResult } from '../types/ai.types';
+import {
+  AIAnswerStep,
+  AIProvider,
+  AIRequest,
+  AIResponse,
+  AIToolCallProposal,
+  AIToolDeclaration,
+  AIToolResult,
+} from '../types/ai.types';
 
 const MAX_TOOL_RESULTS_CHARS = 30000;
 
@@ -151,6 +164,65 @@ function chunkText(chunk: { text: () => string }): string {
   }
 }
 
+/** Types de paramètres acceptés dans une déclaration. */
+const PARAM_TYPES = {
+  string: SchemaType.STRING,
+  integer: SchemaType.INTEGER,
+  number: SchemaType.NUMBER,
+} as const;
+
+/**
+ * Convertit les déclarations du service en type attendu par le SDK.
+ *
+ * Ne fait que guider le modèle : toute la validation réelle reste côté serveur,
+ * sur les schémas Zod appliqués par chaque outil. Décrire les paramètres est
+ * ce qui permet au modèle de renvoyer des arguments exploitables (`q`, `limit`)
+ * sans qu'on ait à les reconstituer par expression régulière.
+ */
+function toFunctionDeclarations(tools: AIToolDeclaration[]): FunctionDeclaration[] {
+  return tools.map((tool) => ({
+    name: tool.name,
+    description: tool.description,
+    ...(tool.parameters
+      ? {
+          parameters: {
+            type: SchemaType.OBJECT,
+            properties: Object.fromEntries(
+              Object.entries(tool.parameters.properties).map(([key, property]) => [
+                key,
+                {
+                  type: PARAM_TYPES[property.type],
+                  description: property.description ?? '',
+                },
+              ]),
+            ),
+            required: tool.parameters.required ?? [],
+          },
+        }
+      : {}),
+  }));
+}
+
+/**
+ * Appels d'outils portés par un morceau de réponse.
+ *
+ * `functionCalls()` LANCE une erreur quand le candidat a été filtré par la
+ * sûreté du modèle : un filtre n'est pas un outil demandé, il est donc
+ * neutralisé. Un morceau sans cette méthode (morceau de texte pur) donne `[]`.
+ */
+function chunkToolCalls(chunk: unknown): AIToolCallProposal[] {
+  const candidate = chunk as { functionCalls?: () => Array<{ name: string; args?: object }> };
+  if (typeof candidate?.functionCalls !== 'function') return [];
+  try {
+    const calls = candidate.functionCalls() ?? [];
+    return calls
+      .filter((call) => typeof call.name === 'string')
+      .map((call) => ({ name: call.name, args: (call.args ?? {}) as Record<string, unknown> }));
+  } catch {
+    return [];
+  }
+}
+
 export class GeminiAIProvider implements AIProvider {
   private readonly client: GoogleGenerativeAI;
   private readonly model: string;
@@ -165,14 +237,7 @@ export class GeminiAIProvider implements AIProvider {
   }
 
   async generateAnswer(input: AIRequest): Promise<AIResponse> {
-    const model = this.client.getGenerativeModel({
-      model: this.model,
-      generationConfig: {
-        temperature: 0.3,
-        maxOutputTokens: 2048,
-      },
-    });
-
+    const model = this.buildModel(input, false);
     const contents = buildContents(input);
     const maxRetries = env.GEMINI_MAX_RETRIES;
     let lastError: unknown;
@@ -206,31 +271,53 @@ export class GeminiAIProvider implements AIProvider {
     throw toAppError(lastError);
   }
 
-  /**
-   * Réponse en flux : seuls les morceaux de texte sont émis, un par un, au fur
-   * et à mesure que le modèle les produit.
-   *
-   * Le délai maximal s'applique ici à l'attente ENTRE deux morceaux (inactivité)
-   * et non à la réponse entière : une réponse longue mais progressive reste
-   * valide, alors qu'un flux figé échoue. Une réponse déjà partiellement émise
-   * ne peut pas être rejouée sans dupliquer le texte : la nouvelle tentative
-   * n'a donc lieu que si aucun morceau n'est encore sorti.
-   */
-  async *generateAnswerStream(input: AIRequest): AsyncGenerator<string, void, unknown> {
-    const model = this.client.getGenerativeModel({
+  /** Modèle utilisé pour un appel, avec ou sans déclarations d'outils. */
+  private buildModel(input: AIRequest, withTools: boolean) {
+    const declarations = withTools && input.tools?.length ? input.tools : undefined;
+    return this.client.getGenerativeModel({
       model: this.model,
       generationConfig: {
         temperature: 0.3,
         maxOutputTokens: 2048,
       },
+      ...(declarations
+        ? {
+            // mode AUTO : le modèle répond directement quand le contexte
+            // pré-extrait suffit (cas courant, un seul appel modèle) ou réclame
+            // un outil — il n'est pas contraint d'en appeler un à chaque fois.
+            tools: [{ functionDeclarations: toFunctionDeclarations(declarations) }],
+            toolConfig: { functionCallingConfig: { mode: FunctionCallingMode.AUTO } },
+          }
+        : {}),
     });
+  }
 
+  /**
+   * Boucle de lecture commune aux deux variantes en flux.
+   *
+   * - Le délai maximal borne l'attente ENTRE deux morceaux (inactivité) et non
+   *   la réponse entière : une réponse longue mais progressive reste valide,
+   *   alors qu'un flux figé échoue. Le premier morceau inclut le temps de
+   *   réflexion du modèle : son budget est donc celui du chemin non flux.
+   * - Une réponse déjà partiellement émise ne peut pas être rejouée sans
+   *   dupliquer le texte : la nouvelle tentative n'a donc lieu qu'avant tout pas
+   *   sorti.
+   * - Un appel d'outil précède en général tout texte : il est émis tel quel et
+   *   le flux abandonné (le service exécutera l'outil, puis reposera la question
+   *   sans outils). Des appels survenus APRÈS du texte sont ignorés : on a déjà
+   *   commencé à répondre et il est impossible de revenir en arrière.
+   */
+  private async *streamSteps(
+    input: AIRequest,
+    withTools: boolean,
+  ): AsyncGenerator<AIAnswerStep, void, unknown> {
+    const model = this.buildModel(input, withTools);
     const contents = buildContents(input);
     const maxRetries = env.GEMINI_MAX_RETRIES;
     let lastError: unknown;
+    let emitted = false;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      let emitted = 0;
       try {
         const streamResult = await model.generateContentStream({
           contents,
@@ -243,10 +330,18 @@ export class GeminiAIProvider implements AIProvider {
           for (;;) {
             const next = await withTimeout(iterator.next(), env.GEMINI_TIMEOUT_MS);
             if (next.done) break;
+
+            const calls = chunkToolCalls(next.value);
+            if (calls.length > 0 && !emitted) {
+              emitted = true;
+              yield { type: 'toolCalls', calls };
+              return;
+            }
+
             const text = chunkText(next.value);
             if (text) {
-              emitted += 1;
-              yield text;
+              emitted = true;
+              yield { type: 'text', text };
             }
           }
         } finally {
@@ -264,7 +359,7 @@ export class GeminiAIProvider implements AIProvider {
         return;
       } catch (err) {
         lastError = err;
-        if (emitted > 0 || !isRetryable(err) || attempt === maxRetries) break;
+        if (emitted || !isRetryable(err) || attempt === maxRetries) break;
         logger.warn(
           { attempt, err },
           'Fournisseur IA (flux) : tentative échouée, nouvelle tentative…',
@@ -274,6 +369,24 @@ export class GeminiAIProvider implements AIProvider {
     }
 
     throw toAppError(lastError);
+  }
+
+  /** Réponse en flux : seuls les morceaux de texte sont émis, dans l'ordre. */
+  async *generateAnswerStream(input: AIRequest): AsyncGenerator<string, void, unknown> {
+    for await (const step of this.streamSteps(input, false)) {
+      if (step.type === 'text') yield step.text;
+    }
+  }
+
+  /**
+   * Variante qui déclare les outils au modèle : émet soit le texte de la
+   * réponse, soit un seul pas `toolCalls` (dès lors le service exécute les
+   * outils et repose la question sans déclarations).
+   */
+  async *generateAnswerStreamWithTools(
+    input: AIRequest,
+  ): AsyncGenerator<AIAnswerStep, void, unknown> {
+    yield* this.streamSteps(input, true);
   }
 }
 
@@ -297,12 +410,23 @@ export class MockAIProvider implements AIProvider {
   available: boolean;
   answer: string;
   lastRequest: AIRequest | null = null;
+  /**
+   * Outils que le « modèle » réclame avant de répondre (function calling),
+   * renseignés par les tests. Vidé dès qu'ils ont été émis : un même tour ne
+   * peut donc pas boucler sur la même demande.
+   */
+  toolCalls: AIToolCallProposal[];
 
-  constructor(options?: { available?: boolean; answer?: string }) {
+  constructor(options?: {
+    available?: boolean;
+    answer?: string;
+    toolCalls?: AIToolCallProposal[];
+  }) {
     this.available = options?.available ?? true;
     this.answer =
       options?.answer ??
       "Analyse réalisée : les données disponibles indiquent un risque modéré. Aucune action immédiate n'est requise.";
+    this.toolCalls = options?.toolCalls ?? [];
   }
 
   isAvailable(): boolean {
@@ -330,6 +454,27 @@ export class MockAIProvider implements AIProvider {
     yield this.answer.slice(0, half);
     await new Promise((resolve) => setTimeout(resolve, 1));
     yield this.answer.slice(half);
+  }
+
+  /**
+   * Variante déclarant les outils : si un test a configuré une demande
+   * d'outils, elle est émise avant tout texte — comme un vrai modèle —, sinon
+   * le texte vient de `generateAnswerStream`. Une doublure de test qui remplace
+   * `generateAnswerStream` est donc honorée sur les deux chemins.
+   */
+  async *generateAnswerStreamWithTools(
+    input: AIRequest,
+  ): AsyncGenerator<AIAnswerStep, void, unknown> {
+    this.lastRequest = input;
+    if (this.toolCalls.length > 0) {
+      const calls = this.toolCalls;
+      this.toolCalls = [];
+      yield { type: 'toolCalls', calls };
+      return;
+    }
+    for await (const chunk of this.generateAnswerStream(input)) {
+      yield { type: 'text', text: chunk };
+    }
   }
 }
 

@@ -18,6 +18,7 @@ import { PaginatedResult } from '../types/territory.types';
 import { EventListItem } from '../types/event.types';
 import { TerritorySearchResult } from '../types/territory.types';
 import {
+  AIAnswerStep,
   AIChatResult,
   AIChatStreamEvent,
   AIConversationDetail,
@@ -25,8 +26,11 @@ import {
   AIMemoryTurn,
   AIMessageRole,
   AIMessageRow,
+  AIProvider,
   AIRequest,
   AITool,
+  AIToolCallProposal,
+  AIToolDeclaration,
   AIToolResult,
   AuthUser,
 } from '../types/ai.types';
@@ -70,6 +74,8 @@ Outils exécutés côté serveur (résultats dans les DONNÉES AUTORISÉES) :
 - getPublishedAlerts : alertes publiées et encore actives
 - getHistoricalEvents : événements historiques clos (ex. cyclone Batsirai 2022) et leurs bulletins/bilans sourcés
 - getDashboardSummary : synthèse globale de la plateforme
+
+Si les DONNÉES AUTORISÉES ne suffisent pas pour répondre, tu peux demander l'exécution d'un outil supplémentaire : demande alors UNIQUEMENT l'outil, sans écrire de texte avant l'appel (un texte émis en premier ferait perdre la demande). Les identifiants (UUID) ne s'inventent jamais : ne fournis un identifiant que s'il figure déjà dans la question ou dans les données, sinon laisse-le vide — le serveur le résout lui-même. Après l'exécution, réponds normalement à partir des nouvelles données.
 
 MANUEL DE LECTURE DE LA PLATEFORME (vocabulaire et seuils : emploie ces libellés exacts, jamais de synonymes inventés) :
 - Territoires : régions, puis districts, puis communes. Chaque outil renvoie l'identifiant (UUID) et le nom : cite le nom, jamais l'UUID seul.
@@ -374,6 +380,129 @@ const EXECUTION_ORDER: ToolName[] = [
   'getEventExposedCommunes',
 ];
 
+/**
+ * Outils déclarés au modèle (function calling natif).
+ *
+ * Le socle déterministe reste la base : les outils déduits de la question sont
+ * exécutés d'office. Ces déclarations couvrent le cas où ce socle ne suffit
+ * pas — le modèle peut alors réclamer un outil précis, plutôt que de répondre
+ * « aucune donnée ». Les paramètres décrits ici ne valident rien : chaque outil
+ * revalide ce qu'il reçoit (schémas Zod) et la résolution des identifiants reste
+ * côté serveur.
+ */
+const TOOL_DECLARATIONS: AIToolDeclaration[] = [
+  {
+    name: 'searchTerritories',
+    description: 'Recherche des districts et des communes par nom.',
+    parameters: {
+      type: 'object',
+      properties: {
+        q: { type: 'string', description: 'Nom du lieu recherché (2 à 200 caractères).' },
+        limit: { type: 'integer', description: 'Nombre de résultats, de 1 à 20 (défaut 10).' },
+      },
+      required: ['q'],
+    },
+  },
+  {
+    name: 'getCommuneDetails',
+    description:
+      "Détails d'une commune (population, vulnérabilité, météo récente, dernier risque, événements liés).",
+    parameters: {
+      type: 'object',
+      properties: {
+        communeId: { type: 'string', description: 'Identifiant UUID de la commune, si connu.' },
+      },
+      required: ['communeId'],
+    },
+  },
+  {
+    name: 'getCommuneLatestRisk',
+    description: 'Dernier niveau de risque évalué pour une commune.',
+    parameters: {
+      type: 'object',
+      properties: {
+        communeId: { type: 'string', description: 'Identifiant UUID de la commune, si connu.' },
+        eventId: { type: 'string', description: 'Identifiant UUID de l’événement, si connu.' },
+      },
+      required: ['communeId'],
+    },
+  },
+  {
+    name: 'getPriorityCommunes',
+    description: 'Communes prioritaires selon le dernier score de risque.',
+    parameters: {
+      type: 'object',
+      properties: {
+        eventId: { type: 'string', description: 'Identifiant UUID de l’événement, si connu.' },
+        districtId: { type: 'string', description: 'Identifiant UUID du district, si connu.' },
+        limit: { type: 'integer', description: 'Nombre de communes, de 1 à 50 (défaut 10).' },
+      },
+    },
+  },
+  { name: 'getActiveEvents', description: 'Liste des événements actifs ou en suivi.' },
+  {
+    name: 'getEventSummary',
+    description: "Synthèse d'un événement (statistiques, répartition des risques, alertes liées).",
+    parameters: {
+      type: 'object',
+      properties: {
+        eventId: { type: 'string', description: 'Identifiant UUID de l’événement, si connu.' },
+      },
+      required: ['eventId'],
+    },
+  },
+  {
+    name: 'getEventExposedCommunes',
+    description: 'Communes exposées pour un événement.',
+    parameters: {
+      type: 'object',
+      properties: {
+        eventId: { type: 'string', description: 'Identifiant UUID de l’événement, si connu.' },
+      },
+      required: ['eventId'],
+    },
+  },
+  {
+    name: 'getLatestWeather',
+    description: 'Dernières observations météorologiques pour une commune.',
+    parameters: {
+      type: 'object',
+      properties: {
+        communeId: { type: 'string', description: 'Identifiant UUID de la commune, si connu.' },
+      },
+      required: ['communeId'],
+    },
+  },
+  {
+    name: 'getPublishedAlerts',
+    description: 'Alertes publiées et encore actives.',
+    parameters: {
+      type: 'object',
+      properties: {
+        eventId: { type: 'string', description: 'Identifiant UUID de l’événement, si connu.' },
+        districtId: { type: 'string', description: 'Identifiant UUID du district, si connu.' },
+        communeId: { type: 'string', description: 'Identifiant UUID de la commune, si connu.' },
+      },
+    },
+  },
+  {
+    name: 'getHistoricalEvents',
+    description:
+      'Événements historiques clos (ex. cyclone Batsirai 2022) : situation passée, datée et sourcée, jamais un temps réel.',
+    parameters: {
+      type: 'object',
+      properties: {
+        eventId: { type: 'string', description: 'Identifiant UUID de l’événement, si connu.' },
+      },
+    },
+  },
+  {
+    name: 'getDashboardSummary',
+    description:
+      'Synthèse globale de la plateforme (événements, alertes, communes à risque, population exposée).',
+  },
+];
+
 const INJECTION_PATTERNS: RegExp[] = [
   /ignore(?:r|z)? (?:toutes les |tous les |les )?(?:instructions|regles|directives|prompts?|messages)/,
   /ne (?:respecte|suis|tiens) (?:pas )?(?:les|mes|toutes les) instructions/,
@@ -533,36 +662,69 @@ async function firstEventId(
   return active?.items?.[0]?.id ?? null;
 }
 
+/**
+ * Arguments fournis par le modèle (function calling) : ils ne sont acceptés que
+ * s'ils ont une forme exploitable, sinon la résolution déterministe reprend la
+ * main. Rien de ce qui vient du modèle n'est utilisé brut : chaque valeur est
+ * bornée ici puis revalidée par le schéma Zod de l'outil.
+ */
+function modelUuid(value: unknown): string | null {
+  return typeof value === 'string' && value.length === 36 && UUID_PATTERN.test(value)
+    ? value
+    : null;
+}
+
+function modelString(value: unknown, min: number, max: number): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length >= min ? trimmed.slice(0, max) : null;
+}
+
+function modelInt(value: unknown, min: number, max: number): number | null {
+  if (typeof value !== 'number' || !Number.isInteger(value)) return null;
+  return Math.min(Math.max(value, min), max);
+}
+
 async function resolveParameters(
   name: ToolName,
   collected: Map<string, unknown>,
   message: string,
+  modelArgs?: Record<string, unknown>,
 ): Promise<unknown> {
+  // Le modèle ne connaît pas nos identifiants : ce qu'il fournit est pris en
+  // premier (nom recherché, limite), le reste est résolu ici comme avant.
+  const args = modelArgs ?? {};
+
   switch (name) {
     case 'searchTerritories': {
-      const q = extractTerritoryQuery(message);
+      const q = modelString(args['q'], 2, 200) ?? extractTerritoryQuery(message);
       if (!q) return SKIP;
-      return { q, limit: 10 };
+      return { q, limit: modelInt(args['limit'], 1, 20) ?? 10 };
     }
     case 'getCommuneDetails':
     case 'getLatestWeather': {
-      const communeId = firstCommuneId(collected, message);
+      const communeId = modelUuid(args['communeId']) ?? firstCommuneId(collected, message);
       if (!communeId) return SKIP;
       return { communeId };
     }
     case 'getCommuneLatestRisk': {
-      const communeId = firstCommuneId(collected, message);
+      const communeId = modelUuid(args['communeId']) ?? firstCommuneId(collected, message);
       if (!communeId) return SKIP;
-      const eventId = await firstEventId(collected, message);
+      const eventId = modelUuid(args['eventId']) ?? (await firstEventId(collected, message));
       return eventId ? { communeId, eventId } : { communeId };
     }
     case 'getPriorityCommunes': {
-      const eventId = await firstEventId(collected, message);
-      return eventId ? { eventId, limit: 10 } : { limit: 10 };
+      const eventId = modelUuid(args['eventId']) ?? (await firstEventId(collected, message));
+      const districtId = modelUuid(args['districtId']);
+      const limit = modelInt(args['limit'], 1, 50) ?? 10;
+      if (eventId && districtId) return { eventId, districtId, limit };
+      if (eventId) return { eventId, limit };
+      if (districtId) return { districtId, limit };
+      return { limit };
     }
     case 'getEventSummary':
     case 'getEventExposedCommunes': {
-      const eventId = await firstEventId(collected, message);
+      const eventId = modelUuid(args['eventId']) ?? (await firstEventId(collected, message));
       if (!eventId) return SKIP;
       return { eventId };
     }
@@ -650,6 +812,206 @@ interface PreparedTurn {
   limitations: string[];
   dataTimestamp: string | null;
   history: AIMemoryTurn[];
+  /**
+   * Résultats d'outils indexés par nom : ce que le socle déterministe a déjà
+   * obtenu, réutilisable pour résoudre les identifiants (UUID) qu'un outil
+   * demandé par le modèle réclame.
+   */
+  collected: Map<string, unknown>;
+}
+
+/** Contexte d'exécution d'un outil, partagé par le socle déterministe et le modèle. */
+interface ToolRunContext {
+  user: AuthUser;
+  message: string;
+  collected: Map<string, unknown>;
+  toolResults: AIToolResult[];
+  limitations: string[];
+}
+
+/**
+ * Résout les paramètres, exécute un outil et enregistre son résultat.
+ *
+ * Un outil ne fait jamais échouer le tour : toute erreur devient une
+ * « limitation » exposée à l'utilisateur, et l'analyse se poursuit avec les
+ * données restantes.
+ */
+async function runTool(
+  name: ToolName,
+  context: ToolRunContext,
+  modelArgs?: Record<string, unknown>,
+): Promise<void> {
+  const tool = toolByName.get(name);
+  if (!tool) return;
+
+  let parameters: unknown;
+  try {
+    parameters = await resolveParameters(name, context.collected, context.message, modelArgs);
+  } catch (err) {
+    logger.warn({ err, tool: name }, 'Outil IA : échec de résolution des paramètres');
+    context.limitations.push(`Paramètres non résolus pour l'outil « ${name} ».`);
+    return;
+  }
+  if (parameters === SKIP) return;
+
+  try {
+    const rawResult = await tool.execute(parameters, context.user);
+    const result = rawResult ?? null;
+    context.collected.set(name, result);
+    context.toolResults.push({ tool: name, result });
+    if (isEmptyData(result)) {
+      context.limitations.push(
+        `Aucune donnée disponible dans la plateforme pour la demande (outil « ${name} »).`,
+      );
+    }
+  } catch (err) {
+    if (err instanceof ZodError) {
+      context.limitations.push(`Paramètres invalides pour l'outil « ${name} ».`);
+      return;
+    }
+    if (isNotFound(err)) {
+      context.limitations.push(
+        `Aucune donnée disponible dans la plateforme pour la demande (outil « ${name} »).`,
+      );
+      return;
+    }
+    logger.warn({ err, tool: name }, "Outil IA : échec d'exécution");
+    context.limitations.push(`Données de l'outil « ${name} » indisponibles pour cette analyse.`);
+  }
+}
+
+/** Persiste les résultats d'outils d'un tour (un message OUTIL par résultat). */
+async function persistToolResults(conversationId: string, entries: AIToolResult[]): Promise<void> {
+  for (const entry of entries) {
+    const content = serializeToolResults([entry]).slice(0, 500);
+    await aiRepository.addMessage({
+      conversationId,
+      role: 'OUTIL',
+      content,
+      tokenCount: estimateTokens(content),
+      metadata: { tool: entry.tool },
+    });
+  }
+}
+
+/** Nombre maximal d'outils qu'un même tour exécute sur demande du modèle. */
+const MAX_MODEL_TOOL_CALLS = 6;
+
+/**
+ * Exécute les outils réclamés par le modèle (function calling).
+ *
+ * Un outil déjà couvert par le socle déterministe est ignoré — sauf
+ * `searchTerritories`, où un autre nom recherché change réellement la requête.
+ * Le modèle ne peut pas non plus boucler : un même outil n'est exécuté qu'une
+ * fois par tour, et l'ensemble est plafonné.
+ */
+async function runModelToolCalls(
+  calls: AIToolCallProposal[],
+  context: ToolRunContext,
+  alreadyRun: Set<string>,
+): Promise<string[]> {
+  const executed: string[] = [];
+
+  for (const call of calls.slice(0, MAX_MODEL_TOOL_CALLS)) {
+    const tool = toolByName.get(call.name);
+    if (!tool) {
+      logger.warn({ tool: call.name }, 'IA : outil inconnu proposé par le modèle — ignoré');
+      continue;
+    }
+    if (executed.includes(tool.name)) continue;
+
+    const wantsNewQuery = tool.name === 'searchTerritories' && typeof call.args['q'] === 'string';
+    if (alreadyRun.has(tool.name) && !wantsNewQuery) continue;
+
+    await runTool(tool.name as ToolName, context, call.args);
+    executed.push(tool.name);
+  }
+
+  return executed;
+}
+
+/**
+ * Traduit la réponse d'un fournisseur en pas unifiés, quel que soit son niveau
+ * de support : flux avec outils, flux de texte seul, ou réponse d'un bloc.
+ */
+async function* providerSteps(
+  provider: AIProvider,
+  request: AIRequest,
+): AsyncGenerator<AIAnswerStep, void, unknown> {
+  if (request.tools?.length && provider.generateAnswerStreamWithTools) {
+    yield* provider.generateAnswerStreamWithTools(request);
+    return;
+  }
+  if (provider.generateAnswerStream) {
+    for await (const chunk of provider.generateAnswerStream(request)) {
+      yield { type: 'text', text: chunk };
+    }
+    return;
+  }
+  const response = await provider.generateAnswer(request);
+  yield { type: 'text', text: response.answer };
+}
+
+type AnswerEvent = { type: 'ready' } | { type: 'chunk'; text: string };
+
+/**
+ * Produit la réponse d'un tour, en un ou deux appels au modèle.
+ *
+ * Le premier appel porte les déclarations d'outils. Cas courant : il renvoie
+ * directement le texte (un seul appel, comme avant). S'il demande des outils,
+ * ceux-ci sont exécutés puis la question est reposée **une seule fois**, sans
+ * déclarations : la boucle est bornée et aucun ping-pong d'appels ne peut
+ * s'installer.
+ *
+ * `ready` marque l'instant où les données du tour sont définitives (plus aucun
+ * outil ne sera exécuté) : les métadonnées s'émettent là, avant le premier
+ * morceau de texte.
+ */
+async function* resolveAnswer(
+  provider: AIProvider,
+  request: AIRequest,
+  executeCalls: (calls: AIToolCallProposal[]) => Promise<string[]>,
+): AsyncGenerator<AnswerEvent, void, unknown> {
+  let ready = false;
+  let anyText = false;
+  let current = request;
+
+  for (let round = 0; round < 2; round++) {
+    let pending: AIToolCallProposal[] | null = null;
+    let emittedText = false;
+
+    for await (const step of providerSteps(provider, current)) {
+      if (step.type === 'toolCalls') {
+        if (emittedText) {
+          // Du texte est déjà parti : impossible de revenir en arrière pour
+          // exécuter un outil. La demande est ignorée, la réponse reste celle
+          // qui est déjà émise.
+          logger.warn("IA : demande d'outil reçue après du texte — ignorée");
+          continue;
+        }
+        pending = step.calls;
+        break;
+      }
+      if (!step.text) continue;
+      if (!ready) {
+        ready = true;
+        yield { type: 'ready' };
+      }
+      emittedText = true;
+      anyText = true;
+      yield { type: 'chunk', text: step.text };
+    }
+
+    if (pending === null) break;
+
+    const executed = await executeCalls(pending);
+    logger.debug({ executed }, 'IA : outils demandés par le modèle');
+    current = { ...request, tools: undefined };
+  }
+
+  if (!anyText) {
+    throw new AppError('Réponse vide du service IA.', 502);
+  }
 }
 
 /**
@@ -686,60 +1048,20 @@ async function prepareTurn(
     );
   }
 
+  // Socle déterministe : les outils déduits de la question sont exécutés
+  // d'office. Le modèle pourra en demander d'autres s'il manque une donnée
+  // (voir `resolveAnswer`).
+  const context: ToolRunContext = { user, message, collected, toolResults, limitations };
   for (const name of selected) {
-    let parameters: unknown;
-    try {
-      parameters = await resolveParameters(name, collected, message);
-    } catch (err) {
-      logger.warn({ err, tool: name }, 'Outil IA : échec de résolution des paramètres');
-      limitations.push(`Paramètres non résolus pour l'outil « ${name} ».`);
-      continue;
-    }
-    if (parameters === SKIP) continue;
-
-    const tool = toolByName.get(name);
-    if (!tool) continue;
-
-    try {
-      const rawResult = await tool.execute(parameters, user);
-      const result = rawResult ?? null;
-      collected.set(name, result);
-      toolResults.push({ tool: name, result });
-      if (isEmptyData(result)) {
-        limitations.push(
-          `Aucune donnée disponible dans la plateforme pour la demande (outil « ${name} »).`,
-        );
-      }
-    } catch (err) {
-      if (err instanceof ZodError) {
-        limitations.push(`Paramètres invalides pour l'outil « ${name} ».`);
-        continue;
-      }
-      if (isNotFound(err)) {
-        limitations.push(
-          `Aucune donnée disponible dans la plateforme pour la demande (outil « ${name} »).`,
-        );
-        continue;
-      }
-      logger.warn({ err, tool: name }, "Outil IA : échec d'exécution");
-      limitations.push(`Données de l'outil « ${name} » indisponibles pour cette analyse.`);
-    }
+    await runTool(name, context);
   }
 
-  for (const entry of toolResults) {
-    const content = serializeToolResults([entry]).slice(0, 500);
-    await aiRepository.addMessage({
-      conversationId,
-      role: 'OUTIL',
-      content,
-      tokenCount: estimateTokens(content),
-      metadata: { tool: entry.tool },
-    });
-  }
+  await persistToolResults(conversationId, toolResults);
 
   return {
     toolResults,
     limitations,
+    collected,
     dataTimestamp: computeDataTimestamp(toolResults),
     history,
   };
@@ -747,56 +1069,35 @@ async function prepareTurn(
 
 export const aiService = {
   async chat(user: AuthUser, input: AiChatBody): Promise<AIChatResult> {
-    const provider = getAIProvider();
-    if (!provider.isAvailable()) {
-      throw new AppError('Service IA non configuré.', 503);
+    // Un tour se déroule en un seul endroit : `chatStream`. La variante d'un
+    // bloc se contente d'accumuler les morceaux — les deux chemins ne peuvent
+    // donc pas diverger (mêmes outils, même datation, même persistance).
+    let conversationId = '';
+    let answer = '';
+    let internalSources: string[] = [];
+    let dataTimestamp: string | null = null;
+    let limitations: string[] = [];
+
+    for await (const event of this.chatStream(user, input)) {
+      if (event.type === 'meta') {
+        ({ conversationId, internalSources, dataTimestamp, limitations } = event.data);
+      } else if (event.type === 'chunk') {
+        answer += event.data.text;
+      } else {
+        conversationId = event.data.conversationId;
+      }
     }
 
-    const conversationId = await this.resolveOrCreateConversation(
-      user,
-      input.conversationId,
-      input.message,
-    );
-
-    const turn = await prepareTurn(user, input.message, conversationId);
-
-    const aiResponse = await provider.generateAnswer({
-      question: input.message,
-      systemPrompt: SYSTEM_PROMPT,
-      context: {
-        toolResults: turn.toolResults,
-        dataTimestamp: turn.dataTimestamp,
-        history: turn.history,
-      },
-    });
-
-    const internalSources = turn.toolResults.map((entry) => entry.tool);
-    const answer = aiResponse.answer;
-
-    await aiRepository.addMessage({
-      conversationId,
-      role: 'ASSISTANT',
-      content: answer,
-      tokenCount: estimateTokens(answer),
-      metadata: { internalSources, dataTimestamp: turn.dataTimestamp },
-    });
-    await aiRepository.touchConversation(conversationId);
-
-    return {
-      conversationId,
-      answer,
-      internalSources,
-      dataTimestamp: turn.dataTimestamp,
-      limitations: turn.limitations,
-    };
+    return { conversationId, answer, internalSources, dataTimestamp, limitations };
   },
 
   /**
-   * Variante en flux de `chat` : mêmes étapes de préparation (conversation,
-   * outils, datation), puis émission d'événements SSE. Les métadonnées partent
-   * en tête de flux car elles sont déjà connues ; le texte suit morceau par
-   * morceau ; la réponse complète n'est persistée qu'à la fin, pour ne pas
-   * stocker un message tronqué si le client interrompt la connexion.
+   * Tour de conversation en flux : préparation (conversation, outils, datation),
+   * puis événements SSE. Les métadonnées partent **avant** le premier morceau de
+   * texte, au moment précis où les données du tour sont figées — c'est-à-dire
+   * après l'exécution des outils que le modèle a pu demander. La réponse
+   * complète n'est persistée qu'à la fin, pour ne pas stocker un message
+   * tronqué si le client interrompt la connexion.
    */
   async *chatStream(
     user: AuthUser,
@@ -814,21 +1115,11 @@ export const aiService = {
     );
 
     const turn = await prepareTurn(user, input.message, conversationId);
-    const internalSources = turn.toolResults.map((entry) => entry.tool);
-
-    yield {
-      type: 'meta',
-      data: {
-        conversationId,
-        internalSources,
-        dataTimestamp: turn.dataTimestamp,
-        limitations: turn.limitations,
-      },
-    };
 
     const request: AIRequest = {
       question: input.message,
       systemPrompt: SYSTEM_PROMPT,
+      tools: TOOL_DECLARATIONS,
       context: {
         toolResults: turn.toolResults,
         dataTimestamp: turn.dataTimestamp,
@@ -836,17 +1127,60 @@ export const aiService = {
       },
     };
 
-    let answer = '';
-    if (provider.generateAnswerStream) {
-      for await (const chunk of provider.generateAnswerStream(request)) {
-        answer += chunk;
-        yield { type: 'chunk', data: { text: chunk } };
+    const context: ToolRunContext = {
+      user,
+      message: input.message,
+      collected: turn.collected,
+      toolResults: turn.toolResults,
+      limitations: turn.limitations,
+    };
+    const alreadyRun = new Set(turn.toolResults.map((entry) => entry.tool));
+
+    const executeCalls = async (calls: AIToolCallProposal[]): Promise<string[]> => {
+      const before = turn.toolResults.length;
+      const executed = await runModelToolCalls(calls, context, alreadyRun);
+
+      const additions = turn.toolResults.slice(before);
+      if (additions.length > 0) {
+        await persistToolResults(conversationId, additions);
+        // Les outils demandés par le modèle portent peut-être des données plus
+        // récentes : la date transmise au second appel doit en tenir compte.
+        request.context.dataTimestamp = computeDataTimestamp(turn.toolResults);
       }
-    } else {
-      // Fournisseur sans support du flux : la réponse arrive d'un seul bloc.
-      const response = await provider.generateAnswer(request);
-      answer = response.answer;
-      yield { type: 'chunk', data: { text: answer } };
+
+      return executed;
+    };
+
+    let answer = '';
+    let dataTimestamp = turn.dataTimestamp;
+    let metaSent = false;
+
+    for await (const event of resolveAnswer(provider, request, executeCalls)) {
+      if (event.type === 'ready') {
+        // Données figées : on date et on annonce les sources réellement utilisées.
+        dataTimestamp = computeDataTimestamp(turn.toolResults);
+        request.context.dataTimestamp = dataTimestamp;
+        metaSent = true;
+        yield {
+          type: 'meta',
+          data: {
+            conversationId,
+            internalSources: turn.toolResults.map((entry) => entry.tool),
+            dataTimestamp,
+            limitations: turn.limitations,
+          },
+        };
+        continue;
+      }
+
+      answer += event.text;
+      yield { type: 'chunk', data: { text: event.text } };
+    }
+
+    if (!metaSent) {
+      // Cas limite : aucun texte n'a été produit (une erreur a été levée juste
+      // avant, sinon `resolveAnswer` aurait signalé un flux vide).
+      throw new AppError('Réponse vide du service IA.', 502);
     }
 
     await aiRepository.addMessage({
@@ -854,7 +1188,10 @@ export const aiService = {
       role: 'ASSISTANT',
       content: answer,
       tokenCount: estimateTokens(answer),
-      metadata: { internalSources, dataTimestamp: turn.dataTimestamp },
+      metadata: {
+        internalSources: turn.toolResults.map((entry) => entry.tool),
+        dataTimestamp,
+      },
     });
     await aiRepository.touchConversation(conversationId);
 

@@ -4052,6 +4052,10 @@ paths:
         - Réponse en un bloc par défaut (JSON) ; avec `stream: true`, la réponse est un flux
           `text/event-stream` dont les événements sont `meta`, `chunk`, `done` et, en cas
           d'échec après le démarrage du flux, `error`.
+        - Le contexte est assemblé côté serveur à partir de la question (socle déterministe) ;
+          le modèle peut en plus demander des outils de renseignement, mais leurs paramètres
+          sont revalidés par le serveur (jamais exécutés tels quels), les outils inconnus sont
+          ignorés et l'échange est borné à un seul aller-retour.
       security:
         - bearerAuth: []
       operationId: aiChat
@@ -4078,7 +4082,9 @@ paths:
                   description: |
                     Diffuser la réponse au fil de sa génération (Server-Sent Events) au lieu
                     de l'envoyer d'un bloc. Les données et la réponse restent identiques :
-                    seule la restitution change.
+                    seule la restitution change. Les métadonnées `meta` n'arrivent qu'une fois
+                    les données du tour figées — donc après les outils que le modèle a pu
+                    demander —, juste avant le premier morceau de texte.
             examples:
               aiQuestionExample:
                 $ref: '#/components/examples/aiQuestion'
@@ -4117,7 +4123,8 @@ paths:
                   `data:` contenant un objet JSON :
 
                   - `meta` : `{ conversationId, internalSources, dataTimestamp, limitations }`,
-                    émis en tête de flux (les outils sont exécutés avant la génération).
+                    émis avant le premier morceau de texte, une fois les données du tour figées
+                    (y compris les outils que le modèle a pu demander).
                   - `chunk` : `{ text }`, un morceau de la réponse.
                   - `done` : `{ conversationId }`, fin normale du flux.
                   - `error` : `{ message, status }`, échec survenu après le démarrage du flux.

@@ -519,6 +519,83 @@ describe('AI - réponse en flux (SSE)', () => {
       setAIProvider(mock);
     }
   });
+
+  it('exécute un outil réclamé par le modèle et l’annonce avant le texte', async () => {
+    // Message sans mot-clé : le socle déterministe ne retient que les trois
+    // outils de repli. `getHistoricalEvents` ne peut donc venir que du modèle.
+    mock.toolCalls = [{ name: 'getHistoricalEvents', args: {} }];
+    try {
+      const res = await chatStream(userA.token, 'Peux-tu m’aider ?');
+
+      expect(res.status).toBe(200);
+      const events = parseSse(res.text);
+      const types = events.map((event) => event.event);
+      expect(types[0]).toBe('meta');
+      expect(types[types.length - 1]).toBe('done');
+      expect(types).not.toContain('error');
+
+      const meta = JSON.parse(events[0].data) as { internalSources: string[] };
+      expect(meta.internalSources).toContain('getHistoricalEvents');
+      // La demande a été consommée une seule fois : aucun aller-retour de plus.
+      expect(mock.toolCalls).toEqual([]);
+
+      const answer = events
+        .filter((event) => event.event === 'chunk')
+        .map((event) => (JSON.parse(event.data) as { text: string }).text)
+        .join('');
+      expect(answer).toBe(mock.answer);
+    } finally {
+      mock.toolCalls = [];
+    }
+  });
+
+  it('expose aussi la source obtenue par le modèle en réponse JSON', async () => {
+    mock.toolCalls = [{ name: 'getHistoricalEvents', args: {} }];
+    try {
+      const res = await chat(userA.token, 'Peux-tu m’aider ?');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.internalSources).toContain('getHistoricalEvents');
+      expect(res.body.data.answer).toBe(mock.answer);
+    } finally {
+      mock.toolCalls = [];
+    }
+  });
+
+  it('n’exécute pas deux fois un outil déjà couvert par le socle', async () => {
+    mock.toolCalls = [{ name: 'getDashboardSummary', args: {} }];
+    try {
+      const res = await chatStream(userA.token, 'Peux-tu m’aider ?');
+      const events = parseSse(res.text);
+      expect(events.map((event) => event.event)).not.toContain('error');
+
+      const meta = JSON.parse(events[0].data) as { internalSources: string[] };
+      // Le socle de repli l’a déjà produit : il ne doit pas apparaître deux fois.
+      expect(
+        meta.internalSources.filter((source) => source === 'getDashboardSummary'),
+      ).toHaveLength(1);
+    } finally {
+      mock.toolCalls = [];
+    }
+  });
+
+  it('ignore un outil inconnu réclamé par le modèle', async () => {
+    mock.toolCalls = [{ name: 'dropEverything', args: {} }];
+    try {
+      const res = await chatStream(userA.token, 'Peux-tu m’aider ?');
+      expect(res.status).toBe(200);
+
+      const events = parseSse(res.text);
+      const types = events.map((event) => event.event);
+      expect(types).not.toContain('error');
+      expect(types[types.length - 1]).toBe('done');
+
+      const meta = JSON.parse(events[0].data) as { internalSources: string[] };
+      expect(meta.internalSources).not.toContain('dropEverything');
+    } finally {
+      mock.toolCalls = [];
+    }
+  });
 });
 
 describe('AI - rate limit', () => {

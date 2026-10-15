@@ -11,6 +11,7 @@ Documente l'intégration de l'assistant IA (Gemini) de MadaRisk Map : contexte, 
 - Modèle : `GEMINI_MODEL` (défaut `gemini-3.5-flash`), clé `GEMINI_API_KEY`. Un identifiant **retiré par l'éditeur** renvoie `502` avec un message explicite (« Modèle IA indisponible… »), et non l'erreur générique.
 - **Si la clé n'est pas configurée, l'endpoint répond `503`** (« Assistant IA non configuré ») — l'application ne crash pas.
 - Les conversations sont persistées (`ai_conversations`, `ai_messages`) pour permettre le fil de discussion (`conversationId`).
+- Le contexte vient d'un **socle d'outils déterministe** (mots-clés), que le modèle peut compléter en **demandant un outil** s'il manque une donnée — voir « Outils de renseignement ».
 
 ## API
 
@@ -21,15 +22,34 @@ Documente l'intégration de l'assistant IA (Gemini) de MadaRisk Map : contexte, 
 | GET | `/ai/conversations/:id` | Détail (messages) |
 | DELETE | `/ai/conversations/:id` | Suppression — 204 |
 
+## Outils de renseignement
+
+L'assistant ne parle pas à la base : il ne voit que ce que le backend lui transmet. Deux mécanismes alimentent ce contexte, dans cet ordre :
+
+1. **Socle déterministe** — les outils déduits de la question par mots-clés (`TOOL_SELECTORS`, `selectTools()`) sont exécutés d'office, comme avant. C'est ce qui rend le comportement courant prévisible et testable sans modèle : une question sur les alertes déclenche `getPublishedAlerts`, etc. Sans mot-clé reconnu, un jeu de repli (tableau de bord, événements actifs, alertes publiées) est utilisé.
+2. **Function calling (demande du modèle)** — les onze outils sont **déclarés au modèle** (`TOOL_DECLARATIONS`), chacun avec son schéma de paramètres. Si le socle ne suffit pas pour répondre, le modèle peut réclamer un outil précis **au lieu de répondre « aucune donnée »**. Le serveur l'exécute, puis repose la question **une seule fois** — ce second appel est fait **sans déclarations**, ce qui borne définitivement l'échange : aucun ping-pong d'appels ne peut s'installer.
+
+Garde-fous appliqués à toute demande d'outil venant du modèle :
+
+- **revalidation systématique** — les paramètres décrits au modèle ne valident rien : chaque outil revalide ce qu'il reçoit par son schéma Zod, et tout ce qui vient du modèle est d'abord borné (UUID au bon format, texte tronqué, entier dans l'intervalle) ;
+- **identifiants résolus côté serveur** — le modèle ne connaît pas nos UUID : il fournit ce qu'il sait (`q`, `limit`) et les identifiants sont résolus à partir des résultats déjà obtenus (ou laissés vides), jamais inventés ;
+- **outils inconnus ignorés** — un nom d'outil hors liste est journalisé et ignoré (aucune erreur, aucune exécution) ;
+- **pas de doublon** — un outil déjà couvert par le socle n'est pas rejoué (seule exception : `searchTerritories`, où un autre nom recherché change réellement la requête) ; un même outil n'est pas exécuté deux fois dans le même tour ;
+- **plafond** — au plus **6 outils** exécutés sur demande du modèle par tour ;
+- **pas de texte avant un appel** — un morceau de texte déjà émis ne peut pas être « annulé » : toute demande d'outil reçue après du texte est ignorée, et l'appel sans texte est la règle imposée par le prompt système ;
+- **datation recalculée** — après exécution, `dataTimestamp` est recalculé et le message `OUTIL` est persisté ; les métadonnées annoncent donc les sources réellement utilisées.
+
+> **Budget** : le chemin courant (socle suffisant) consomme **un seul appel** au modèle ; seul le cas « donnée manquante » en consomme deux. C'est délibéré — l'offre gratuite du fournisseur est limitée à **5 requêtes/minute/projet**, ce qui rend une variante « planification puis réponse » (deux appels systématiques) intenable en démonstration.
+
 ## Réponse en flux
 
-`POST /ai/chat` accepte `stream: true` et renvoie alors un flux **Server-Sent Events** : la réponse s'affiche au fil de sa génération au lieu d'attendre la fin. La préparation du tour et la réponse produite sont **identiques** aux deux chemins (même prompt, mêmes outils, même persistance) : seule la restitution change.
+`POST /ai/chat` accepte `stream: true` et renvoie alors un flux **Server-Sent Events** : la réponse s'affiche au fil de sa génération au lieu d'attendre la fin. Le tour est **entièrement produit par `chatStream`** ; la réponse JSON (`chat`) se contente d'accumuler ce même flux. Les deux chemins ne peuvent donc pas diverger : mêmes outils, même datation, même persistance.
 
 Événements, dans l'ordre :
 
 | Événement | Données | Rôle |
 |---|---|---|
-| `meta` | `conversationId`, `internalSources`, `dataTimestamp`, `limitations` | Émis en tête : les outils sont exécutés **avant** la génération, ces informations sont donc déjà connues. |
+| `meta` | `conversationId`, `internalSources`, `dataTimestamp`, `limitations` | Émis **juste avant le premier morceau de texte**, une fois les données du tour figées : les outils du socle ont été exécutés, et ceux que le modèle a pu demander aussi. |
 | `chunk` | `text` | Un morceau de la réponse modèle (répété). |
 | `done` | `conversationId` | Fin normale. |
 | `error` | `message`, `status` | Échec survenu **après** le démarrage du flux. |
@@ -77,6 +97,7 @@ Les protections **réellement appliquées aujourd'hui** sont celles du prompt sy
 - **Règle 7** — les données HISTORIQUES sont toujours présentées comme passées et sourcées, jamais comme une alerte active.
 - **Détection de prompt-injection** — motifs `INJECTION_PATTERNS` (regex) appliqués à la question ; en cas de correspondance, une « limitation » est ajoutée à la réponse.
 - **Seuils de sûreté du fournisseur** — les quatre catégories de contenu nuisible (`HATE_SPEECH`, `DANGEROUS_CONTENT`, `HARASSMENT`, `SEXUALLY_EXPLICIT`) sont transmises explicitement au modèle (`SAFETY_SETTINGS`, `src/services/gemini.provider.ts`), à `BLOCK_MEDIUM_AND_ABOVE`. Sans réglage explicite, le comportement dépendrait des valeurs par défaut de l'éditeur, susceptibles de changer d'une version de modèle à l'autre — un paramètre invisible déciderait alors de ce que l'assistant accepte de dire. Le seuil est choisi pour ne pas bloquer le vocabulaire de crise (catastrophes, victimes, évacuations) tout en bloquant les contenus manifestement haineux, dangereux, harcelants ou sexuels.
+- **Function calling non privilégié** — une demande d'outil formulée par le modèle ne lui donne aucun pouvoir supplémentaire : elle passe par le **même** chemin que le socle déterministe (même résolution d'identifiants côté serveur, même revalidation Zod, même gestion d'erreur transformée en « limitation »). Le modèle choisit *quel* outil, jamais *comment* il est exécuté ; un nom inconnu est ignoré, les doublons et les demandes reçues après du texte aussi, et l'échange est borné. Voir « Outils de renseignement ».
 
 > **Limite** : ces seuils sont ceux du fournisseur, appliqués **côté Google**. Ils ne remplacent pas les règles du prompt système, qui restent la première ligne de défense (pas d'invention, pas d'écriture, données autorisées uniquement).
 
@@ -110,4 +131,4 @@ Les protections **réellement appliquées aujourd'hui** sont celles du prompt sy
 
 Le module dispose de tests couvrant : réponse non configurée (`503`), limite de débit (`429`), accès aux conversations par rôle (propriétaire vs tiers `404`), chaîne « question → réponse persistée », réinjection de l'historique (et historique vide sur conversation neuve) et datation des données (`dataTimestamp` renseigné dès qu'un outil renvoie un horodatage). Les fonctions `buildMemory()` et `computeDataTimestamp()` sont couvertes par des tests unitaires dédiés (`tests/unit/ai-memory.test.ts`).
 
-Le **flux** est couvert par des tests d'intégration (`tests/integration/ai.test.ts`) : ordre `meta` → `chunk`(×n) → `done`, recomposition exacte de la réponse, persistance du message **complet** (et non d'un fragment), poursuite d'une conversation existante, erreur de préparation renvoyée en **statut HTTP** (et non en événement) et panne survenue en cours de flux signalée par un événement `error`. La logique du fournisseur (`src/services/gemini.provider.ts`) est couverte unitairement (`tests/unit/gemini-provider-stream.test.ts`) sur un SDK simulé : morceaux vides ignorés, seuils de sûreté transmis aux deux chemins, délai d'inactivité → `504`, reprise **avant** tout morceau, absence de reprise **après** émission, et message explicite pour un modèle retiré (`502`). Côté frontend, `src/api/ai-stream.test.ts` couvre la lecture de frames découpées en plein milieu, la requête envoyée (`stream: true`, jeton) et la conversion des échecs en `ApiClientError`.
+Le **flux** est couvert par des tests d'intégration (`tests/integration/ai.test.ts`) : ordre `meta` → `chunk`(×n) → `done`, recomposition exacte de la réponse, persistance du message **complet** (et non d'un fragment), poursuite d'une conversation existante, erreur de préparation renvoyée en **statut HTTP** (et non en événement) et panne survenue en cours de flux signalée par un événement `error`. Le **function calling** y est couvert également : un outil demandé par le modèle est exécuté et annoncé dans `internalSources` (en flux **et** en JSON), un outil déjà couvert par le socle n'est pas rejoué, et un outil inconnu est ignoré sans erreur. La logique du fournisseur (`src/services/gemini.provider.ts`) est couverte unitairement (`tests/unit/gemini-provider-stream.test.ts`) sur un SDK simulé : morceaux vides ignorés, seuils de sûreté transmis aux deux chemins, délai d'inactivité → `504`, reprise **avant** tout morceau, absence de reprise **après** émission, message explicite pour un modèle retiré (`502`), déclarations d'outils et mode `AUTO` transmis au modèle, morceau porteur d'un appel d'outil traduit en pas `toolCalls`, morceau filtré par la sûreté neutralisé et appel reçu après du texte ignoré. Côté frontend, `src/api/ai-stream.test.ts` couvre la lecture de frames découpées en plein milieu, la requête envoyée (`stream: true`, jeton) et la conversion des échecs en `ApiClientError`.

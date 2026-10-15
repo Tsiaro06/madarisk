@@ -3,13 +3,16 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 const sdk = vi.hoisted(() => ({
   generateContent: vi.fn(),
   generateContentStream: vi.fn(),
+  /** Options passées à `getGenerativeModel` (outils déclarés, etc.). */
+  modelParams: [] as Array<Record<string, unknown>>,
 }));
 
 // Le SDK Gemini est remplacé par un double : ces tests portent sur la logique
 // du fournisseur (morceaux, délai d'inactivité, reprise), pas sur le réseau.
 vi.mock('@google/generative-ai', () => {
   class GoogleGenerativeAI {
-    getGenerativeModel(): unknown {
+    getGenerativeModel(params: Record<string, unknown>): unknown {
+      sdk.modelParams.push(params);
       return {
         generateContent: sdk.generateContent,
         generateContentStream: sdk.generateContentStream,
@@ -19,6 +22,18 @@ vi.mock('@google/generative-ai', () => {
 
   return {
     GoogleGenerativeAI,
+    SchemaType: {
+      OBJECT: 'OBJECT',
+      STRING: 'STRING',
+      INTEGER: 'INTEGER',
+      NUMBER: 'NUMBER',
+    },
+    FunctionCallingMode: {
+      MODE_UNSPECIFIED: 'MODE_UNSPECIFIED',
+      AUTO: 'AUTO',
+      ANY: 'ANY',
+      NONE: 'NONE',
+    },
     HarmCategory: {
       HARM_CATEGORY_HATE_SPEECH: 'HARM_CATEGORY_HATE_SPEECH',
       HARM_CATEGORY_DANGEROUS_CONTENT: 'HARM_CATEGORY_DANGEROUS_CONTENT',
@@ -33,7 +48,7 @@ vi.mock('@google/generative-ai', () => {
 
 import { env } from '../../src/config/env';
 import { GeminiAIProvider } from '../../src/services/gemini.provider';
-import type { AIRequest } from '../../src/types/ai.types';
+import type { AIAnswerStep, AIRequest, AIToolDeclaration } from '../../src/types/ai.types';
 
 const request: AIRequest = {
   question: 'Quelles sont les communes prioritaires ?',
@@ -51,6 +66,13 @@ function streamOf(texts: string[]): AsyncGenerator<{ text: () => string }> {
     for (const text of texts) {
       yield { text: () => text };
     }
+  })();
+}
+
+/** Flux de morceaux déjà formés (texte, appels d'outils, morceau filtré). */
+function chunkStream<T>(chunks: T[]): AsyncGenerator<T> {
+  return (async function* () {
+    for (const chunk of chunks) yield chunk;
   })();
 }
 
@@ -73,6 +95,7 @@ const provider = new GeminiAIProvider('clef-de-test', 'gemini-test');
 beforeEach(() => {
   sdk.generateContent.mockReset();
   sdk.generateContentStream.mockReset();
+  sdk.modelParams.length = 0;
 });
 
 afterEach(() => {
@@ -166,5 +189,126 @@ describe('GeminiAIProvider - erreurs non transitoires', () => {
       message: expect.stringContaining('Modèle IA indisponible'),
     });
     expect(sdk.generateContent).toHaveBeenCalledTimes(1);
+  });
+});
+
+const toolDeclarations: AIToolDeclaration[] = [
+  {
+    name: 'searchTerritories',
+    description: 'Recherche de districts et de communes par nom.',
+    parameters: {
+      type: 'object',
+      properties: { q: { type: 'string', description: 'Nom recherché.' } },
+      required: ['q'],
+    },
+  },
+  { name: 'getDashboardSummary', description: 'Synthèse globale.' },
+];
+
+/** Morceau porteur d'un appel d'outil, comme ceux du SDK. */
+function toolCallChunk(calls: Array<{ name: string; args?: object }>) {
+  return {
+    text: (): string => {
+      throw new Error('pas de texte dans ce morceau');
+    },
+    functionCalls: () => calls,
+  };
+}
+
+/** Morceau dont les appels d'outils lèvent (candidat filtré par la sûreté). */
+function blockedChunk(text: string) {
+  return {
+    text: () => text,
+    functionCalls: () => {
+      throw new Error('candidat bloqué');
+    },
+  };
+}
+
+async function collectSteps(
+  generator: AsyncGenerator<AIAnswerStep, void, unknown>,
+): Promise<AIAnswerStep[]> {
+  const steps: AIAnswerStep[] = [];
+  for await (const step of generator) steps.push(step);
+  return steps;
+}
+
+describe('GeminiAIProvider - function calling', () => {
+  it('déclare les outils et le mode AUTO quand la requête en fournit', async () => {
+    sdk.generateContentStream.mockResolvedValue({ stream: streamOf(['ok']) });
+
+    await collectSteps(
+      provider.generateAnswerStreamWithTools({ ...request, tools: toolDeclarations }),
+    );
+
+    const params = sdk.modelParams[0];
+    const tools = params.tools as Array<{ functionDeclarations: Array<Record<string, unknown>> }>;
+    expect(tools).toHaveLength(1);
+    expect(tools[0].functionDeclarations.map((d) => d.name)).toEqual([
+      'searchTerritories',
+      'getDashboardSummary',
+    ]);
+    expect(tools[0].functionDeclarations[0].parameters).toMatchObject({
+      type: 'OBJECT',
+      properties: { q: { type: 'STRING' } },
+      required: ['q'],
+    });
+    expect(params.toolConfig).toEqual({ functionCallingConfig: { mode: 'AUTO' } });
+  });
+
+  it('ne déclare aucun outil si la requête n’en porte pas', async () => {
+    sdk.generateContentStream.mockResolvedValue({ stream: streamOf(['ok']) });
+
+    await collect(provider.generateAnswerStream(request));
+
+    expect(sdk.modelParams[0].tools).toBeUndefined();
+    expect(sdk.modelParams[0].toolConfig).toBeUndefined();
+  });
+
+  it('émet un pas « toolCalls » quand le modèle réclame des outils', async () => {
+    sdk.generateContentStream.mockResolvedValue({
+      stream: chunkStream([
+        toolCallChunk([{ name: 'searchTerritories', args: { q: 'Vohimarina' } }]),
+      ]),
+    });
+
+    const steps = await collectSteps(
+      provider.generateAnswerStreamWithTools({ ...request, tools: toolDeclarations }),
+    );
+
+    expect(steps).toEqual([
+      { type: 'toolCalls', calls: [{ name: 'searchTerritories', args: { q: 'Vohimarina' } }] },
+    ]);
+  });
+
+  it('neutralise un morceau dont les appels d’outils sont filtrés par la sûreté', async () => {
+    sdk.generateContentStream.mockResolvedValue({
+      stream: chunkStream([blockedChunk('Réponse '), blockedChunk('normale.')]),
+    });
+
+    const steps = await collectSteps(
+      provider.generateAnswerStreamWithTools({ ...request, tools: toolDeclarations }),
+    );
+
+    // Un filtrage de sûreté n'est pas une demande d'outil : le texte passe.
+    expect(steps).toEqual([
+      { type: 'text', text: 'Réponse ' },
+      { type: 'text', text: 'normale.' },
+    ]);
+  });
+
+  it('ignore un appel d’outil reçu après du texte déjà émis', async () => {
+    sdk.generateContentStream.mockResolvedValue({
+      stream: chunkStream([
+        { text: (): string => 'Voici la réponse. ' },
+        toolCallChunk([{ name: 'getDashboardSummary' }]),
+      ]),
+    });
+
+    const steps = await collectSteps(
+      provider.generateAnswerStreamWithTools({ ...request, tools: toolDeclarations }),
+    );
+
+    expect(steps).toEqual([{ type: 'text', text: 'Voici la réponse. ' }]);
   });
 });
