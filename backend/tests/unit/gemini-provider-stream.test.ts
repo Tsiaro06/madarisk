@@ -236,6 +236,102 @@ describe('GeminiAIProvider - quota du fournisseur (429)', () => {
   });
 });
 
+describe('GeminiAIProvider - repli entre modèles', () => {
+  const fallbackProvider = new GeminiAIProvider('clef-de-test', 'gemini-principal', [
+    'gemini-repli',
+    'gemini-dernier',
+  ]);
+
+  /** Modèles réellement demandés au SDK, dans l'ordre des tentatives. */
+  function requestedModels(): unknown[] {
+    return sdk.modelParams.map((params) => params.model);
+  }
+
+  it('replie sur le suivant quand le quota du principal est épuisé', async () => {
+    sdk.generateContent
+      .mockRejectedValueOnce(new Error(QUOTA_MESSAGE))
+      .mockResolvedValueOnce({ response: { text: () => 'Réponse du repli' } });
+
+    const result = await fallbackProvider.generateAnswer(request);
+
+    expect(result.answer).toBe('Réponse du repli');
+    expect(requestedModels()).toEqual(['gemini-principal', 'gemini-repli']);
+  });
+
+  it('replie aussi quand le principal a été retiré par l’éditeur', async () => {
+    sdk.generateContent
+      .mockRejectedValueOnce(
+        new Error('[404 Not Found] models/gemini-principal is no longer available'),
+      )
+      .mockResolvedValueOnce({ response: { text: () => 'Réponse du repli' } });
+
+    await expect(fallbackProvider.generateAnswer(request)).resolves.toMatchObject({
+      answer: 'Réponse du repli',
+    });
+  });
+
+  it('essaie tous les replis avant d’échouer, en gardant le délai du fournisseur', async () => {
+    sdk.generateContent.mockRejectedValue(new Error(QUOTA_MESSAGE));
+
+    await expect(fallbackProvider.generateAnswer(request)).rejects.toMatchObject({
+      statusCode: 429,
+      retryAfterSeconds: 23454,
+    });
+    expect(requestedModels()).toEqual(['gemini-principal', 'gemini-repli', 'gemini-dernier']);
+  });
+
+  it('ne bascule pas sur une panne de service', async () => {
+    env.GEMINI_MAX_RETRIES = 0;
+    sdk.generateContent.mockRejectedValue(new Error('[500 Internal Server Error] oops'));
+
+    await expect(fallbackProvider.generateAnswer(request)).rejects.toMatchObject({
+      statusCode: 502,
+    });
+    // Panne de service, non imputable au modèle : aucun repli.
+    expect(requestedModels()).toEqual(['gemini-principal']);
+  });
+
+  it('replie quand le fournisseur annonce une surcharge du modèle', async () => {
+    env.GEMINI_MAX_RETRIES = 0;
+    sdk.generateContent
+      .mockRejectedValueOnce(
+        new Error('[503 Service Unavailable] This model is currently experiencing high demand.'),
+      )
+      .mockResolvedValueOnce({ response: { text: () => 'Réponse du repli' } });
+
+    const result = await fallbackProvider.generateAnswer(request);
+
+    expect(result.answer).toBe('Réponse du repli');
+    expect(requestedModels()).toEqual(['gemini-principal', 'gemini-repli']);
+  });
+
+  it('replie sur le chemin en flux tant que rien n’a été émis', async () => {
+    sdk.generateContentStream
+      .mockRejectedValueOnce(new Error(QUOTA_MESSAGE))
+      .mockResolvedValueOnce({ stream: streamOf(['Réponse ', 'du repli.']) });
+
+    const answer = await collect(fallbackProvider.generateAnswerStream(request));
+
+    expect(answer).toBe('Réponse du repli.');
+    expect(requestedModels()).toEqual(['gemini-principal', 'gemini-repli']);
+  });
+
+  it('ne change pas de modèle après un premier morceau émis', async () => {
+    sdk.generateContentStream.mockResolvedValue({
+      stream: (async function* () {
+        yield { text: (): string => 'Début ' };
+        throw new Error(QUOTA_MESSAGE);
+      })(),
+    });
+
+    await expect(collect(fallbackProvider.generateAnswerStream(request))).rejects.toMatchObject({
+      statusCode: 429,
+    });
+    // Changer de modèle après coup dupliquerait le texte déjà émis.
+    expect(requestedModels()).toEqual(['gemini-principal']);
+  });
+});
+
 const toolDeclarations: AIToolDeclaration[] = [
   {
     name: 'searchTerritories',

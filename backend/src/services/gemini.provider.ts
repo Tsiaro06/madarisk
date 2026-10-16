@@ -115,6 +115,32 @@ function isRetryable(err: unknown): boolean {
   );
 }
 
+/**
+ * Le modèle ne peut pas servir : quota épuisé (429), identifiant retiré par
+ * l'éditeur (404), ou surcharge annoncée par le fournisseur (503 « This model is
+ * currently experiencing high demand »). Or le plafond du forfait est par modèle
+ * et ce 503 désigne explicitement *le* modèle : dans les trois cas, un autre
+ * identifiant configuré peut encore répondre — c'est le rôle de
+ * `GEMINI_FALLBACK_MODELS`.
+ *
+ * Les autres cas restent hors de cette bascule : `500`/`502`/`504` et les pannes
+ * réseau sont des problèmes de service, déjà couverts par la reprise sur le même
+ * modèle ; aucune raison d'ajouter des appels ailleurs.
+ */
+function isModelUnavailable(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  return (
+    msg.includes('429') ||
+    msg.includes('resource exhausted') ||
+    msg.includes('404') ||
+    msg.includes('not found') ||
+    msg.includes('no longer available') ||
+    msg.includes('503') ||
+    msg.includes('high demand') ||
+    msg.includes('overloaded')
+  );
+}
+
 function toAppError(err: unknown): AppError {
   const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
   if (msg.includes('timeout') || msg.includes('abort') || msg.includes('deadline')) {
@@ -271,11 +297,17 @@ function chunkToolCalls(chunk: unknown): AIToolCallProposal[] {
 
 export class GeminiAIProvider implements AIProvider {
   private readonly client: GoogleGenerativeAI;
-  private readonly model: string;
+  /**
+   * Identifiants essayés dans l'ordre : le principal, puis les replis. Le quota
+   * du fournisseur est journalier ET par modèle : un identifiant retiré (404) ou
+   * épuisé (429) ne condamne donc pas les autres, au lieu de rendre l'assistant
+   * indisponible pour la journée.
+   */
+  private readonly models: string[];
 
-  constructor(apiKey: string, model: string) {
+  constructor(apiKey: string, model: string, fallbackModels: string[] = []) {
     this.client = new GoogleGenerativeAI(apiKey);
-    this.model = model;
+    this.models = [model, ...fallbackModels].map((name) => name.trim()).filter(Boolean);
   }
 
   isAvailable(): boolean {
@@ -283,45 +315,67 @@ export class GeminiAIProvider implements AIProvider {
   }
 
   async generateAnswer(input: AIRequest): Promise<AIResponse> {
-    const model = this.buildModel(input, false);
     const contents = buildContents(input);
-    const maxRetries = env.GEMINI_MAX_RETRIES;
     let lastError: unknown;
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const result = await withTimeout(
-          model.generateContent({
-            contents,
-            systemInstruction: input.systemPrompt,
-            safetySettings: SAFETY_SETTINGS,
-          }),
-          env.GEMINI_TIMEOUT_MS,
-        );
+    for (let index = 0; index < this.models.length; index++) {
+      const model = this.buildModel(this.models[index], input, false);
+      const maxRetries = env.GEMINI_MAX_RETRIES;
 
-        const answer = result.response.text();
-        return {
-          answer,
-          internalSources: [],
-          dataTimestamp: input.context.dataTimestamp,
-          limitations: [],
-        };
-      } catch (err) {
-        lastError = err;
-        if (!isRetryable(err) || attempt === maxRetries) break;
-        logger.warn({ attempt, err }, 'Fournisseur IA : tentative échouée, nouvelle tentative…');
-        await sleep(500 * 2 ** attempt);
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          const result = await withTimeout(
+            model.generateContent({
+              contents,
+              systemInstruction: input.systemPrompt,
+              safetySettings: SAFETY_SETTINGS,
+            }),
+            env.GEMINI_TIMEOUT_MS,
+          );
+
+          const answer = result.response.text();
+          return {
+            answer,
+            internalSources: [],
+            dataTimestamp: input.context.dataTimestamp,
+            limitations: [],
+          };
+        } catch (err) {
+          lastError = err;
+          if (!isRetryable(err) || attempt === maxRetries) break;
+          logger.warn({ attempt, err }, 'Fournisseur IA : tentative échouée, nouvelle tentative…');
+          await sleep(500 * 2 ** attempt);
+        }
       }
+
+      if (!this.switchToFallback(index, lastError)) break;
     }
 
     throw toAppError(lastError);
   }
 
+  /**
+   * Passe au modèle suivant quand l'échec est propre au modèle (quota épuisé,
+   * identifiant retiré) et qu'un repli reste disponible. La bascule est
+   * journalisée : invisible pour l'utilisateur, elle doit rester visible pour
+   * l'exploitant.
+   *
+   * Vrai = un repli reste à essayer ; faux = c'était le dernier modèle.
+   */
+  private switchToFallback(index: number, err: unknown): boolean {
+    if (index >= this.models.length - 1 || !isModelUnavailable(err)) return false;
+    logger.warn(
+      { from: this.models[index], to: this.models[index + 1] },
+      'Fournisseur IA : modèle indisponible, repli sur le suivant',
+    );
+    return true;
+  }
+
   /** Modèle utilisé pour un appel, avec ou sans déclarations d'outils. */
-  private buildModel(input: AIRequest, withTools: boolean) {
+  private buildModel(model: string, input: AIRequest, withTools: boolean) {
     const declarations = withTools && input.tools?.length ? input.tools : undefined;
     return this.client.getGenerativeModel({
-      model: this.model,
+      model,
       generationConfig: {
         temperature: 0.3,
         maxOutputTokens: 2048,
@@ -346,8 +400,8 @@ export class GeminiAIProvider implements AIProvider {
    *   alors qu'un flux figé échoue. Le premier morceau inclut le temps de
    *   réflexion du modèle : son budget est donc celui du chemin non flux.
    * - Une réponse déjà partiellement émise ne peut pas être rejouée sans
-   *   dupliquer le texte : la nouvelle tentative n'a donc lieu qu'avant tout pas
-   *   sorti.
+   *   dupliquer le texte : ni la reprise ni le repli sur un autre modèle n'ont
+   *   lieu après le premier morceau ; ils restent possibles avant.
    * - Un appel d'outil précède en général tout texte : il est émis tel quel et
    *   le flux abandonné (le service exécutera l'outil, puis reposera la question
    *   sans outils). Des appels survenus APRÈS du texte sont ignorés : on a déjà
@@ -357,61 +411,68 @@ export class GeminiAIProvider implements AIProvider {
     input: AIRequest,
     withTools: boolean,
   ): AsyncGenerator<AIAnswerStep, void, unknown> {
-    const model = this.buildModel(input, withTools);
     const contents = buildContents(input);
-    const maxRetries = env.GEMINI_MAX_RETRIES;
     let lastError: unknown;
     let emitted = false;
 
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-      try {
-        const streamResult = await model.generateContentStream({
-          contents,
-          systemInstruction: input.systemPrompt,
-          safetySettings: SAFETY_SETTINGS,
-        });
+    for (let index = 0; index < this.models.length; index++) {
+      const model = this.buildModel(this.models[index], input, withTools);
+      const maxRetries = env.GEMINI_MAX_RETRIES;
 
-        const iterator = streamResult.stream[Symbol.asyncIterator]();
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          for (;;) {
-            const next = await withTimeout(iterator.next(), env.GEMINI_TIMEOUT_MS);
-            if (next.done) break;
+          const streamResult = await model.generateContentStream({
+            contents,
+            systemInstruction: input.systemPrompt,
+            safetySettings: SAFETY_SETTINGS,
+          });
 
-            const calls = chunkToolCalls(next.value);
-            if (calls.length > 0 && !emitted) {
-              emitted = true;
-              yield { type: 'toolCalls', calls };
-              return;
-            }
-
-            const text = chunkText(next.value);
-            if (text) {
-              emitted = true;
-              yield { type: 'text', text };
-            }
-          }
-        } finally {
-          // On arrête le flux SANS attendre sa clôture : un générateur suspendu
-          // sur une lecture réseau qui ne revient jamais ne rendrait pas la
-          // main, et l'attente transformerait un simple dépassement de délai en
-          // blocage définitif de la requête.
+          const iterator = streamResult.stream[Symbol.asyncIterator]();
           try {
-            void iterator.return?.(undefined)?.catch(() => undefined);
-          } catch (err) {
-            logger.debug({ err }, 'Flux IA : libération du flux interrompue');
-          }
-        }
+            for (;;) {
+              const next = await withTimeout(iterator.next(), env.GEMINI_TIMEOUT_MS);
+              if (next.done) break;
 
-        return;
-      } catch (err) {
-        lastError = err;
-        if (emitted || !isRetryable(err) || attempt === maxRetries) break;
-        logger.warn(
-          { attempt, err },
-          'Fournisseur IA (flux) : tentative échouée, nouvelle tentative…',
-        );
-        await sleep(500 * 2 ** attempt);
+              const calls = chunkToolCalls(next.value);
+              if (calls.length > 0 && !emitted) {
+                emitted = true;
+                yield { type: 'toolCalls', calls };
+                return;
+              }
+
+              const text = chunkText(next.value);
+              if (text) {
+                emitted = true;
+                yield { type: 'text', text };
+              }
+            }
+          } finally {
+            // On arrête le flux SANS attendre sa clôture : un générateur suspendu
+            // sur une lecture réseau qui ne revient jamais ne rendrait pas la
+            // main, et l'attente transformerait un simple dépassement de délai en
+            // blocage définitif de la requête.
+            try {
+              void iterator.return?.(undefined)?.catch(() => undefined);
+            } catch (err) {
+              logger.debug({ err }, 'Flux IA : libération du flux interrompue');
+            }
+          }
+
+          return;
+        } catch (err) {
+          lastError = err;
+          if (emitted || !isRetryable(err) || attempt === maxRetries) break;
+          logger.warn(
+            { attempt, err },
+            'Fournisseur IA (flux) : tentative échouée, nouvelle tentative…',
+          );
+          await sleep(500 * 2 ** attempt);
+        }
       }
+
+      // Modèle suivant possible tant que rien n'a été émis : après le premier
+      // morceau, changer de modèle produirait un texte dupliqué.
+      if (emitted || !this.switchToFallback(index, lastError)) break;
     }
 
     throw toAppError(lastError);
@@ -528,7 +589,7 @@ let currentProvider: AIProvider | null = null;
 
 function createDefaultProvider(): AIProvider {
   if (env.GEMINI_API_KEY) {
-    return new GeminiAIProvider(env.GEMINI_API_KEY, env.GEMINI_MODEL);
+    return new GeminiAIProvider(env.GEMINI_API_KEY, env.GEMINI_MODEL, env.GEMINI_FALLBACK_MODELS);
   }
   return new UnavailableAIProvider('Service IA non configuré.');
 }

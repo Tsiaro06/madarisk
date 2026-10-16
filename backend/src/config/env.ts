@@ -91,6 +91,19 @@ const envSchema = z.object({
 
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default('gemini-3.5-flash'),
+  // Replis, séparés par des virgules. Le quota du fournisseur est journalier ET
+  // par modèle : un identifiant épuisé ne condamne donc pas les autres. Ces
+  // modèles sont essayés dans l'ordre quand le principal ne peut pas servir
+  // (quota épuisé, identifiant retiré par l'éditeur). Vide = aucun repli.
+  GEMINI_FALLBACK_MODELS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((name) => name.trim())
+        .filter(Boolean),
+    ),
   GEMINI_TIMEOUT_MS: z.coerce.number().default(30000),
   GEMINI_MAX_RETRIES: z.coerce.number().int().min(0).default(2),
   AI_SUPER_ADMIN_VIEW_CONVERSATIONS: z
