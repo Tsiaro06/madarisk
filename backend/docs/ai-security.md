@@ -8,7 +8,7 @@ Documente l'intégration de l'assistant IA (Gemini) de MadaRisk Map : contexte, 
 
 > « Quelles communes sont les plus exposées au cyclone actuel ? »
 
-- Modèles : `GEMINI_MODEL` (défaut `gemini-3.5-flash`) puis `GEMINI_FALLBACK_MODELS` (liste séparée par des virgules), clé `GEMINI_API_KEY`. Un modèle qui ne peut pas servir — **retiré par l'éditeur** (`404`), **quota du jour épuisé** (`429`) ou **surchargé** (`503`, « this model is currently experiencing high demand ») — fait basculer l'appel sur le suivant au lieu d'échouer. Épuiser *toute* la liste renvoie `502` (« Modèle IA indisponible… ») ou `429` (avec `Retry-After`), jamais l'erreur générique.
+- Modèles : `GEMINI_MODEL` (défaut `gemini-3.8-flash`) puis `GEMINI_FALLBACK_MODELS` (liste séparée par des virgules), clé `GEMINI_API_KEY`. Un modèle qui ne peut pas servir — **retiré par l'éditeur** (`404`), **quota du jour épuisé** (`429`) ou **surchargé** (`503`, « this model is currently experiencing high demand ») — fait basculer l'appel sur le suivant au lieu d'échouer. Épuiser *toute* la liste renvoie `502` (« Modèle IA indisponible… ») ou `429` (avec `Retry-After`), jamais l'erreur générique.
 - **Si la clé n'est pas configurée, l'endpoint répond `503`** (« Assistant IA non configuré ») — l'application ne crash pas.
 - Les conversations sont persistées (`ai_conversations`, `ai_messages`) pour permettre le fil de discussion (`conversationId`).
 - Le contexte vient d'un **socle d'outils déterministe** (mots-clés), que le modèle peut compléter en **demandant un outil** s'il manque une donnée — voir « Outils de renseignement ».

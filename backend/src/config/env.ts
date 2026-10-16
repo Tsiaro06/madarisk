@@ -90,7 +90,7 @@ const envSchema = z.object({
   CYCLONE_STALE_RUN_HOURS: z.coerce.number().min(1).default(6),
 
   GEMINI_API_KEY: z.string().optional(),
-  GEMINI_MODEL: z.string().default('gemini-3.5-flash'),
+  GEMINI_MODEL: z.string().default('gemini-3.8-flash'),
   // Replis, séparés par des virgules. Le quota du fournisseur est journalier ET
   // par modèle : un identifiant épuisé ne condamne donc pas les autres. Ces
   // modèles sont essayés dans l'ordre quand le principal ne peut pas servir

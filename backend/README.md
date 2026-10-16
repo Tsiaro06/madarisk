@@ -173,7 +173,7 @@ Le fichier `.env.example` liste toutes les variables. Les plus importantes :
 | `JWT_ACCESS_EXPIRES_IN` / `JWT_REFRESH_EXPIRES_IN` | `15m` / `7d` | Durées de vie |
 | `BCRYPT_SALT_ROUNDS` | `12` | Coût bcrypt |
 | `GEMINI_API_KEY` | vide | Clé Google Gemini (vide = IA désactivée, le chat répond 503) |
-| `GEMINI_MODEL` | `gemini-3.5-flash` | Modèle Gemini (identifiant épinglé) |
+| `GEMINI_MODEL` | `gemini-3.8-flash` | Modèle Gemini (identifiant épinglé) |
 | `GEMINI_FALLBACK_MODELS` | — | Modèles de repli séparés par des virgules, essayés dans l'ordre si le principal est épuisé (quota) ou retiré |
 | `AI_SUPER_ADMIN_VIEW_CONVERSATIONS` | `false` | Vue globale des conversations SUPER_ADMIN |
 | `UPLOAD_DIR` / `MAX_FILE_SIZE_MB` | `uploads` / `50` | Dossier racine des uploads et taille max |
