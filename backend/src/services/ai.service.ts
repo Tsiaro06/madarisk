@@ -366,6 +366,14 @@ const TOOL_SELECTORS: Array<{ name: ToolName; keywords: string[] }> = [
   },
 ];
 
+/**
+ * Socle générique : la situation globale de la plateforme, qui se répond
+ * toujours. Il sert de point de départ quand aucun mot-clé n'oriente la
+ * question, et de repli quand les outils déduits finissent sans aucune donnée
+ * (voir `prepareTurn`).
+ */
+const GENERIC_TOOLS: ToolName[] = ['getDashboardSummary', 'getActiveEvents', 'getPublishedAlerts'];
+
 const EXECUTION_ORDER: ToolName[] = [
   'searchTerritories',
   'getActiveEvents',
@@ -621,9 +629,7 @@ function selectTools(message: string): ToolName[] {
     }
   }
   if (selected.size === 0) {
-    selected.add('getDashboardSummary');
-    selected.add('getActiveEvents');
-    selected.add('getPublishedAlerts');
+    for (const name of GENERIC_TOOLS) selected.add(name);
   }
   return EXECUTION_ORDER.filter((name) => selected.has(name));
 }
@@ -633,12 +639,66 @@ function detectInjection(message: string): boolean {
   return INJECTION_PATTERNS.some((pattern) => pattern.test(q));
 }
 
-function extractTerritoryQuery(message: string): string | null {
-  const match = message.match(
-    /(?:commune|district|ville|localit[ée]|r[ée]gion|territoire)\s+(?:de|d'|du|des|de la|la)?\s*([A-ZÀ-ÿ][\wÀ-ÿ' -]*)/i,
-  );
-  if (!match || match[1].trim().length < 2) return null;
-  return match[1].trim().slice(0, 200);
+/**
+ * Mot-clé géographique suivi du nom du territoire cité.
+ *
+ * Le groupe de jonction est facultatif et la capture est volontairement large :
+ * la mise en forme du nom est faite ensuite par `extractTerritoryQuery`.
+ */
+const TERRITORY_QUERY_PATTERN =
+  /(?:commune|district|ville|localit[ée]|r[ée]gion|territoire)\s+(?:de|d['’ʼ]|du|des|de la|la)?\s*([A-ZÀ-ÿ][\wÀ-ÿ'’ʼ -]*)/i;
+
+/**
+ * Particule de jonction restée en tête du nom capturé (« d’ », « la », « du »).
+ *
+ * Les particules écrites en lettres ne sont retirées que suivies d'une espace :
+ * sans cette limite, une commune comme « Lakato » aurait perdu son début
+ * (« kato ») — six communes malgaches commencent en effet par « La… ».
+ */
+const TERRITORY_LEADING_PARTICLE = /^(?:d['’ʼ]|l['’ʼ]|(?:de|du|des|la|le|les|au|aux)\s)/i;
+
+/**
+ * Ne garde que la suite de mots capitalisés qui forme le nom du territoire.
+ *
+ * La capture de `TERRITORY_QUERY_PATTERN` est gloutonne : dans « le district de
+ * Port Bergé est-il exposé ? », elle ramassait « Port Bergé est-il exposé » — une
+ * requête de recherche qui ne correspond à aucun territoire. Un nom malgache est
+ * une suite de mots capitalisés, donc la capture s'arrête au premier mot qui ne
+ * l'est pas.
+ */
+function keepCapitalizedRun(name: string): string {
+  const words = name.split(' ').filter(Boolean);
+  const kept = words.slice(0, 1);
+  for (const word of words.slice(1)) {
+    // Test volontairement sensible à la casse (`\p{Lu}` sans le drapeau `i`).
+    if (!/^\p{Lu}/u.test(word)) break;
+    kept.push(word);
+  }
+  return kept.join(' ');
+}
+
+/**
+ * Extrait le nom du territoire cité après un mot-clé géographique
+ * (« commune », « district », « ville », « région », « territoire »).
+ *
+ * Deux défauts rendaient la requête inexploitable :
+ *  1. seule l'apostrophe droite (`'`, U+0027) était reconnue dans les jonctions
+ *     « d' ». Un clavier mobile ou un traitement de texte produit une apostrophe
+ *     typographique (`’`, U+2019) : « commune d’Antananarivo » ne correspondait
+ *     pas, la capture récupérait un simple « d » — rejeté comme trop court — et
+ *     le tour partait sans le moindre outil exécuté ;
+ *  2. la capture gloutonne avalait la suite de la phrase, et pouvait même ne
+ *     contenir que la particule de jonction.
+ *
+ * Exportée pour les tests unitaires.
+ */
+export function extractTerritoryQuery(message: string): string | null {
+  const raw = message.match(TERRITORY_QUERY_PATTERN)?.[1]?.replace(/\s+/g, ' ').trim();
+  if (!raw) return null;
+
+  const withoutParticle = raw.replace(TERRITORY_LEADING_PARTICLE, '').trim();
+  const name = keepCapitalizedRun(withoutParticle);
+  return name.length >= 2 ? name.slice(0, 200) : null;
 }
 
 function firstCommuneId(collected: Map<string, unknown>, message: string): string | null {
@@ -1054,6 +1114,24 @@ async function prepareTurn(
   const context: ToolRunContext = { user, message, collected, toolResults, limitations };
   for (const name of selected) {
     await runTool(name, context);
+  }
+
+  // Repli : les mots-clés peuvent désigner un outil impossible à paramétrer
+  // (« météo » sans aucune commune citée, « district » sans nom exploitable).
+  // Le tour serait alors laissé sans la moindre donnée, et la seule réponse
+  // possible serait « aucune donnée disponible » — alors que la plateforme en
+  // contient. On complète donc avec le socle générique, en omettant ce qui a
+  // déjà été tenté.
+  if (toolResults.length === 0) {
+    const fallback = GENERIC_TOOLS.filter((name) => !selected.includes(name));
+    for (const name of fallback) {
+      await runTool(name, context);
+    }
+    if (fallback.length > 0 && toolResults.length > 0) {
+      limitations.push(
+        'Aucune donnée propre à la demande : la situation globale de la plateforme est fournie à titre indicatif.',
+      );
+    }
   }
 
   await persistToolResults(conversationId, toolResults);

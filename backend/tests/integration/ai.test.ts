@@ -38,10 +38,17 @@ let userB: { id: string; token: string };
  * le budget de `userA` et de casser des tests sans rapport.
  */
 let userQuota: { id: string; token: string };
+/**
+ * Utilisateur dédié aux tests de sélection des outils : la limite de débit
+ * (30/15 min) se compte par utilisateur, et `userA` en consomme déjà la
+ * quasi-totalité.
+ */
+let userTools: { id: string; token: string };
 
 let eventId: string;
 let eventCode: string;
 let sampleCommuneName: string;
+let vowelCommuneName: string;
 
 let mock: MockAIProvider;
 
@@ -80,6 +87,7 @@ beforeAll(async () => {
   userA = await createUserAndLogin('ADMIN');
   userB = await createUserAndLogin('ADMIN');
   userQuota = await createUserAndLogin('ADMIN');
+  userTools = await createUserAndLogin('ADMIN');
 
   eventCode = `AI-${String(Date.now()).slice(-6)}-${Math.floor(Math.random() * 1000)}`;
   const created = await request(app)
@@ -100,13 +108,23 @@ beforeAll(async () => {
     'SELECT id, name FROM communes WHERE length(name) BETWEEN 2 AND 15 ORDER BY name LIMIT 1',
   );
   sampleCommuneName = commune.rows[0].name;
+
+  // Une commune commençant par une voyelle : la question sera formulée comme
+  // l'écrit naturellement un utilisateur (« la commune d'Analakely »).
+  const vowelCommune = await db.query<{ name: string }>(
+    `SELECT name FROM communes
+     WHERE name <> $1 AND upper(left(name, 1)) IN ('A', 'E', 'I', 'O', 'U', 'Y')
+     ORDER BY name LIMIT 1`,
+    [sampleCommuneName],
+  );
+  vowelCommuneName = vowelCommune.rows[0]?.name ?? sampleCommuneName;
 });
 
 afterAll(async () => {
   resetAiChatRateLimit();
   resetAIProvider();
 
-  const userIds = [userA.id, userB.id, userQuota.id];
+  const userIds = [userA.id, userB.id, userQuota.id, userTools.id];
   await db.query(
     `DELETE FROM ai_conversations WHERE user_id = ANY($1::uuid[])`,
     [userIds],
@@ -238,6 +256,63 @@ describe('AI - chat', () => {
       (r) => r.tool === 'searchTerritories',
     );
     expect(searchResult).toBeDefined();
+  });
+
+  it('résout le territoire malgré une apostrophe typographique', async () => {
+    // « commune d’Analakely » : les claviers mobiles et les traitements de texte
+    // produisent U+2019, pas U+0027. Sans reconnaissance de cette apostrophe,
+    // le socle exécutait aucun outil et la réponse devenait « aucune donnée ».
+    const res = await chat(
+      userTools.token,
+      `Quels risques sont recensés pour la commune d\u2019${vowelCommuneName} ?`,
+    );
+    expect(res.status).toBe(200);
+    const data = res.body.data;
+    expect(data.internalSources).toContain('searchTerritories');
+    expect(mock.lastRequest).not.toBeNull();
+
+    const searchResult = mock.lastRequest!.context.toolResults.find(
+      (r) => r.tool === 'searchTerritories',
+    );
+    expect(searchResult).toBeDefined();
+    // La requête de recherche porte bien le nom de la commune, sans la suite
+    // de la phrase ni la particule de jonction.
+    const searchParams = searchResult!.result as { items?: Array<{ name: string }> } | [];
+    expect(JSON.stringify(searchParams)).toContain(vowelCommuneName);
+  });
+
+  it('ne retient que le nom du territoire, pas la fin de la phrase', async () => {
+    // La capture de nom est gloutonne : elle avalait « est-il exposé », ce qui
+    // produisait une recherche sans aucun résultat et une réponse « aucune
+    // donnée ». Seul le nom doit être conservé.
+    const res = await chat(
+      userTools.token,
+      `Le district de ${sampleCommuneName} est-il exposé ?`,
+    );
+    expect(res.status).toBe(200);
+    const data = res.body.data;
+    expect(data.internalSources).toContain('searchTerritories');
+    // La recherche a trouvé : aucun avis d'absence de donnée pour cet outil.
+    expect(
+      data.limitations.some((l: string) => l.includes('outil « searchTerritories »')),
+    ).toBe(false);
+  });
+
+  it('fournit la situation globale quand aucun outil ne peut être paramétré', async () => {
+    // « météo » désigne `getLatestWeather`, mais aucune commune n'est citée :
+    // l'outil est écarté faute d'identifiant. Sans repli, le tour serait mené
+    // sans aucune donnée alors que la plateforme en contient.
+    const res = await chat(
+      userTools.token,
+      'Quelle est la météo aujourd\u2019hui\u00a0?',
+    );
+    expect(res.status).toBe(200);
+    const data = res.body.data;
+    expect(data.internalSources).toContain('getDashboardSummary');
+    expect(data.internalSources).not.toContain('getLatestWeather');
+    expect(data.limitations).toContain(
+      'Aucune donnée propre à la demande : la situation globale de la plateforme est fournie à titre indicatif.',
+    );
   });
 
   it('résout l événement par code pour les outils dépendants', async () => {
