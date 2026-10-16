@@ -778,6 +778,40 @@ describe('AI - réponse en flux (SSE)', () => {
       mock.toolCalls = [];
     }
   });
+
+  it('persiste la limite d’un outil demandé par le modèle, et la relit à l’identique', async () => {
+    // Les limites ne sont jamais produites par le modèle : elles sont calculées
+    // ici (outil impossible à paramétrer, données absentes, repli). Le seul
+    // chemin où c'est le modèle qui déclenche l'exécution — et donc la limite —
+    // mérite donc sa propre preuve de persistance.
+    mock.toolCalls = [
+      { name: 'getCommuneDetails', args: { communeId: '11111111-2222-4333-8444-555555555555' } },
+    ];
+    try {
+      const res = await chat(userTools.token, 'Peux-tu m’aider ?');
+      expect(res.status).toBe(200);
+
+      const limitations = res.body.data.limitations as string[];
+      // L'identifiant est bien formé mais n'existe pas : l'outil ne ramène rien.
+      expect(limitations.some((limit) => limit.includes('getCommuneDetails'))).toBe(true);
+
+      const detail = await request(app)
+        .get(`/api/v1/ai/conversations/${res.body.data.conversationId}`)
+        .set('Authorization', `Bearer ${userTools.token}`);
+      expect(detail.status).toBe(200);
+
+      const assistant = (
+        detail.body.data.messages as Array<{
+          role: string;
+          metadata: Record<string, unknown> | null;
+        }>
+      ).filter((message) => message.role === 'ASSISTANT');
+      expect(assistant).toHaveLength(1);
+      expect(assistant[0].metadata?.limitations).toEqual(limitations);
+    } finally {
+      mock.toolCalls = [];
+    }
+  });
 });
 
 describe('AI - rate limit', () => {
