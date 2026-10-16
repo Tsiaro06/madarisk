@@ -1015,6 +1015,22 @@ async function* providerSteps(
 type AnswerEvent = { type: 'ready' } | { type: 'chunk'; text: string };
 
 /**
+ * Consigne ajoutée au prompt du **second** appel, après exécution des outils
+ * demandés.
+ *
+ * Le prompt système autorise le modèle à « demander UNIQUEMENT l'outil » quand
+ * les données ne suffisent pas. Or ce second appel est mené SANS déclaration
+ * d'outils (la boucle est bornée à deux appels) : le modèle obéit alors
+ * littéralement à sa consigne et affiche le nom de l'outil comme s'il s'agissait
+ * de sa réponse — observé en direct, où la réponse complète envoyée à
+ * l'utilisateur n'était que `getCommuneLatestRisk`. On relève explicitement la
+ * consigne de demande d'outil et on commande la réponse.
+ */
+const FINAL_ROUND_CLOSING = `
+
+FIN DU TOUR : les outils ont été exécutés et leurs résultats figurent dans les DONNÉES AUTORISÉES ci-dessus. Aucun autre outil ne sera exécuté : ne demande plus rien, ne cite jamais le nom d'un outil comme s'il s'agissait d'une réponse, et réponds maintenant en français. Une réponse partielle, mentionnant ce qui manque, vaut mieux qu'aucune réponse.`;
+
+/**
  * Produit la réponse d'un tour, en un ou deux appels au modèle.
  *
  * Le premier appel porte les déclarations d'outils. Cas courant : il renvoie
@@ -1066,7 +1082,11 @@ async function* resolveAnswer(
 
     const executed = await executeCalls(pending);
     logger.debug({ executed }, 'IA : outils demandés par le modèle');
-    current = { ...request, tools: undefined };
+    current = {
+      ...request,
+      tools: undefined,
+      systemPrompt: `${request.systemPrompt}${FINAL_ROUND_CLOSING}`,
+    };
   }
 
   if (!anyText) {

@@ -668,6 +668,33 @@ describe('AI - réponse en flux (SSE)', () => {
     }
   });
 
+  it('annonce au second appel que plus aucun outil ne sera exécuté', async () => {
+    // Le prompt système autorise à « demander UNIQUEMENT l'outil ». Le second
+    // appel étant mené sans déclaration, le modèle y obéissait en affichant le
+    // nom de l'outil comme réponse (observé en direct : « getCommuneLatestRisk »).
+    mock.toolCalls = [{ name: 'getHistoricalEvents', args: {} }];
+    try {
+      const res = await chat(userTools.token, 'Peux-tu m\u2019aider ?');
+
+      expect(res.status).toBe(200);
+      expect(mock.lastRequest).not.toBeNull();
+      // Dernier appel du tour : plus d'outils déclarés, consigne de fin présente.
+      expect(mock.lastRequest!.tools).toBeUndefined();
+      expect(mock.lastRequest!.systemPrompt).toContain("ne cite jamais le nom d'un outil");
+      expect(mock.lastRequest!.systemPrompt).toContain('FIN DU TOUR');
+    } finally {
+      mock.toolCalls = [];
+    }
+  });
+
+  it('ne complète pas le prompt quand un seul appel a suffi', async () => {
+    const res = await chat(userTools.token, 'Situation globale du test.');
+
+    expect(res.status).toBe(200);
+    expect(mock.lastRequest).not.toBeNull();
+    expect(mock.lastRequest!.systemPrompt).not.toContain('FIN DU TOUR');
+  });
+
   it('expose aussi la source obtenue par le modèle en réponse JSON', async () => {
     mock.toolCalls = [{ name: 'getHistoricalEvents', args: {} }];
     try {
