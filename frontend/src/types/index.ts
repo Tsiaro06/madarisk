@@ -655,3 +655,57 @@ export interface WeatherMapFeatureProperties {
   pressureHpa: number | null;
   weatherCode: string | null;
 }
+
+/** Conversation de l'assistant IA (entête), telle que listée pour son propriétaire. */
+export interface AiConversationListItem {
+  id: string;
+  userId: string;
+  title: string | null;
+  /** Messages persistés, tours d'outil compris — donc supérieur aux échanges visibles. */
+  messageCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Rôle **persisté** d'un message. Ce ne sont pas les rôles du fournisseur :
+ * `buildMemory` traduit UTILISATEUR/ASSISTANT en user/model à la lecture de la
+ * mémoire, ces valeurs ne sont donc jamais stockées telles quelles.
+ *
+ * `OUTIL` porte les résultats bruts d'outils (JSON) : ils servent à l'audit et
+ * ne doivent pas être affichés dans le fil.
+ */
+export type AiMessageRole = 'UTILISATEUR' | 'ASSISTANT' | 'OUTIL' | 'SYSTEME';
+
+/** Métadonnées d'un tour, telles que relues depuis la conversation. */
+export interface AiMessageMetadata {
+  /** Outils du socle réellement exécutés (clé `internalSources` côté serveur). */
+  internalSources?: string[];
+  dataTimestamp?: string | null;
+  limitations?: string[];
+  /** Présent uniquement sur les tours d'outil. */
+  tool?: string;
+}
+
+export interface AiMessage {
+  id: string;
+  conversationId: string;
+  role: AiMessageRole;
+  content: string;
+  tokenCount: number | null;
+  /**
+   * `null` sur les messages antérieurs à la persistance des métadonnées : ne pas
+   * en déduire « aucune source », seulement « non renseigné ».
+   */
+  metadata: AiMessageMetadata | null;
+  createdAt: string;
+}
+
+export interface AiConversationDetail {
+  id: string;
+  userId: string;
+  title: string | null;
+  messages: AiMessage[];
+  createdAt: string;
+  updatedAt: string;
+}

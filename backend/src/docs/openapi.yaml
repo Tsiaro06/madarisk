@@ -5716,23 +5716,45 @@ components:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
         title: { type: string, nullable: true }
+        model: { type: string, nullable: true }
         messageCount: { type: integer }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
     AiConversationDetail:
       type: object
+      description: Conversation IA et ses messages, dans l'ordre chronologique
       properties:
         id: { type: string, format: uuid }
         userId: { type: string, format: uuid }
         title: { type: string, nullable: true }
+        model: { type: string, nullable: true }
         messages:
           type: array
           items:
             type: object
             properties:
               id: { type: string, format: uuid }
-              role: { type: string, enum: [user, assistant, system] }
+              role:
+                type: string
+                enum: [UTILISATEUR, ASSISTANT, OUTIL, SYSTEME]
+                description: >
+                  Rôle persisté du message. Les rôles du fournisseur (`user` / `model`)
+                  sont une traduction faite à la lecture de la mémoire, jamais une
+                  valeur stockée.
               content: { type: string }
+              metadata:
+                type: object
+                nullable: true
+                description: >
+                  Métadonnées du tour. Sur une réponse de l'assistant : `internalSources`
+                  (outils du socle réellement exécutés), `dataTimestamp` (date des données,
+                  `null` si aucune n'a été établie) et `limitations` (ce que l'assistant
+                  n'a pas pu établir). Sur un tour d'outil : `tool`.
+                properties:
+                  internalSources: { type: array, items: { type: string } }
+                  dataTimestamp: { type: string, format: date-time, nullable: true }
+                  limitations: { type: array, items: { type: string } }
+                  tool: { type: string }
               createdAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }

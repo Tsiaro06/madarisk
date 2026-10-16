@@ -1289,6 +1289,10 @@ export const aiService = {
       metadata: {
         internalSources: turn.toolResults.map((entry) => entry.tool),
         dataTimestamp,
+        // Les limites font partie de la réponse : les persister permet de
+        // relire la conversation avec le même bloc qu'en direct, au lieu d'une
+        // réponse amputée de ses réserves.
+        limitations: turn.limitations,
       },
     });
     await aiRepository.touchConversation(conversationId);

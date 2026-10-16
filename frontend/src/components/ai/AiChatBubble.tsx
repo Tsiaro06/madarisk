@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
-import { useMutation } from '@tanstack/react-query';
-import { Bot, Send, User, X, MessageCircle } from 'lucide-react';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { Bot, MessagesSquare, Send, User, X, MessageCircle } from 'lucide-react';
 import { aiApi } from '@/api';
 import { ApiClientError } from '@/api/client';
 import type { AiStreamMeta } from '@/api/ai-stream';
+import type { AiMessage } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { AiAnswerMeta } from '@/components/ai/AiAnswerMeta';
+import { AiChatHistory } from '@/components/ai/AiChatHistory';
 import { cn, formatRetryDelay } from '@/lib/utils';
 
 interface ChatMessage {
@@ -23,14 +25,49 @@ const WELCOME: ChatMessage = {
     'Bonjour. Je suis l’assistant MadaRisk. Posez une question sur les risques, alertes ou territoires.',
 };
 
+/** Un message relu est affichable s'il fait partie de l'échange visible. */
+function isVisibleMessage(message: AiMessage): boolean {
+  return message.role === 'UTILISATEUR' || message.role === 'ASSISTANT';
+}
+
+/**
+ * Traduit un message persisté en message du fil.
+ *
+ * Les tours d'outil (`OUTIL`) sont écartés : ils portent des résultats bruts en
+ * JSON, utiles à l'audit mais illisibles dans une conversation. Un message
+ * antérieur à la persistance des métadonnées n'en a aucune : on n'affiche alors
+ * aucun bloc de sources, plutôt que d'annoncer « aucune source » sur une réponse
+ * dont on ne sait rien.
+ */
+function toChatMessage(message: AiMessage): ChatMessage {
+  if (message.role !== 'ASSISTANT') return { role: 'user', content: message.content };
+
+  const metadata = message.metadata;
+  return {
+    role: 'assistant',
+    content: message.content,
+    meta: metadata
+      ? {
+          conversationId: message.conversationId,
+          internalSources: metadata.internalSources ?? [],
+          dataTimestamp: metadata.dataTimestamp ?? null,
+          limitations: metadata.limitations ?? [],
+        }
+      : undefined,
+  };
+}
+
 export function AiChatBubble() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [conversationId, setConversationId] = useState<string | undefined>();
   const [input, setInput] = useState('');
   const [unavailable, setUnavailable] = useState(false);
   const [retryAfter, setRetryAfter] = useState(0);
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME]);
+  /** Vue affichée : le fil de discussion, ou la liste des conversations passées. */
+  const [view, setView] = useState<'chat' | 'history'>('chat');
   // Réponse en cours de génération : affichée aussitôt, puis remplacée par le
   // message définitif. `streamedRef` évite de relire un état périmé au moment
   // où la mutation se termine.
@@ -94,6 +131,10 @@ export function AiChatBubble() {
       setStreamedMeta(null);
       streamedMetaRef.current = null;
       setUnavailable(false);
+      // Un tour crée la conversation ou la remonte en tête de l'historique : la
+      // liste en cache est périmée dès que la réponse est arrivée. Aucune requête
+      // n'est déclenchée tant que l'historique n'est pas affiché.
+      void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] });
     },
     onError: (err) => {
       setStreamedAnswer(null);
@@ -127,6 +168,42 @@ export function AiChatBubble() {
     chatM.mutate(text);
   };
 
+  /**
+   * Ouvre une conversation passée : le fil est remplacé par ses messages et la
+   * conversation devient active, donc la réponse suivante s'y ajoute au lieu de
+   * créer une nouvelle conversation.
+   */
+  const openM = useMutation({
+    mutationFn: (id: string) => aiApi.conversation(id),
+    onSuccess: (conversation) => {
+      const turns = conversation.messages.filter(isVisibleMessage).map(toChatMessage);
+      setConversationId(conversation.id);
+      setMessages(turns.length > 0 ? turns : [WELCOME]);
+      setRetryAfter(0);
+      setUnavailable(false);
+      setView('chat');
+    },
+    onError: (err) => {
+      toast(err instanceof ApiClientError ? err.message : 'Conversation illisible', 'error');
+    },
+  });
+
+  const startNewConversation = () => {
+    setConversationId(undefined);
+    setMessages([WELCOME]);
+    setInput('');
+    setRetryAfter(0);
+    setUnavailable(false);
+    setView('chat');
+  };
+
+  const handleDeleted = (id: string) => {
+    // La conversation ouverte vient d'être supprimée : repartir d'un fil vierge
+    // évite d'afficher un échange que le serveur ne connaît plus (le tour suivant
+    // échouerait en 404).
+    if (conversationId === id) startNewConversation();
+  };
+
   return (
     <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
       {open ? (
@@ -145,97 +222,125 @@ export function AiChatBubble() {
                 <p className="text-[11px] text-emerald-100">Aide salle de crise</p>
               </div>
             </div>
-            <button
-              type="button"
-              className="rounded-lg p-1.5 hover:bg-white/15"
-              aria-label="Fermer l’assistant"
-              onClick={() => setOpen(false)}
-            >
-              <X className="size-4" />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                className={cn(
+                  'rounded-lg p-1.5',
+                  view === 'history' ? 'bg-white/25' : 'hover:bg-white/15',
+                )}
+                aria-label="Historique des conversations"
+                aria-pressed={view === 'history'}
+                onClick={() => setView((current) => (current === 'history' ? 'chat' : 'history'))}
+              >
+                <MessagesSquare className="size-4" />
+              </button>
+              <button
+                type="button"
+                className="rounded-lg p-1.5 hover:bg-white/15"
+                aria-label="Fermer l’assistant"
+                onClick={() => setOpen(false)}
+              >
+                <X className="size-4" />
+              </button>
+            </div>
           </header>
 
-          <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 p-3">
-            {messages.map((m, i) => (
-              <div
-                key={`${m.role}-${i}`}
-                className={cn('flex gap-2', m.role === 'user' ? 'justify-end' : 'justify-start')}
-              >
-                {m.role === 'assistant' ? (
-                  <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-brand text-white">
-                    <Bot className="size-3.5" />
-                  </span>
-                ) : null}
-                <div
-                  className={cn(
-                    'max-w-[82%] rounded-2xl px-3 py-2 text-sm leading-relaxed',
-                    m.role === 'user'
-                      ? 'bg-brand text-white'
-                      : 'border border-line bg-surface text-ink shadow-sm',
-                  )}
-                >
-                  {m.content}
-                  {m.meta ? <AiAnswerMeta meta={m.meta} /> : null}
-                </div>
-                {m.role === 'user' ? (
-                  <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-ink text-white">
-                    <User className="size-3.5" />
-                  </span>
+          {view === 'history' ? (
+            <AiChatHistory
+              activeId={conversationId}
+              onSelect={(id) => openM.mutate(id)}
+              onNew={startNewConversation}
+              onBack={() => setView('chat')}
+              onDeleted={handleDeleted}
+            />
+          ) : (
+            <>
+              <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 p-3">
+                {messages.map((m, i) => (
+                  <div
+                    key={`${m.role}-${i}`}
+                    className={cn('flex gap-2', m.role === 'user' ? 'justify-end' : 'justify-start')}
+                  >
+                    {m.role === 'assistant' ? (
+                      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-brand text-white">
+                        <Bot className="size-3.5" />
+                      </span>
+                    ) : null}
+                    <div
+                      className={cn(
+                        'max-w-[82%] rounded-2xl px-3 py-2 text-sm leading-relaxed',
+                        m.role === 'user'
+                          ? 'bg-brand text-white'
+                          : 'border border-line bg-surface text-ink shadow-sm',
+                      )}
+                    >
+                      {m.content}
+                      {m.meta ? <AiAnswerMeta meta={m.meta} /> : null}
+                    </div>
+                    {m.role === 'user' ? (
+                      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-ink text-white">
+                        <User className="size-3.5" />
+                      </span>
+                    ) : null}
+                  </div>
+                ))}
+
+                {streamedAnswer !== null ? (
+                  <div className="flex gap-2 justify-start">
+                    <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-brand text-white">
+                      <Bot className="size-3.5" />
+                    </span>
+                    <div className="max-w-[82%] whitespace-pre-wrap rounded-2xl border border-line bg-surface px-3 py-2 text-sm leading-relaxed text-ink shadow-sm">
+                      {streamedAnswer}
+                      <span
+                        className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-brand align-middle"
+                        aria-hidden="true"
+                      />
+                      <span className="sr-only">Réponse en cours de génération…</span>
+                      {streamedMeta ? <AiAnswerMeta meta={streamedMeta} /> : null}
+                    </div>
+                  </div>
                 ) : null}
               </div>
-            ))}
 
-            {streamedAnswer !== null ? (
-              <div className="flex gap-2 justify-start">
-                <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-brand text-white">
-                  <Bot className="size-3.5" />
-                </span>
-                <div className="max-w-[82%] whitespace-pre-wrap rounded-2xl border border-line bg-surface px-3 py-2 text-sm leading-relaxed text-ink shadow-sm">
-                  {streamedAnswer}
-                  <span
-                    className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-brand align-middle"
-                    aria-hidden="true"
+              {unavailable ? (
+                <div className="border-t border-brand/10 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  Assistant non disponible pour le moment.
+                </div>
+              ) : retryAfter > 0 ? (
+                <div className="border-t border-brand/10 bg-orange-50 px-3 py-2 text-xs text-orange-900">
+                  Trop de requêtes — réessayez dans {formatRetryDelay(retryAfter)}.
+                </div>
+              ) : null}
+
+              {!unavailable ? (
+                <form onSubmit={onSubmit} className="flex gap-2 border-t border-line bg-surface p-3">
+                  <input
+                    className="h-10 flex-1 rounded-xl border border-line bg-surface px-3 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15"
+                    placeholder={
+                      retryAfter > 0 ? `Attendre ${formatRetryDelay(retryAfter)}…` : 'Votre question…'
+                    }
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    disabled={retryAfter > 0 || chatM.isPending}
+                    maxLength={5000}
+                    aria-label="Message à l’assistant"
                   />
-                  <span className="sr-only">Réponse en cours de génération…</span>
-                  {streamedMeta ? <AiAnswerMeta meta={streamedMeta} /> : null}
-                </div>
-              </div>
-            ) : null}
-          </div>
-
-          {unavailable ? (
-            <div className="border-t border-brand/10 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-              Assistant non disponible pour le moment.
-            </div>
-          ) : retryAfter > 0 ? (
-            <div className="border-t border-brand/10 bg-orange-50 px-3 py-2 text-xs text-orange-900">
-              Trop de requêtes — réessayez dans {formatRetryDelay(retryAfter)}.
-            </div>
-          ) : null}
-
-          {!unavailable ? (
-            <form onSubmit={onSubmit} className="flex gap-2 border-t border-line bg-surface p-3">
-              <input
-                className="h-10 flex-1 rounded-xl border border-line bg-surface px-3 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15"
-                placeholder={retryAfter > 0 ? `Attendre ${formatRetryDelay(retryAfter)}…` : 'Votre question…'}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                disabled={retryAfter > 0 || chatM.isPending}
-                maxLength={5000}
-                aria-label="Message à l’assistant"
-              />
-              <Button
-                type="submit"
-                size="sm"
-                loading={chatM.isPending}
-                disabled={retryAfter > 0}
-                aria-label="Envoyer"
-                className="!h-10 !px-3"
-              >
-                <Send className="size-4" />
-              </Button>
-            </form>
-          ) : null}
+                  <Button
+                    type="submit"
+                    size="sm"
+                    loading={chatM.isPending}
+                    disabled={retryAfter > 0}
+                    aria-label="Envoyer"
+                    className="!h-10 !px-3"
+                  >
+                    <Send className="size-4" />
+                  </Button>
+                </form>
+              ) : null}
+            </>
+          )}
         </section>
       ) : null}
 

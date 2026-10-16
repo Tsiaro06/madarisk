@@ -8,6 +8,8 @@ import {
 } from "./client";
 import { streamAiChat, type AiStreamHandlers } from "./ai-stream";
 import type {
+  AiConversationDetail,
+  AiConversationListItem,
   AlertListRow,
   AuthTokens,
   CommuneDetail,
@@ -346,9 +348,9 @@ export const aiApi = {
     body: { message: string; conversationId?: string },
     handlers: AiStreamHandlers,
   ) => streamAiChat(accessToken, body, handlers),
-  conversations: (params?: Record<string, number | undefined>) =>
-    apiGetPage("/ai/conversations", { params }),
-  conversation: (id: string) => apiGet(`/ai/conversations/${id}`),
+  conversations: (params?: { page?: number; limit?: number }) =>
+    apiGetPage<AiConversationListItem[]>("/ai/conversations", { params }),
+  conversation: (id: string) => apiGet<AiConversationDetail>(`/ai/conversations/${id}`),
   remove: (id: string) => apiDelete(`/ai/conversations/${id}`),
 };
 
