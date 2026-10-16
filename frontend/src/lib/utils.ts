@@ -26,6 +26,24 @@ export function formatDate(value?: string | null) {
 }
 
 /**
+ * Délai d'attente lisible. Le quota d'un fournisseur IA se compte en heures (le
+ * forfait Gemini se réarme à minuit, heure du Pacifique) : « 62084 s » n'est pas
+ * exploitable en salle de crise, alors que « 17 h 15 » se comprend d'un coup.
+ * Le délai est arrondi à la seconde près puis vers le haut, pour ne jamais
+ * annoncer un réessai avant qu'il ne soit possible.
+ */
+export function formatRetryDelay(seconds: number | null | undefined): string {
+  if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return '—';
+  const total = Math.ceil(seconds);
+  if (total < 60) return `${total} s`;
+  const minutes = Math.ceil(total / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest === 0 ? `${hours} h` : `${hours} h ${String(rest).padStart(2, '0')}`;
+}
+
+/**
  * Libellé d'un run de synchronisation météo. Un run `PARTIAL` (quota épuisé au
  * milieu d'un lot) n'est pas un succès : l'afficher à côté de la date évite de
  * laisser croire que la synchronisation n'a pas tournu aujourd'hui.

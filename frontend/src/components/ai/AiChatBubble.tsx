@@ -3,14 +3,18 @@ import { useMutation } from '@tanstack/react-query';
 import { Bot, Send, User, X, MessageCircle } from 'lucide-react';
 import { aiApi } from '@/api';
 import { ApiClientError } from '@/api/client';
+import type { AiStreamMeta } from '@/api/ai-stream';
 import { useAuthStore } from '@/stores/authStore';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
-import { cn } from '@/lib/utils';
+import { AiAnswerMeta } from '@/components/ai/AiAnswerMeta';
+import { cn, formatRetryDelay } from '@/lib/utils';
 
 interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
+  /** Sources, date et limites du tour : présentes sur les réponses de l'assistant. */
+  meta?: AiStreamMeta;
 }
 
 const WELCOME: ChatMessage = {
@@ -32,6 +36,11 @@ export function AiChatBubble() {
   // où la mutation se termine.
   const [streamedAnswer, setStreamedAnswer] = useState<string | null>(null);
   const streamedRef = useRef('');
+  // Métadonnées du tour en cours (outils, date, limites), reçues avant le premier
+  // morceau de texte. `streamedMetaRef` joue le même rôle que `streamedRef` : au
+  // moment où la mutation se termine, l'état n'est pas relisible de façon fiable.
+  const [streamedMeta, setStreamedMeta] = useState<AiStreamMeta | null>(null);
+  const streamedMetaRef = useRef<AiStreamMeta | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -53,13 +62,19 @@ export function AiChatBubble() {
   const chatM = useMutation({
     mutationFn: (message: string) => {
       streamedRef.current = '';
+      streamedMetaRef.current = null;
       setStreamedAnswer('');
+      setStreamedMeta(null);
       const controller = new AbortController();
       abortRef.current = controller;
       return aiApi.chatStream(
         useAuthStore.getState().accessToken,
         { message, conversationId },
         {
+          onMeta: (meta) => {
+            streamedMetaRef.current = meta;
+            setStreamedMeta(meta);
+          },
           onChunk: (text) => {
             streamedRef.current += text;
             setStreamedAnswer(streamedRef.current);
@@ -71,14 +86,19 @@ export function AiChatBubble() {
     onSuccess: (data) => {
       setConversationId(data.conversationId);
       const answer = streamedRef.current;
+      const meta = streamedMetaRef.current ?? undefined;
       // Repli : si le flux s'est terminé sans morceau exploitable, on n'ajoute
       // pas de bulle vide.
-      if (answer) setMessages((prev) => [...prev, { role: 'assistant', content: answer }]);
+      if (answer) setMessages((prev) => [...prev, { role: 'assistant', content: answer, meta }]);
       setStreamedAnswer(null);
+      setStreamedMeta(null);
+      streamedMetaRef.current = null;
       setUnavailable(false);
     },
     onError: (err) => {
       setStreamedAnswer(null);
+      setStreamedMeta(null);
+      streamedMetaRef.current = null;
       if (err instanceof ApiClientError) {
         if (err.status === 503) {
           setUnavailable(true);
@@ -88,7 +108,7 @@ export function AiChatBubble() {
         if (err.status === 429) {
           const wait = err.retryAfter && err.retryAfter > 0 ? err.retryAfter : 60;
           setRetryAfter(wait);
-          toast(`Limite atteinte. Réessayez dans ${wait}s.`, 'error');
+          toast(`Limite atteinte. Réessayez dans ${formatRetryDelay(wait)}.`, 'error');
           return;
         }
         toast(err.message, 'error');
@@ -155,6 +175,7 @@ export function AiChatBubble() {
                   )}
                 >
                   {m.content}
+                  {m.meta ? <AiAnswerMeta meta={m.meta} /> : null}
                 </div>
                 {m.role === 'user' ? (
                   <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-ink text-white">
@@ -176,6 +197,7 @@ export function AiChatBubble() {
                     aria-hidden="true"
                   />
                   <span className="sr-only">Réponse en cours de génération…</span>
+                  {streamedMeta ? <AiAnswerMeta meta={streamedMeta} /> : null}
                 </div>
               </div>
             ) : null}
@@ -187,7 +209,7 @@ export function AiChatBubble() {
             </div>
           ) : retryAfter > 0 ? (
             <div className="border-t border-brand/10 bg-orange-50 px-3 py-2 text-xs text-orange-900">
-              Trop de requêtes — réessayez dans {retryAfter}s.
+              Trop de requêtes — réessayez dans {formatRetryDelay(retryAfter)}.
             </div>
           ) : null}
 
@@ -195,7 +217,7 @@ export function AiChatBubble() {
             <form onSubmit={onSubmit} className="flex gap-2 border-t border-line bg-surface p-3">
               <input
                 className="h-10 flex-1 rounded-xl border border-line bg-surface px-3 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15"
-                placeholder={retryAfter > 0 ? `Attendre ${retryAfter}s…` : 'Votre question…'}
+                placeholder={retryAfter > 0 ? `Attendre ${formatRetryDelay(retryAfter)}…` : 'Votre question…'}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 disabled={retryAfter > 0 || chatM.isPending}
