@@ -162,6 +162,23 @@ describe('Territoires - recherche', () => {
       .query({ q: 'a' });
     expect(res.status).toBe(422);
   });
+
+  it('ignore les espaces autour de la recherche', async () => {
+    const res = await request(app)
+      .get('/api/v1/territories/search')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ q: '  Maroantsetra  ' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.length).toBeGreaterThan(0);
+  });
+
+  it('refuse une recherche reduite a des espaces', async () => {
+    const res = await request(app)
+      .get('/api/v1/territories/search')
+      .set('Authorization', `Bearer ${accessToken}`)
+      .query({ q: '   ' });
+    expect(res.status).toBe(422);
+  });
 });
 
 describe('Territoires - map GeoJSON', () => {

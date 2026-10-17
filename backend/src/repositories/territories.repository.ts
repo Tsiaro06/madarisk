@@ -319,7 +319,11 @@ export const territoriesRepository = {
   },
 
   async searchTerritories(q: string, limit: number): Promise<TerritorySearchResult[]> {
-    const like = `%${q}%`;
+    // La recherche est une correspondance de sous-chaîne : une requête entourée
+    // d'espaces (« Ambanizana » avec une espace finale, fréquent quand le nom est
+    // extrait d'une phrase) ou contenant des espaces répétés ne correspondrait à
+    // aucun nom. La requête est donc ramenée à sa forme canonique avant les jokers.
+    const like = `%${q.trim().replace(/\s+/g, ' ')}%`;
     const districts = await db.query<{
       type: 'district';
       id: string;

@@ -54,6 +54,19 @@ describe('IA - extraction du territoire', () => {
     expect(extractTerritoryQuery('Quels risques pour la commune de Lakato ?')).toBe('Lakato');
   });
 
+  it('accepte une jonction dont l apostrophe est devenue une espace', () => {
+    // Clavier (mobile, correcteur) qui remplace l’apostrophe par une espace :
+    // « commune d Ambanizana ». La capture ramassait « d Ambanizana » — particule
+    // comprise — et la recherche ne correspondait alors à aucune commune.
+    expect(extractTerritoryQuery('Quels risques pour la commune d Ambanizana ?')).toBe(
+      'Ambanizana',
+    );
+    // Même défaut après « de l » : « de l Analamanga ».
+    expect(extractTerritoryQuery('Le district de l Analamanga est-il exposé ?')).toBe(
+      'Analamanga',
+    );
+  });
+
   it('ne retient rien sans nom exploitable', () => {
     expect(extractTerritoryQuery('Quelle est la météo aujourd\u2019hui ?')).toBeNull();
     expect(extractTerritoryQuery('Quels risques pour la commune de A ?')).toBeNull();

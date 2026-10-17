@@ -30,7 +30,7 @@ export const listCommunesQuerySchema = z.object({
 });
 
 export const searchQuerySchema = z.object({
-  q: z.string().min(2, 'La recherche nécessite au moins 2 caractères'),
+  q: z.string().trim().min(2, 'La recherche nécessite au moins 2 caractères'),
   limit: z.coerce.number().int().min(1).max(20).default(20).optional(),
 });
 

@@ -644,9 +644,13 @@ function detectInjection(message: string): boolean {
  *
  * Le groupe de jonction est facultatif et la capture est volontairement large :
  * la mise en forme du nom est faite ensuite par `extractTerritoryQuery`.
+ *
+ * `d\s` (jonction sans apostrophe) figure aux côtés de `d['’ʼ]` : un clavier
+ * mobile ou un correcteur remplace couramment l'apostrophe par une espace, et
+ * « commune d Ambanizana » ne correspondait à aucune commune.
  */
 const TERRITORY_QUERY_PATTERN =
-  /(?:commune|district|ville|localit[ée]|r[ée]gion|territoire)\s+(?:de|d['’ʼ]|du|des|de la|la)?\s*([A-ZÀ-ÿ][\wÀ-ÿ'’ʼ -]*)/i;
+  /(?:commune|district|ville|localit[ée]|r[ée]gion|territoire)\s+(?:de|d['’ʼ]|d\s|du|des|de la|la)?\s*([A-ZÀ-ÿ][\wÀ-ÿ'’ʼ -]*)/i;
 
 /**
  * Particule de jonction restée en tête du nom capturé (« d’ », « la », « du »).
@@ -654,8 +658,11 @@ const TERRITORY_QUERY_PATTERN =
  * Les particules écrites en lettres ne sont retirées que suivies d'une espace :
  * sans cette limite, une commune comme « Lakato » aurait perdu son début
  * (« kato ») — six communes malgaches commencent en effet par « La… ».
+ *
+ * `[dl]\s` couvre la jonction dont l'apostrophe a été remplacée par une espace
+ * (« de l Analamanga »), où la particule reste dans la capture.
  */
-const TERRITORY_LEADING_PARTICLE = /^(?:d['’ʼ]|l['’ʼ]|(?:de|du|des|la|le|les|au|aux)\s)/i;
+const TERRITORY_LEADING_PARTICLE = /^(?:d['’ʼ]|l['’ʼ]|[dl]\s|(?:de|du|des|la|le|les|au|aux)\s)/i;
 
 /**
  * Ne garde que la suite de mots capitalisés qui forme le nom du territoire.
