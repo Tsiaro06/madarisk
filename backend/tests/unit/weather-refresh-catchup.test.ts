@@ -3,7 +3,9 @@ import {
   attemptedRecently,
   lastScheduledSlot,
   missedScheduledScopes,
+  scopesToCatchUp,
 } from '../../src/jobs/weather-refresh.job';
+import type { CatchUpCandidate } from '../../src/jobs/weather-refresh.job';
 
 /**
  * Instant en heure locale, comme `node-cron` planifie : les cas restent vrais
@@ -130,5 +132,103 @@ describe('weather-refresh : garde anti-rafale', () => {
   it('ne bloque rien sans tentative connue', () => {
     expect(attemptedRecently(null, NOW, 30)).toBe(false);
     expect(attemptedRecently('pas une date', NOW, 30)).toBe(false);
+  });
+});
+
+/**
+ * Contrôle périodique en cours de fonctionnement (option retenue après le
+ * constat du 17/10) : sans lui, un run de 06:00 en échec laissait la journée
+ * sans données jusqu'au prochain redémarrage.
+ */
+describe('weather-refresh : périmètres à rattraper', () => {
+  const NOW = local(2026, 10, 17, 6, 40);
+
+  const at = (minutes: number) => new Date(NOW.getTime() - minutes * 60_000).toISOString();
+
+  const candidate = (
+    overrides: Partial<CatchUpCandidate> & Pick<CatchUpCandidate, 'scope'>,
+  ): CatchUpCandidate => ({
+    missed: false,
+    stale: false,
+    lastAttemptAt: null,
+    attemptsSinceSlot: 0,
+    ...overrides,
+  });
+
+  const decide = (candidates: CatchUpCandidate[]) =>
+    scopesToCatchUp({ candidates, now: NOW, minIntervalMinutes: 30, maxAttemptsPerSlot: 3 });
+
+  it('retente un créneau de 06:00 dont le run a échoué', () => {
+    // Cas visé : le cron de 06:00 a échoué (429), le contrôle de 06:40 reprend.
+    expect(
+      decide([
+        candidate({
+          scope: 'OBSERVATIONS',
+          missed: true,
+          lastAttemptAt: at(40),
+          attemptsSinceSlot: 1,
+        }),
+      ]),
+    ).toEqual(['OBSERVATIONS']);
+  });
+
+  it('attend la fin d’une tentative récente', () => {
+    expect(
+      decide([
+        candidate({
+          scope: 'OBSERVATIONS',
+          missed: true,
+          lastAttemptAt: at(10),
+          attemptsSinceSlot: 1,
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('ne compte qu’une fois un périmètre manqué ET périmé', () => {
+    expect(
+      decide([
+        candidate({ scope: 'OBSERVATIONS', missed: true, stale: true, lastAttemptAt: at(120) }),
+        candidate({ scope: 'FORECASTS', stale: true, lastAttemptAt: at(120) }),
+      ]),
+    ).toEqual(['OBSERVATIONS', 'FORECASTS']);
+  });
+
+  it('arrête les frais après le plafond de tentatives du créneau', () => {
+    // Fournisseur en panne : le budget Open-Meteo passe avant la relance.
+    expect(
+      decide([
+        candidate({
+          scope: 'OBSERVATIONS',
+          missed: true,
+          lastAttemptAt: at(120),
+          attemptsSinceSlot: 3,
+        }),
+      ]),
+    ).toEqual([]);
+  });
+
+  it('n’applique pas le plafond sans créneau identifiable', () => {
+    // Cron non quotidien : `attemptsSinceSlot` est nul, le contrôle périodique
+    // reste actif tant que les données sont périmées.
+    expect(
+      decide([
+        candidate({
+          scope: 'OBSERVATIONS',
+          stale: true,
+          lastAttemptAt: at(120),
+          attemptsSinceSlot: null,
+        }),
+      ]),
+    ).toEqual(['OBSERVATIONS']);
+  });
+
+  it('ne relance rien sans créneau manqué ni données périmées', () => {
+    expect(
+      decide([
+        candidate({ scope: 'OBSERVATIONS', lastAttemptAt: at(120) }),
+        candidate({ scope: 'FORECASTS', lastAttemptAt: at(120) }),
+      ]),
+    ).toEqual([]);
   });
 });

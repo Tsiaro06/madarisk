@@ -30,6 +30,30 @@ const RESUME_DRIFT_MINUTES = 5;
 const CATCH_UP_MIN_INTERVAL_MINUTES = 30;
 
 /**
+ * Période du contrôle de fraîcheur en cours de fonctionnement.
+ *
+ * Sans lui, un run de 06:00 qui échoue (429 fournisseur) laissait la journée
+ * sans données : le démarrage et le retour de veille sont déjà passés, et le
+ * bandeau ne se répare qu'au prochain redémarrage. 15 min laisse le temps à un
+ * run (4 à 15 min) de finir avant le contrôle suivant.
+ */
+const CATCH_UP_CHECK_INTERVAL_MS = 15 * 60_000;
+
+/**
+ * Nombre maximal de tentatives automatiques par créneau planifié.
+ *
+ * Un échec fournisseur laisse le créneau manqué : il faut le retenter, sinon la
+ * journée reste sans données. Mais retenter jusqu'au soir épuiserait le budget
+ * Open-Meteo (une tentative échoue après avoir réservé ses premiers lots, pour
+ * un plafond de 10 000 appels). Au-delà, on attend le créneau suivant ou une
+ * relance manuelle — le journal le dit à chaque contrôle.
+ */
+const MAX_AUTOMATIC_ATTEMPTS_PER_SLOT = 3;
+
+/** Cause du rattrapage, journalisée pour distinguer les scénarios. */
+type CatchUpTrigger = 'démarrage' | 'veille' | 'périodique';
+
+/**
  * Périmètres à resynchroniser d'après l'âge des données, décision pure pour
  * être testable : le reste du fichier dépend de la base et de l'horloge.
  *
@@ -157,29 +181,91 @@ export function missedScheduledScopes(input: {
   return scopes;
 }
 
+/** État d'un périmètre au moment du contrôle. */
+export interface CatchUpCandidate {
+  scope: WeatherSyncScope;
+  /** Dernière réussite antérieure au dernier créneau planifié. */
+  missed: boolean;
+  /** Données plus vieilles que le seuil du bandeau de fraîcheur. */
+  stale: boolean;
+  /** Début de la dernière tentative, tous statuts confondus. */
+  lastAttemptAt: string | null;
+  /** Tentatives depuis le créneau (`null` si le cron n'est pas quotidien). */
+  attemptsSinceSlot: number | null;
+}
+
 /**
- * Rattrapage au démarrage et au retour de veille.
+ * Périmètres à resynchroniser maintenant, décision pure.
+ *
+ * Trois filtres, dans cet ordre :
+ *  1. il faut une raison — créneau manqué ou données périmées ;
+ *  2. pas de tentative récente (`minIntervalMinutes`) : un run dure 4 à 15 min
+ *     et `tsx watch` redémarre le process à chaque sauvegarde ;
+ *  3. pas plus de `maxAttemptsPerSlot` tentatives par créneau, sinon un
+ *     fournisseur en panne consomme le budget de la journée.
+ *
+ * Le plafond ne s'applique pas aux crons non quotidiens (`attemptsSinceSlot`
+ * nul) : sans créneau identifiable, l'âge des données reste seul juge.
+ */
+export function scopesToCatchUp(input: {
+  candidates: CatchUpCandidate[];
+  now: Date;
+  minIntervalMinutes: number;
+  maxAttemptsPerSlot: number;
+}): WeatherSyncScope[] {
+  return input.candidates
+    .filter((candidate) => candidate.missed || candidate.stale)
+    .filter(
+      (candidate) =>
+        !attemptedRecently(candidate.lastAttemptAt, input.now, input.minIntervalMinutes),
+    )
+    .filter(
+      (candidate) =>
+        candidate.attemptsSinceSlot === null ||
+        candidate.attemptsSinceSlot < input.maxAttemptsPerSlot,
+    )
+    .map((candidate) => candidate.scope);
+}
+
+/**
+ * Rattrapage au démarrage, au retour de veille et périodiquement.
  *
  * Deux raisons indépendantes, réunies : un créneau planifié manqué (le process
  * ne tournait pas à l'heure du cron) et des données périmées au sens du
  * bandeau. Les prévisions suivent la même règle — leur cron de 12:20 tombe
  * aussi hors des heures d'allumage habituelles.
  */
-async function catchUpIfStale(trigger: 'démarrage' | 'veille'): Promise<void> {
+async function catchUpIfStale(trigger: CatchUpTrigger): Promise<void> {
   try {
-    const sourceId = await weatherRepository.getSourceId();
-    const [lastObservationAt, forecastInfo, obsSuccess, fSuccess, obsRun, fRun] = await Promise.all(
-      [
-        weatherRepository.latestObservationAtForSource(sourceId),
-        weatherRepository.forecastDataInfo(sourceId),
-        weatherSyncRepository.latestSuccessfulRun('OBSERVATIONS', SYNC_SOURCE),
-        weatherSyncRepository.latestSuccessfulRun('FORECASTS', SYNC_SOURCE),
-        weatherSyncRepository.latestRun('OBSERVATIONS', SYNC_SOURCE),
-        weatherSyncRepository.latestRun('FORECASTS', SYNC_SOURCE),
-      ],
-    );
-
     const now = new Date();
+    const sourceId = await weatherRepository.getSourceId();
+    const observationSlot = lastScheduledSlot(env.WEATHER_OBSERVATION_CRON, now);
+    const forecastSlot = lastScheduledSlot(env.WEATHER_FORECAST_CRON, now);
+
+    const [
+      lastObservationAt,
+      forecastInfo,
+      obsSuccess,
+      fSuccess,
+      obsRun,
+      fRun,
+      obsAttempts,
+      fAttempts,
+    ] = await Promise.all([
+      weatherRepository.latestObservationAtForSource(sourceId),
+      weatherRepository.forecastDataInfo(sourceId),
+      weatherSyncRepository.latestSuccessfulRun('OBSERVATIONS', SYNC_SOURCE),
+      weatherSyncRepository.latestSuccessfulRun('FORECASTS', SYNC_SOURCE),
+      weatherSyncRepository.latestRun('OBSERVATIONS', SYNC_SOURCE),
+      weatherSyncRepository.latestRun('FORECASTS', SYNC_SOURCE),
+      observationSlot === null
+        ? null
+        : weatherSyncRepository.runsSince('OBSERVATIONS', SYNC_SOURCE, observationSlot),
+      forecastSlot === null
+        ? null
+        : weatherSyncRepository.runsSince('FORECASTS', SYNC_SOURCE, forecastSlot),
+    ]);
+
     const missed = missedScheduledScopes({
       now,
       observationCron: env.WEATHER_OBSERVATION_CRON,
@@ -197,17 +283,28 @@ async function catchUpIfStale(trigger: 'démarrage' | 'veille'): Promise<void> {
       now: now.getTime(),
     });
 
-    const attempts: Array<[WeatherSyncScope, string | null]> = [
-      ['OBSERVATIONS', obsRun?.startedAt ?? null],
-      ['FORECASTS', fRun?.startedAt ?? null],
+    const candidates: CatchUpCandidate[] = [
+      {
+        scope: 'OBSERVATIONS',
+        missed: missed.includes('OBSERVATIONS'),
+        stale: stale.includes('OBSERVATIONS'),
+        lastAttemptAt: obsRun?.startedAt ?? null,
+        attemptsSinceSlot: obsAttempts,
+      },
+      {
+        scope: 'FORECASTS',
+        missed: missed.includes('FORECASTS'),
+        stale: stale.includes('FORECASTS'),
+        lastAttemptAt: fRun?.startedAt ?? null,
+        attemptsSinceSlot: fAttempts,
+      },
     ];
-    const scopes = attempts
-      .filter(
-        ([scope, startedAt]) =>
-          (missed.includes(scope) || stale.includes(scope)) &&
-          !attemptedRecently(startedAt, now, CATCH_UP_MIN_INTERVAL_MINUTES),
-      )
-      .map(([scope]) => scope);
+    const scopes = scopesToCatchUp({
+      candidates,
+      now,
+      minIntervalMinutes: CATCH_UP_MIN_INTERVAL_MINUTES,
+      maxAttemptsPerSlot: MAX_AUTOMATIC_ATTEMPTS_PER_SLOT,
+    });
 
     if (scopes.length === 0) return;
 
@@ -217,6 +314,7 @@ async function catchUpIfStale(trigger: 'démarrage' | 'veille'): Promise<void> {
         missed,
         stale,
         scopes,
+        attemptsSinceSlot: { observations: obsAttempts, forecasts: fAttempts },
         lastObservationAt,
         lastForecastAt: forecastInfo.lastGeneratedAt,
       },
@@ -228,6 +326,25 @@ async function catchUpIfStale(trigger: 'démarrage' | 'veille'): Promise<void> {
   } catch (err) {
     logger.warn({ err, trigger }, 'Job météo : rattrapage ignoré (échec)');
   }
+}
+
+/**
+ * Contrôle de fraîcheur en cours de fonctionnement.
+ *
+ * Le cron ne suffit pas : s'il échoue (429 fournisseur) ou si la machine dort à
+ * son heure, plus rien ne regarde avant le prochain redémarrage. Un contrôle
+ * toutes les 15 min rend le rattrapage auto-réparateur, sans dépendre d'un
+ * redémarrage ni d'un cycle de veille. Les gardes de `scopesToCatchUp` (délai
+ * minimal, plafond par créneau) empêchent la rafale et la consommation du
+ * budget.
+ */
+function startFreshnessWatchdog(): void {
+  const timer = setInterval(() => {
+    void catchUpIfStale('périodique');
+  }, CATCH_UP_CHECK_INTERVAL_MS);
+
+  // Le contrôle ne doit pas garder le process en vie à lui seul.
+  timer.unref();
 }
 
 /**
@@ -277,9 +394,15 @@ export function startWeatherSyncJobs(): void {
 
   void catchUpIfStale('démarrage');
   startResumeWatchdog();
+  startFreshnessWatchdog();
 
   logger.info(
-    { observation: env.WEATHER_OBSERVATION_CRON, forecast: env.WEATHER_FORECAST_CRON },
+    {
+      observation: env.WEATHER_OBSERVATION_CRON,
+      forecast: env.WEATHER_FORECAST_CRON,
+      freshnessCheckMinutes: CATCH_UP_CHECK_INTERVAL_MS / 60_000,
+      maxAttemptsPerSlot: MAX_AUTOMATIC_ATTEMPTS_PER_SLOT,
+    },
     'Jobs météo planifiés (ENABLE_SCHEDULED_JOBS=true)',
   );
 }

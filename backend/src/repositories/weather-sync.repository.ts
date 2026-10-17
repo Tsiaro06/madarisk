@@ -97,6 +97,23 @@ export const weatherSyncRepository = {
     return result.rows[0] ? mapRun(result.rows[0]) : null;
   },
 
+  /**
+   * Nombre de tentatives (tous statuts) d'un périmètre depuis un instant.
+   *
+   * Sert au plafond des rattrapages automatiques : un échec fournisseur laisse
+   * le créneau manqué, et sans compteur le contrôle périodique retenterait
+   * jusqu'au soir en consommant le budget Open-Meteo.
+   */
+  async runsSince(scope: string, source: string, since: Date): Promise<number> {
+    const result = await db.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+       FROM weather_sync_runs
+       WHERE scope = $1 AND source = $2 AND started_at >= $3`,
+      [scope, source, since.toISOString()],
+    );
+    return parseInt(result.rows[0]?.count ?? '0', 10);
+  },
+
   async recordProviderError(data: {
     provider: string;
     operation: string;

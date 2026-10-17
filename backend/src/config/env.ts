@@ -146,7 +146,8 @@ const envSchema = z.object({
   // retour de veille dès que la dernière réussite est antérieure au créneau
   // (`missedScheduledScopes`) — une seule fois par créneau, sinon le seuil de
   // fraîcheur de 25 h passait sous une période de 24 h et laissait des journées
-  // entières sans synchronisation.
+  // entières sans synchronisation. Un contrôle périodique (15 min) reprend
+  // aussi un run de 06:00 échoué, sans attendre un redémarrage.
   WEATHER_REFRESH_CRON: z.string().default('0 6 * * *'),
   WEATHER_OBSERVATION_CRON: z.string().default(process.env.WEATHER_REFRESH_CRON ?? '0 6 * * *'),
   // Volontairement décalé de 6 h après le cron d'observations (06 h 00). Les
