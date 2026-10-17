@@ -90,6 +90,8 @@ Optionnellement, le serveur planifie des tâches récurrentes pilotées par `ENA
 
 Chaque exécution est journalisée dans `weather_sync_runs` (statut RUNNING/SUCCESS/PARTIAL/FAILED), les erreurs fournisseur dans `provider_errors`, et une exécution déjà en cours empêche tout chevauchement (coordination en mémoire + déduplication par clé `(commune, source, timestamp/jour)`).
 
+Un cron ne s'exécute que si le process tourne à l'heure prévue : au démarrage et au retour de veille, `weather-refresh.job` rattrape donc un créneau manqué (dernière réussite antérieure au dernier créneau planifié, relu en heure locale comme `node-cron`) ou des données périmées au sens du bandeau, avec un délai minimal de 30 min entre deux tentatives.
+
 ## Décisions clés
 
 - **Enveloppe de réponse unique** : `{ success, message, data, meta }` pour toutes les routes (maintient une intégration frontend simple).

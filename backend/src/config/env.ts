@@ -138,6 +138,15 @@ const envSchema = z.object({
   //
   // 06:00 (heure Madagascar) tombe après le reset du quota à 00:00 UTC
   // (03:00 MG), et loin du cron de prévisions de 12 h 20.
+  // 06:00 (heure Madagascar) tombe après le reset du quota à 00:00 UTC
+  // (03:00 MG), et loin du cron de prévisions de 12 h 20.
+  //
+  // Un cron ne se déclenche que si le process tourne à cette minute : un
+  // créneau manqué (poste éteint la nuit) est rattrapé au démarrage ou au
+  // retour de veille dès que la dernière réussite est antérieure au créneau
+  // (`missedScheduledScopes`) — une seule fois par créneau, sinon le seuil de
+  // fraîcheur de 25 h passait sous une période de 24 h et laissait des journées
+  // entières sans synchronisation.
   WEATHER_REFRESH_CRON: z.string().default('0 6 * * *'),
   WEATHER_OBSERVATION_CRON: z.string().default(process.env.WEATHER_REFRESH_CRON ?? '0 6 * * *'),
   // Volontairement décalé de 6 h après le cron d'observations (06 h 00). Les

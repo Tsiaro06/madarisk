@@ -27,7 +27,13 @@ import {
 } from '../types/weather.types';
 import type { UserRole } from '../types/auth.types';
 
-const SYNC_SOURCE = 'OPEN_METEO';
+/**
+ * Source journalisée dans `weather_sync_runs`. Le rattrapage des créneaux
+ * manqués (`weather-refresh.job`) relit ces runs : la constante est partagée
+ * pour qu'une requête ne puisse pas interroger une autre source que celle qui
+ * écrit.
+ */
+export const SYNC_SOURCE = 'OPEN_METEO';
 
 type SyncSubScope = 'OBSERVATIONS' | 'FORECASTS';
 
