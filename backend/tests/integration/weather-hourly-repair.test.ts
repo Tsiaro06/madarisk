@@ -68,6 +68,14 @@ function rowsFor(target: Target, win: { start: string; end: string }): WeatherHo
 
 describe('weather_hourly : sélection des communes à réparer', () => {
   beforeAll(async () => {
+    // Auto-réparation : un run interrompu (timeout, crash) laisse cette source
+    // derrière lui, et une seconde source OPEN_METEO ferait échouer les tests
+    // qui supposent une source unique (sous-requête par provider_type).
+    await db.query(
+      `DELETE FROM weather_sources
+        WHERE provider_type = 'OPEN_METEO' AND name LIKE 'hourly-repair-test-%'`,
+    );
+
     const created = await db.query<{ id: string }>(
       `INSERT INTO weather_sources (name, provider_type)
        VALUES ($1, 'OPEN_METEO')

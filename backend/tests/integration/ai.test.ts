@@ -518,7 +518,11 @@ describe('AI - isolation et injection', () => {
 });
 
 describe('AI - réponse en flux (SSE)', () => {
-  /** Découpe une réponse SSE en couples (événement, données) — comme le client. */
+  /**
+   * Découpe une réponse SSE en couples (événement, données) — comme le client
+   * (`parseSseFrames`) : les frames sans `data:` (commentaires `:` envoyés en
+   * keep-alive) sont ignorées, conformément à la spécification SSE.
+   */
   function parseSse(text: string): Array<{ event: string; data: string }> {
     return text
       .split('\n\n')
@@ -532,7 +536,8 @@ describe('AI - réponse en flux (SSE)', () => {
           else if (line.startsWith('data:')) dataLines.push(line.slice(5).replace(/^ /, ''));
         }
         return { event, data: dataLines.join('\n') };
-      });
+      })
+      .filter((parsed) => parsed.data.length > 0);
   }
 
   async function chatStream(token: string, message: string, conversationId?: string) {

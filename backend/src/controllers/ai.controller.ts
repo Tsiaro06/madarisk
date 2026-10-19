@@ -35,11 +35,24 @@ export const aiController = {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
+    res.write(':\n\n'); // heartbeat initial pour garder la connexion vivante
+
+    const keepAlive = setInterval(() => {
+      if (res.destroyed || res.writableEnded) return;
+      try {
+        res.write(':\n\n');
+      } catch {
+        // connexion déjà fermée
+      }
+    }, 25000);
 
     let clientGone = false;
-    req.on('close', () => {
+    const onClientGone = () => {
       clientGone = true;
-    });
+      clearInterval(keepAlive);
+    };
+    req.on('close', onClientGone);
+    res.on('close', onClientGone);
 
     const writeEvent = (event: string, data: unknown): void => {
       res.write(`event: ${event}\n`);
@@ -70,6 +83,10 @@ export const aiController = {
         writeEvent('error', { message: appError.message, status: appError.statusCode });
         res.end();
       }
+    } finally {
+      clearInterval(keepAlive);
+      res.off('close', onClientGone);
+      req.off('close', onClientGone);
     }
   },
 
