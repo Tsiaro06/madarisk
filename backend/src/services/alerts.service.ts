@@ -295,20 +295,21 @@ export const alertsService = {
   },
 
   /**
-   * Archivage automatique des alertes dont l'événement est clôturé.
+   * Archivage automatique des alertes devenues sans objet.
    *
    * Appelé par le job planifié d'auto-archivage. Idempotent : seules les
    * alertes encore actives (brouillon/publiée) rattachées à un événement
-   * `CLOTURE` sont passées en `ARCHIVEE`. Publie un événement temps réel pour
-   * que les salles de crise connectées rafraîchissent leur fil d'alertes.
+   * `CLOTURE`, ou les alertes automatiques orphelines (événement supprimé),
+   * sont passées en `ARCHIVEE`. Publie un événement temps réel pour que les
+   * salles de crise connectées rafraîchissent leur fil d'alertes.
    */
-  async archiveForClosedEvents(): Promise<number> {
-    const archived = await alertsRepository.archiveForClosedEvents();
+  async archiveStaleAlerts(): Promise<number> {
+    const archived = await alertsRepository.archiveStaleAlerts();
     if (archived.length === 0) return 0;
 
     logger.info(
       { count: archived.length, alertIds: archived.map((a) => a.id) },
-      'Auto-archivage : alertes dun évenement cloture archivees',
+      'Auto-archivage : alertes sans objet (evenement cloture ou supprime) archivees',
     );
 
     realtimeService.publish('alert.archived', { count: archived.length });
@@ -318,7 +319,7 @@ export const alertsService = {
 
   /**
    * Archivage immédiat des alertes d'un événement qui vient d'être clôturé.
-   * Variante ciblée de {@link archiveForClosedEvents}, appelée par le service
+   * Variante ciblée de {@link archiveStaleAlerts}, appelée par le service
    * d'événements au moment de la clôture pour un rendu sans latence.
    */
   async archiveForEvent(eventId: string): Promise<number> {

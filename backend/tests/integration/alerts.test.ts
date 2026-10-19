@@ -666,8 +666,50 @@ describe("Alertes - auto-archivage à la clôture de l'événement", () => {
 
     expect((await alertsRepository.findById(alert.id))?.status).toBe('PUBLIEE');
 
-    await alertsService.archiveForClosedEvents();
+    await alertsService.archiveStaleAlerts();
 
     expect((await alertsRepository.findById(alert.id))?.status).toBe('ARCHIVEE');
+  });
+
+  it("archivage automatique : rattrape les alertes automatiques orphelines (événement supprimé)", async () => {
+    const eventId = await createEvent(admin.token);
+    // Alerte automatique générée dans le cadre de l'événement.
+    const orphan = await alertsRepository.create({
+      eventId,
+      districtId,
+      type: 'CYCLONE',
+      severity: 'ELEVEE',
+      status: 'PUBLIEE',
+      isAutomatic: true,
+      title: `Alerte automatique orpheline ${Date.now()}`,
+      message: "Alerte automatique dont l'événement va être supprimé.",
+      createdBy: null,
+      publishedAt: new Date().toISOString(),
+    });
+    // Alerte manuelle sans événement : ne doit PAS être archivée.
+    const standalone = await alertsRepository.create({
+      districtId,
+      type: 'INFORMATION',
+      severity: 'FAIBLE',
+      status: 'PUBLIEE',
+      title: `Alerte manuelle autonome ${Date.now()}`,
+      message: 'Alerte manuelle sans événement.',
+      createdBy: admin.id,
+      publishedAt: new Date().toISOString(),
+    });
+
+    // Suppression de l'événement : event_id passe à NULL (ON DELETE SET NULL).
+    await db.query(`DELETE FROM hazard_events WHERE id = $1`, [eventId]);
+
+    expect((await alertsRepository.findById(orphan.id))?.eventId ?? null).toBeNull();
+
+    await alertsService.archiveStaleAlerts();
+
+    expect((await alertsRepository.findById(orphan.id))?.status).toBe('ARCHIVEE');
+    expect((await alertsRepository.findById(standalone.id))?.status).toBe('PUBLIEE');
+
+    // Nettoyage : l'alerte orpheline (created_by NULL, event_id NULL) ne
+    // serait pas reprise par le afterAll global — on la supprime explicitement.
+    await db.query(`DELETE FROM alerts WHERE id IN ($1, $2)`, [orphan.id, standalone.id]);
   });
 });

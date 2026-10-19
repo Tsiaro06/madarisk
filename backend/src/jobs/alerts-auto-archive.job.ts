@@ -7,9 +7,10 @@ let started = false;
 let running = false;
 
 /**
- * Auto-archivage des alertes d'événements clôturés.
+ * Auto-archivage des alertes devenues sans objet.
  *
- * Une alerte rattachée à un événement `CLOTURE` n'est plus pertinente
+ * Une alerte rattachée à un événement `CLOTURE`, ou une alerte automatique
+ * orpheline (événement supprimé, `event_id` NULL), n'est plus pertinente
  * opérationnellement : ce job la passe régulièrement en `ARCHIVEE` pour
  * qu'elle sorte de la vue « Alertes actives ». Idempotent et sans verrou
  * distribué — un garde anti-chevauchement évite les cycles simultanés dans un
@@ -28,9 +29,9 @@ export function startAlertsAutoArchiveJob(): void {
       }
       running = true;
       try {
-        const count = await alertsService.archiveForClosedEvents();
+        const count = await alertsService.archiveStaleAlerts();
         if (count > 0) {
-          logger.info({ count }, "Job auto-archivage : alertes d'événements clôturés archivées");
+          logger.info({ count }, 'Job auto-archivage : alertes sans objet archivées');
         }
       } catch (err) {
         logger.error({ err }, 'Job auto-archivage : échec du cycle');
@@ -42,6 +43,6 @@ export function startAlertsAutoArchiveJob(): void {
 
   logger.info(
     { cron: env.ALERTS_AUTO_ARCHIVE_CRON },
-    "Job auto-archivage des alertes d'événements clôturés planifié",
+    'Job auto-archivage des alertes sans objet (événement clôturé ou supprimé) planifié',
   );
 }

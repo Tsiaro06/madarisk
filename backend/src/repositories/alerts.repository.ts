@@ -537,27 +537,35 @@ export const alertsRepository = {
   },
 
   /**
-   * Archivage en masse des alertes dont l'événement est clôturé.
+   * Archivage en masse des alertes devenues sans objet.
    *
-   * Une alerte liée à un événement `CLOTURE` n'a plus de pertinence
-   * opérationnelle : on la passe en `ARCHIVEE` pour qu'elle sorte de la vue
-   * « Alertes actives ». On ne touche pas aux alertes d'historique importées
-   * (`is_historique`), qui relèvent d'un autre parcours. Renvoie les alertes
-   * archivées avec leur statut précédent (pour la traçabilité).
+   * Deux cas sont couverts :
+   * - l'événement rattaché est `CLOTURE` : l'alerte n'a plus de pertinence
+   *   opérationnelle et doit sortir de la vue « Alertes actives » ;
+   * - l'événement a été supprimé (`event_id` passe à NULL via ON DELETE SET
+   *   NULL) : seules les alertes **automatiques** (`is_automatic`), toujours
+   *   générées dans le cadre d'un événement, sont visées — une alerte manuelle
+   *   sans événement est légitime et reste épargnée.
+   *
+   * Les alertes d'historique importées (`is_historique`) ne sont jamais
+   * touchées. Renvoie les alertes archivées avec leur statut précédent.
    */
-  async archiveForClosedEvents(): Promise<{ id: string; previousStatus: AlertStatus }[]> {
+  async archiveStaleAlerts(): Promise<{ id: string; previousStatus: AlertStatus }[]> {
     const result = await db.query<{ id: string; previous_status: AlertStatus }>(
-      `WITH to_archive AS (
+      `WITH targets AS (
          SELECT a.id, a.status
          FROM alerts a
-         JOIN hazard_events e ON e.id = a.event_id
-         WHERE e.status = 'CLOTURE'
-           AND a.status IN ('BROUILLON', 'PUBLIEE')
+         LEFT JOIN hazard_events e ON e.id = a.event_id
+         WHERE a.status IN ('BROUILLON', 'PUBLIEE')
            AND a.is_historique = false
+           AND (
+             e.status = 'CLOTURE'
+             OR (a.event_id IS NULL AND a.is_automatic = true)
+           )
        )
        UPDATE alerts a
        SET status = 'ARCHIVEE', updated_at = now()
-       FROM to_archive t
+       FROM targets t
        WHERE a.id = t.id
        RETURNING a.id, t.status AS previous_status`,
     );
