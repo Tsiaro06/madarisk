@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { AiAnswerMeta } from '@/components/ai/AiAnswerMeta';
 import { AiChatHistory } from '@/components/ai/AiChatHistory';
+import { AiMarkdown } from '@/components/ai/AiMarkdown';
 import { cn, formatRetryDelay } from '@/lib/utils';
 
 interface ChatMessage {
@@ -295,7 +296,11 @@ export function AiChatBubble() {
                           : 'border border-line bg-surface text-ink shadow-sm',
                       )}
                     >
-                      {m.content}
+                      {m.role === 'assistant' ? (
+                        <AiMarkdown>{m.content}</AiMarkdown>
+                      ) : (
+                        m.content
+                      )}
                       {m.meta ? <AiAnswerMeta meta={m.meta} /> : null}
                     </div>
                     {m.role === 'user' ? (
@@ -311,8 +316,8 @@ export function AiChatBubble() {
                     <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-brand text-white">
                       <Bot className="size-3.5" />
                     </span>
-                    <div className="max-w-[82%] whitespace-pre-wrap rounded-2xl border border-line bg-surface px-3 py-2 text-sm leading-relaxed text-ink shadow-sm">
-                      {streamedAnswer}
+                    <div className="max-w-[82%] rounded-2xl border border-line bg-surface px-3 py-2 text-sm leading-relaxed text-ink shadow-sm">
+                      <AiMarkdown>{streamedAnswer}</AiMarkdown>
                       <span
                         className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-brand align-middle"
                         aria-hidden="true"
