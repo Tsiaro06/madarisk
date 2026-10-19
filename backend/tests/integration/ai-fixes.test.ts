@@ -56,11 +56,11 @@ async function createUserAndLogin(): Promise<{ id: string; token: string }> {
   return { id: created.id, token: login.body.data.accessToken };
 }
 
-function chat(message: string) {
+function chat(message: string, conversationId?: string) {
   return request(app)
     .post('/api/v1/ai/chat')
     .set('Authorization', `Bearer ${user.token}`)
-    .send({ message });
+    .send({ message, conversationId });
 }
 
 async function countMessages(conversationId: string): Promise<number> {
