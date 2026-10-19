@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bot, MessagesSquare, Send, User, X, MessageCircle } from 'lucide-react';
+import { Bot, MessagesSquare, Send, Square, User, X, MessageCircle } from 'lucide-react';
 import { aiApi } from '@/api';
 import { ApiClientError } from '@/api/client';
 import type { AiStreamMeta } from '@/api/ai-stream';
@@ -28,6 +28,18 @@ const WELCOME: ChatMessage = {
 /** Un message relu est affichable s'il fait partie de l'échange visible. */
 function isVisibleMessage(message: AiMessage): boolean {
   return message.role === 'UTILISATEUR' || message.role === 'ASSISTANT';
+}
+
+/**
+ * Une interruption volontaire (bouton Stop) fait rejeter la lecture du flux par
+ * l'`AbortController` avec une erreur `AbortError`. Ce n'est pas une défaillance
+ * à signaler à l'utilisateur : le serveur n'a rien persisté pour ce tour, le fil
+ * reste simplement sans réponse.
+ */
+function isAbortError(err: unknown): boolean {
+  return (
+    typeof err === 'object' && err !== null && (err as { name?: string }).name === 'AbortError'
+  );
 }
 
 /**
@@ -140,6 +152,9 @@ export function AiChatBubble() {
       setStreamedAnswer(null);
       setStreamedMeta(null);
       streamedMetaRef.current = null;
+      // Interruption volontaire : on efface la réponse partielle et on s'arrête
+      // là, sans message d'erreur.
+      if (isAbortError(err)) return;
       if (err instanceof ApiClientError) {
         if (err.status === 503) {
           setUnavailable(true);
@@ -166,6 +181,11 @@ export function AiChatBubble() {
     setMessages((prev) => [...prev, { role: 'user', content: text }]);
     setInput('');
     chatM.mutate(text);
+  };
+
+  /** Coupe la génération en cours : le flux est abandonné côté client. */
+  const stopGeneration = () => {
+    abortRef.current?.abort();
   };
 
   /**
@@ -327,16 +347,28 @@ export function AiChatBubble() {
                     maxLength={5000}
                     aria-label="Message à l’assistant"
                   />
-                  <Button
-                    type="submit"
-                    size="sm"
-                    loading={chatM.isPending}
-                    disabled={retryAfter > 0}
-                    aria-label="Envoyer"
-                    className="!h-10 !px-3"
-                  >
-                    <Send className="size-4" />
-                  </Button>
+                  {chatM.isPending ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="danger"
+                      onClick={stopGeneration}
+                      aria-label="Arrêter la génération"
+                      className="!h-10 !px-3"
+                    >
+                      <Square className="size-3.5 fill-current" />
+                    </Button>
+                  ) : (
+                    <Button
+                      type="submit"
+                      size="sm"
+                      disabled={retryAfter > 0}
+                      aria-label="Envoyer"
+                      className="!h-10 !px-3"
+                    >
+                      <Send className="size-4" />
+                    </Button>
+                  )}
                 </form>
               ) : null}
             </>

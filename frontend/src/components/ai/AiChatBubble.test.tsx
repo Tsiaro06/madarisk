@@ -341,3 +341,38 @@ describe('AiChatBubble — historique', () => {
     expect(screen.queryByText('aucune')).not.toBeInTheDocument();
   });
 });
+
+describe('AiChatBubble — arrêt de la génération', () => {
+  it('interrompt la génération au clic sur Stop, sans message d’erreur', async () => {
+    // Flux qui n'émet qu'un premier morceau puis reste ouvert : il ne se
+    // termine que si on l'interrompt (comme une longue génération réelle).
+    api.chatStream.mockImplementation(
+      (_token: string | null, _body: unknown, handlers: AiStreamHandlers) => {
+        handlers.onChunk('Début de réponse…');
+        return new Promise((_resolve, reject) => {
+          handlers.signal?.addEventListener('abort', () =>
+            reject(new DOMException('Aborted', 'AbortError')),
+          );
+        });
+      },
+    );
+
+    renderBubble();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Ouvrir l’assistant IA' }));
+    await user.type(screen.getByLabelText('Message à l’assistant'), 'Quelles alertes ?');
+    await user.click(screen.getByRole('button', { name: 'Envoyer' }));
+
+    // La réponse partielle s'affiche pendant le flux, et Stop remplace Envoyer.
+    await screen.findByText('Début de réponse…');
+    const stop = await screen.findByRole('button', { name: 'Arrêter la génération' });
+    await user.click(stop);
+
+    // L'abort rejette sans erreur affichée : la réponse partielle est effacée et
+    // l'entrée redevient utilisable pour poser une autre question.
+    await waitFor(() => expect(screen.queryByText('Début de réponse…')).not.toBeInTheDocument());
+    expect(screen.queryByText('Erreur assistant')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Message à l’assistant')).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Envoyer' })).toBeInTheDocument();
+  });
+});
