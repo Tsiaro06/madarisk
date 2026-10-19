@@ -1,4 +1,4 @@
-import { ApiClientError } from './client';
+import { ApiClientError, refreshSession } from './client';
 import { parseSseFrames, type SseFrame } from '@/lib/sse';
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/v1';
@@ -29,6 +29,11 @@ export interface AiStreamHandlers {
  * tout de même converties en `ApiClientError` pour que l'appelant traite un
  * échec de la même façon sur les deux chemins (statut, `errors[]`, `Retry-After`).
  *
+ * Un jeton expiré (401) est rafraîchi une fois puis la requête est reprise :
+ * sans cela, la première question posée après une inactivité plus longue que
+ * la durée de vie du jeton échouerait, alors que toutes les autres requêtes de
+ * l'application se rafraîchissent d'elles-mêmes.
+ *
  * Le cas « connexion coupée après le début du flux » est signalé avec le statut
  * `0` : il n'y a pas de statut HTTP à rapporter, la réponse était déjà en 200.
  */
@@ -37,7 +42,7 @@ export async function streamAiChat(
   body: { message: string; conversationId?: string },
   handlers: AiStreamHandlers,
 ): Promise<{ conversationId: string }> {
-  const res = await fetch(`${API_BASE}/ai/chat`, {
+  let res = await fetch(`${API_BASE}/ai/chat`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -47,6 +52,21 @@ export async function streamAiChat(
     body: JSON.stringify({ ...body, stream: true }),
     signal: handlers.signal,
   });
+
+  if (res.status === 401) {
+    const freshToken = await refreshSession();
+    if (!freshToken) throw await toApiClientError(res);
+    res = await fetch(`${API_BASE}/ai/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${freshToken}`,
+      },
+      body: JSON.stringify({ ...body, stream: true }),
+      signal: handlers.signal,
+    });
+  }
 
   if (!res.ok || !res.body) {
     throw await toApiClientError(res);

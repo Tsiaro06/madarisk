@@ -128,6 +128,16 @@ export const aiRepository = {
     return result.rows.map(mapMessage);
   },
 
+  /**
+   * Supprime des messages d'un coup. Sert à effacer les traces d'un tour dont
+   * la réponse a échoué : une question restée sans réponse polluerait
+   * l'historique et la mémoire du tour suivant.
+   */
+  async deleteMessages(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await db.query('DELETE FROM ai_messages WHERE id = ANY($1::uuid[])', [ids]);
+  },
+
   async listConversations(
     userId: string,
     page: number,

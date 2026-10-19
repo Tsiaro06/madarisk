@@ -229,12 +229,20 @@ const AI_TOOLS: AITool[] = [
     name: 'getPublishedAlerts',
     description: 'Alertes publiées et encore actives.',
     execute: async (parameters, _user) => {
-      alertFiltersSchema.parse(parameters);
+      const filters = alertFiltersSchema.parse(parameters);
+      // `activeOnly` borne aux alertes publiées et non expirées. `clientOnly`
+      // est volontairement écarté : ce parcours ne s'applique qu'aux alertes
+      // publiées et court-circuite eventId/districtId/communeId — les filtres
+      // validés ci-dessus n'auraient alors aucun effet et le modèle aurait
+      // pu présenter toutes les alertes comme propres à une commune demandée.
       const result = await alertsRepository.list({
         page: 1,
         limit: 50,
-        activeOnly: false,
-        clientOnly: true,
+        activeOnly: true,
+        clientOnly: false,
+        eventId: filters.eventId,
+        districtId: filters.districtId,
+        communeId: filters.communeId,
       });
       return result.items;
     },
@@ -245,10 +253,16 @@ const AI_TOOLS: AITool[] = [
       'Événements historiques clos (ex. cyclone Batsirai 2022) : données passées, datées et sourcées, avec leurs bulletins météo et bilans. Jamais une situation temps réel.',
     execute: async (parameters, _user) => {
       const params = historicalEventsParamsSchema.parse(parameters);
-      const listed = await eventsRepository.list({ page: 1, limit: 50, status: 'CLOTURE' });
+      // L'identifiant est résolu par un accès direct : filtrer la liste des 50
+      // événements les plus récents (comme ci-dessous) faisait disparaître tout
+      // événement plus ancien, qui rendait `events: []` tout en renvoyant ses
+      // bulletins — un contexte incohérent pour le modèle.
+      const byId = params.eventId ? await eventsRepository.findById(params.eventId) : null;
       const events = params.eventId
-        ? listed.items.filter((event) => event.id === params.eventId)
-        : listed.items;
+        ? byId && byId.status === 'CLOTURE'
+          ? [byId]
+          : []
+        : (await eventsRepository.list({ page: 1, limit: 50, status: 'CLOTURE' })).items;
       const bulletins = await weatherRepository.listBulletins({
         eventId: params.eventId,
         limit: 50,
@@ -720,13 +734,23 @@ async function firstEventId(
   collected: Map<string, unknown>,
   message: string,
 ): Promise<string | null> {
-  const codeMatch = message.match(/\b[A-Z]{2}-\d{1,6}\b/i);
-  if (codeMatch) {
-    const event = await eventsRepository.findByCode(codeMatch[0].toUpperCase());
-    if (event) return event.id;
-  }
+  const fromCode = await eventIdFromCode(message);
+  if (fromCode) return fromCode;
   const active = collected.get('getActiveEvents') as { items: EventListItem[] } | undefined;
   return active?.items?.[0]?.id ?? null;
+}
+
+/**
+ * Identifiant de l'événement cité par son code (« CY-123 ») dans la question,
+ * s'il existe en base. Contrairement à `firstEventId`, aucun repli n'est fait
+ * sur le premier événement actif : filtrer des alertes sur un événement deviné
+ * cacherait celles des autres événements.
+ */
+async function eventIdFromCode(message: string): Promise<string | null> {
+  const codeMatch = message.match(/\b[A-Z]{2}-\d{1,6}\b/i);
+  if (!codeMatch) return null;
+  const event = await eventsRepository.findByCode(codeMatch[0].toUpperCase());
+  return event ? event.id : null;
 }
 
 /**
@@ -794,6 +818,32 @@ async function resolveParameters(
       const eventId = modelUuid(args['eventId']) ?? (await firstEventId(collected, message));
       if (!eventId) return SKIP;
       return { eventId };
+    }
+    case 'getPublishedAlerts': {
+      // Les filtres éventuels sont transmis tels quels : rejetés ici, l'outil
+      // listerait toutes les alertes publiées alors que le modèle croit avoir
+      // ciblé une commune ou un événement.
+      //
+      // Le chemin déterministe complète avec ce que la question cite
+      // explicitement. Pour la commune, seul le résultat de la recherche de
+      // territoire fait foi : un UUID brut glissé dans la question pourrait
+      // être celui d'un événement, et filtrer les alertes dessus en
+      // cacherait les autres.
+      const filters: Record<string, string> = {};
+      const eventId = modelUuid(args['eventId']) ?? (await eventIdFromCode(message));
+      const districtId = modelUuid(args['districtId']);
+      const searchedCommune = (
+        collected.get('searchTerritories') as TerritorySearchResult[] | undefined
+      )?.find((row) => row.type === 'commune');
+      const communeId = modelUuid(args['communeId']) ?? searchedCommune?.id ?? null;
+      if (eventId) filters['eventId'] = eventId;
+      if (districtId) filters['districtId'] = districtId;
+      if (communeId) filters['communeId'] = communeId;
+      return filters;
+    }
+    case 'getHistoricalEvents': {
+      const eventId = modelUuid(args['eventId']);
+      return eventId ? { eventId } : {};
     }
     default:
       return {};
@@ -885,6 +935,12 @@ interface PreparedTurn {
    * demandé par le modèle réclame.
    */
   collected: Map<string, unknown>;
+  /**
+   * Identifiants des messages persistés pendant ce tour (question + résultats
+   * d'outils). En cas d'échec de la réponse, ils sont supprimés : une question
+   * laissée sans réponse polluerait l'historique et la mémoire du tour suivant.
+   */
+  messageIds: string[];
 }
 
 /** Contexte d'exécution d'un outil, partagé par le socle déterministe et le modèle. */
@@ -948,17 +1004,23 @@ async function runTool(
 }
 
 /** Persiste les résultats d'outils d'un tour (un message OUTIL par résultat). */
-async function persistToolResults(conversationId: string, entries: AIToolResult[]): Promise<void> {
+async function persistToolResults(
+  conversationId: string,
+  entries: AIToolResult[],
+): Promise<string[]> {
+  const ids: string[] = [];
   for (const entry of entries) {
     const content = serializeToolResults([entry]).slice(0, 500);
-    await aiRepository.addMessage({
+    const message = await aiRepository.addMessage({
       conversationId,
       role: 'OUTIL',
       content,
       tokenCount: estimateTokens(content),
       metadata: { tool: entry.tool },
     });
+    ids.push(message.id);
   }
+  return ids;
 }
 
 /** Nombre maximal d'outils qu'un même tour exécute sur demande du modèle. */
@@ -967,8 +1029,11 @@ const MAX_MODEL_TOOL_CALLS = 6;
 /**
  * Exécute les outils réclamés par le modèle (function calling).
  *
- * Un outil déjà couvert par le socle déterministe est ignoré — sauf
- * `searchTerritories`, où un autre nom recherché change réellement la requête.
+ * Un outil déjà couvert par le socle déterministe est ignoré — sauf quand le
+ * modèle change réellement la requête : un autre nom recherché
+ * (`searchTerritories`), ou des filtres là où le socle a tourné sans filtre
+ * (`getPublishedAlerts`, `getHistoricalEvents` : le repli générique les exécute
+ * toujours à vide, les paramètres du modèle seraient sinon jetés).
  * Le modèle ne peut pas non plus boucler : un même outil n'est exécuté qu'une
  * fois par tour, et l'ensemble est plafonné.
  */
@@ -988,7 +1053,10 @@ async function runModelToolCalls(
     if (executed.includes(tool.name)) continue;
 
     const wantsNewQuery = tool.name === 'searchTerritories' && typeof call.args['q'] === 'string';
-    if (alreadyRun.has(tool.name) && !wantsNewQuery) continue;
+    const wantsFiltering =
+      (tool.name === 'getPublishedAlerts' || tool.name === 'getHistoricalEvents') &&
+      Object.values(call.args).some((value) => modelUuid(value) !== null);
+    if (alreadyRun.has(tool.name) && !wantsNewQuery && !wantsFiltering) continue;
 
     await runTool(tool.name as ToolName, context, call.args);
     executed.push(tool.name);
@@ -1117,12 +1185,14 @@ async function prepareTurn(
   // en cours se retrouverait à la fois dans l'historique et dans la question.
   const history = buildMemory(await aiRepository.listMessages(conversationId));
 
-  await aiRepository.addMessage({
+  const messageIds: string[] = [];
+  const userMessage = await aiRepository.addMessage({
     conversationId,
     role: 'UTILISATEUR',
     content: message,
     tokenCount: estimateTokens(message),
   });
+  messageIds.push(userMessage.id);
 
   const selected = selectTools(message);
   const collected = new Map<string, unknown>();
@@ -1161,7 +1231,7 @@ async function prepareTurn(
     }
   }
 
-  await persistToolResults(conversationId, toolResults);
+  messageIds.push(...(await persistToolResults(conversationId, toolResults)));
 
   return {
     toolResults,
@@ -1169,7 +1239,37 @@ async function prepareTurn(
     collected,
     dataTimestamp: computeDataTimestamp(toolResults),
     history,
+    messageIds,
   };
+}
+
+/**
+ * Efface les traces d'un tour dont la réponse a échoué : la question et les
+ * messages d'outils persistés pendant ce tour sont supprimés. Si la
+ * conversation a été créée pour ce tour (aucune conversation transmise par le
+ * client) et ne contient plus rien, elle est supprimée aussi — sinon elle
+ * apparaîtrait dans l'historique comme une conversation vide.
+ *
+ * L'échec du nettoyage ne doit pas masquer l'erreur d'origine : il est
+ * journalisé et ignoré.
+ */
+async function discardFailedTurn(
+  conversationId: string,
+  turn: PreparedTurn,
+  conversationCreatedHere: boolean,
+): Promise<void> {
+  try {
+    await aiRepository.deleteMessages(turn.messageIds);
+    if (conversationCreatedHere) {
+      const remaining = await aiRepository.listMessages(conversationId);
+      if (remaining.length === 0) {
+        await aiRepository.deleteConversation(conversationId);
+      }
+    }
+    logger.debug({ conversationId }, 'IA : tour échoué effacé de la conversation');
+  } catch (err) {
+    logger.warn({ err, conversationId }, "IA : impossible d'effacer un tour échoué");
+  }
 }
 
 export const aiService = {
@@ -1247,7 +1347,7 @@ export const aiService = {
 
       const additions = turn.toolResults.slice(before);
       if (additions.length > 0) {
-        await persistToolResults(conversationId, additions);
+        turn.messageIds.push(...(await persistToolResults(conversationId, additions)));
         // Les outils demandés par le modèle portent peut-être des données plus
         // récentes : la date transmise au second appel doit en tenir compte.
         request.context.dataTimestamp = computeDataTimestamp(turn.toolResults);
@@ -1260,32 +1360,41 @@ export const aiService = {
     let dataTimestamp = turn.dataTimestamp;
     let metaSent = false;
 
-    for await (const event of resolveAnswer(provider, request, executeCalls)) {
-      if (event.type === 'ready') {
-        // Données figées : on date et on annonce les sources réellement utilisées.
-        dataTimestamp = computeDataTimestamp(turn.toolResults);
-        request.context.dataTimestamp = dataTimestamp;
-        metaSent = true;
-        yield {
-          type: 'meta',
-          data: {
-            conversationId,
-            internalSources: turn.toolResults.map((entry) => entry.tool),
-            dataTimestamp,
-            limitations: turn.limitations,
-          },
-        };
-        continue;
+    try {
+      for await (const event of resolveAnswer(provider, request, executeCalls)) {
+        if (event.type === 'ready') {
+          // Données figées : on date et on annonce les sources réellement utilisées.
+          dataTimestamp = computeDataTimestamp(turn.toolResults);
+          request.context.dataTimestamp = dataTimestamp;
+          metaSent = true;
+          yield {
+            type: 'meta',
+            data: {
+              conversationId,
+              internalSources: turn.toolResults.map((entry) => entry.tool),
+              dataTimestamp,
+              limitations: turn.limitations,
+            },
+          };
+          continue;
+        }
+
+        answer += event.text;
+        yield { type: 'chunk', data: { text: event.text } };
       }
 
-      answer += event.text;
-      yield { type: 'chunk', data: { text: event.text } };
-    }
-
-    if (!metaSent) {
-      // Cas limite : aucun texte n'a été produit (une erreur a été levée juste
-      // avant, sinon `resolveAnswer` aurait signalé un flux vide).
-      throw new AppError('Réponse vide du service IA.', 502);
+      if (!metaSent) {
+        // Cas limite : aucun texte n'a été produit (une erreur a été levée juste
+        // avant, sinon `resolveAnswer` aurait signalé un flux vide).
+        throw new AppError('Réponse vide du service IA.', 502);
+      }
+    } catch (error) {
+      // Réponse avortée (quota, panne, coupure) : la question — et les messages
+      // d'outils associés — resteraient en base sans réponse, visibles dans
+      // l'historique et réintroduits dans la mémoire du tour suivant. Chaque
+      // nouvelle tentative ajouterait une ligne de plus. On efface le tour.
+      await discardFailedTurn(conversationId, turn, !input.conversationId);
+      throw error;
     }
 
     await aiRepository.addMessage({

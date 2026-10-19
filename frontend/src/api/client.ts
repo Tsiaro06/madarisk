@@ -70,6 +70,30 @@ async function refreshAccessToken(): Promise<boolean> {
   }
 }
 
+/**
+ * Renouvelle la session (accès + rafraîchissement) et renvoie le nouvel
+ * access token, ou `null` si le renouvellement a échoué (déconnexion
+ * déclenchée, à l'instar de l'intercepteur 401).
+ *
+ * Exposé pour les lecteurs de flux SSE (`ai-stream.ts`) : `fetch` contourne
+ * axios et ses intercepteurs, mais un jeton expiré doit y être rafraîchi de
+ * la même façon, sous peine de faire échouer la première question posée après
+ * une inactivité plus longue que la durée de vie du jeton.
+ */
+export async function refreshSession(): Promise<string | null> {
+  if (!refreshPromise) {
+    refreshPromise = refreshAccessToken().finally(() => {
+      refreshPromise = null;
+    });
+  }
+  const ok = await refreshPromise;
+  if (!ok) {
+    onLogout();
+    return null;
+  }
+  return getAccessToken();
+}
+
 raw.interceptors.request.use((config) => {
   const token = getAccessToken();
   if (token) {

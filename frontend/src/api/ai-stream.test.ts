@@ -3,6 +3,23 @@ import { streamAiChat } from './ai-stream';
 import { ApiClientError } from './client';
 
 /**
+ * `refreshSession` est la seule dépendance réseau du chemin de reprise 401 :
+ * elle est doublée ici pour prouver que le flux relance la requête avec le
+ * nouveau jeton, puis remonte l'échec si le renouvellement échoue.
+ */
+vi.mock('./client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./client')>();
+  return {
+    ...actual,
+    refreshSession: vi.fn(),
+  };
+});
+
+import { refreshSession } from './client';
+
+const refreshSessionMock = vi.mocked(refreshSession);
+
+/**
  * Construit une fausse réponse HTTP dont le corps est un flux de texte, pour
  * éprouver la lecture incrémentale sans réseau.
  */
@@ -26,6 +43,7 @@ function frame(event: string, data: unknown): string {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  refreshSessionMock.mockReset();
 });
 
 describe('streamAiChat', () => {
@@ -101,6 +119,62 @@ describe('streamAiChat', () => {
       message: "Trop de requêtes vers l'assistant.",
       retryAfter: 900,
     });
+  });
+
+  it('remonte une erreur 401 si le jeton ne peut pas être renouvelé', async () => {
+    refreshSessionMock.mockResolvedValueOnce(null);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ message: "Jeton d'accès expiré." }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      ),
+    );
+
+    await expect(
+      streamAiChat('jeton', { message: 'Bonjour' }, { onChunk: () => {} }),
+    ).rejects.toMatchObject({ status: 401, message: "Jeton d'accès expiré." });
+    expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+    // Une seule tentative : pas de boucle 401 → refresh → 401.
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('reprend la lecture avec le jeton renouvelé après un 401', async () => {
+    const goodPayload =
+      frame('meta', { conversationId: 'c', internalSources: [], dataTimestamp: null, limitations: [] }) +
+      frame('chunk', { text: 'Réponse.' }) +
+      frame('done', { conversationId: 'c' });
+
+    refreshSessionMock.mockResolvedValueOnce('jeton-frais');
+    const fetchMock = vi
+      .fn()
+      // Première tentative : jeton expiré.
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ message: "Jeton d'accès expiré." }), {
+          status: 401,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      )
+      // Reprise : flux normal.
+      .mockResolvedValueOnce(sseResponse([goodPayload]));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const received: string[] = [];
+    const result = await streamAiChat('jeton', { message: 'Bonjour' }, {
+      onChunk: (text) => received.push(text),
+    });
+
+    expect(result.conversationId).toBe('c');
+    expect(received.join('')).toBe('Réponse.');
+    expect(refreshSessionMock).toHaveBeenCalledTimes(1);
+
+    // La reprise porte bien le jeton renouvelé.
+    const [, retryInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect((retryInit.headers as Record<string, string>).Authorization).toBe(
+      'Bearer jeton-frais',
+    );
   });
 
   it('remonte un événement error du flux', async () => {
