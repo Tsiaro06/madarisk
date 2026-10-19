@@ -5,6 +5,7 @@ import { eventsRepository } from '../repositories/events.repository';
 import { hazardDetectionRepository } from '../repositories/hazard-detection.repository';
 import { exposureRepository } from '../repositories/exposure.repository';
 import { exposureService } from './exposure.service';
+import { alertsService } from './alerts.service';
 import {
   AreaGeoJson,
   CommuneImpactsResult,
@@ -266,6 +267,18 @@ export const eventsService = {
       actorType: 'USER',
       actorId: actor.id,
     });
+
+    // Archivage immédiat des alertes de l'événement clôturé : une alerte
+    // rattachée à un événement fini n'a plus de pertinence opérationnelle et
+    // ne doit plus s'afficher en « Alertes actives ». Un échec ici ne doit pas
+    // faire échouer le changement de statut (le job d'auto-archivage rattrape).
+    if (next === 'CLOTURE') {
+      try {
+        await alertsService.archiveForEvent(id);
+      } catch (err) {
+        logger.error({ err, eventId: id }, "Échec de l'archivage des alertes à la clôture");
+      }
+    }
 
     return updated!;
   },

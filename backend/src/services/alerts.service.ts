@@ -294,6 +294,47 @@ export const alertsService = {
     return archived!;
   },
 
+  /**
+   * Archivage automatique des alertes dont l'événement est clôturé.
+   *
+   * Appelé par le job planifié d'auto-archivage. Idempotent : seules les
+   * alertes encore actives (brouillon/publiée) rattachées à un événement
+   * `CLOTURE` sont passées en `ARCHIVEE`. Publie un événement temps réel pour
+   * que les salles de crise connectées rafraîchissent leur fil d'alertes.
+   */
+  async archiveForClosedEvents(): Promise<number> {
+    const archived = await alertsRepository.archiveForClosedEvents();
+    if (archived.length === 0) return 0;
+
+    logger.info(
+      { count: archived.length, alertIds: archived.map((a) => a.id) },
+      'Auto-archivage : alertes dun évenement cloture archivees',
+    );
+
+    realtimeService.publish('alert.archived', { count: archived.length });
+
+    return archived.length;
+  },
+
+  /**
+   * Archivage immédiat des alertes d'un événement qui vient d'être clôturé.
+   * Variante ciblée de {@link archiveForClosedEvents}, appelée par le service
+   * d'événements au moment de la clôture pour un rendu sans latence.
+   */
+  async archiveForEvent(eventId: string): Promise<number> {
+    const archived = await alertsRepository.archiveForEvent(eventId);
+    if (archived.length === 0) return 0;
+
+    logger.info(
+      { eventId, count: archived.length },
+      'Auto-archivage : alertes archivees a la cloture de l evenement',
+    );
+
+    realtimeService.publish('alert.archived', { count: archived.length, eventId });
+
+    return archived.length;
+  },
+
   async createRiskAlertIfThresholdExceeded(assessments: RiskAssessment[]): Promise<Alert[]> {
     const configuration = await risksRepository.getActiveConfiguration();
     const threshold = configuration ? configuration.extremeThreshold : RISK_ALERT_DEFAULT_THRESHOLD;

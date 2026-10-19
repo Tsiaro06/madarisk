@@ -536,6 +536,57 @@ export const alertsRepository = {
     return result.rows[0] ? mapAlert(result.rows[0]) : null;
   },
 
+  /**
+   * Archivage en masse des alertes dont l'événement est clôturé.
+   *
+   * Une alerte liée à un événement `CLOTURE` n'a plus de pertinence
+   * opérationnelle : on la passe en `ARCHIVEE` pour qu'elle sorte de la vue
+   * « Alertes actives ». On ne touche pas aux alertes d'historique importées
+   * (`is_historique`), qui relèvent d'un autre parcours. Renvoie les alertes
+   * archivées avec leur statut précédent (pour la traçabilité).
+   */
+  async archiveForClosedEvents(): Promise<{ id: string; previousStatus: AlertStatus }[]> {
+    const result = await db.query<{ id: string; previous_status: AlertStatus }>(
+      `WITH to_archive AS (
+         SELECT a.id, a.status
+         FROM alerts a
+         JOIN hazard_events e ON e.id = a.event_id
+         WHERE e.status = 'CLOTURE'
+           AND a.status IN ('BROUILLON', 'PUBLIEE')
+           AND a.is_historique = false
+       )
+       UPDATE alerts a
+       SET status = 'ARCHIVEE', updated_at = now()
+       FROM to_archive t
+       WHERE a.id = t.id
+       RETURNING a.id, t.status AS previous_status`,
+    );
+    return result.rows.map((r) => ({ id: r.id, previousStatus: r.previous_status }));
+  },
+
+  /**
+   * Archivage des alertes d'un événement précis (appelé à sa clôture).
+   * Ne touche pas aux alertes d'historique importées (`is_historique`).
+   */
+  async archiveForEvent(eventId: string): Promise<{ id: string; previousStatus: AlertStatus }[]> {
+    const result = await db.query<{ id: string; previous_status: AlertStatus }>(
+      `WITH to_archive AS (
+         SELECT a.id, a.status
+         FROM alerts a
+         WHERE a.event_id = $1
+           AND a.status IN ('BROUILLON', 'PUBLIEE')
+           AND a.is_historique = false
+       )
+       UPDATE alerts a
+       SET status = 'ARCHIVEE', updated_at = now()
+       FROM to_archive t
+       WHERE a.id = t.id
+       RETURNING a.id, t.status AS previous_status`,
+      [eventId],
+    );
+    return result.rows.map((r) => ({ id: r.id, previousStatus: r.previous_status }));
+  },
+
   async findActiveSimilar(eventId: string | null, communeId: string): Promise<Alert | null> {
     const result = await db.query<AlertRow>(
       `SELECT ${ALERT_COLUMNS}

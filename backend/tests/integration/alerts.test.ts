@@ -4,6 +4,7 @@ import app from '../../src/app';
 import { db } from '../../src/config/database';
 import { usersRepository } from '../../src/repositories/users.repository';
 import { alertsRepository } from '../../src/repositories/alerts.repository';
+import { alertsService } from '../../src/services/alerts.service';
 import { password } from '../../src/utils/password';
 import { weatherService } from '../../src/services/weather.service';
 import { WeatherProvider } from '../../src/types/weather.types';
@@ -598,5 +599,75 @@ describe('Alertes - regroupement par événement (group=event)', () => {
     );
     expect(raw).toBeDefined();
     expect(raw.alertCount).toBeUndefined();
+  });
+});
+
+describe("Alertes - auto-archivage à la clôture de l'événement", () => {
+  async function stepToCloture(token: string, eventId: string) {
+    for (const status of ['PREVISION', 'ACTIF', 'SUIVI', 'CLOTURE']) {
+      const res = await request(app)
+        .patch(`/api/v1/events/${eventId}/status`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({ status });
+      expect(res.status).toBe(200);
+    }
+  }
+
+  it("clôture manuelle : archive les alertes actives, sans toucher à l'historique", async () => {
+    const eventId = await createEvent(admin.token);
+
+    const active = await alertsRepository.create({
+      eventId,
+      districtId,
+      type: 'CYCLONE',
+      severity: 'ELEVEE',
+      status: 'PUBLIEE',
+      title: `Alerte active cloturee ${Date.now()}`,
+      message: "Alerte publiée liée à l'événement.",
+      createdBy: admin.id,
+      publishedAt: new Date().toISOString(),
+    });
+    const historical = await alertsRepository.create({
+      eventId,
+      districtId,
+      type: 'CYCLONE',
+      severity: 'ELEVEE',
+      status: 'PUBLIEE',
+      title: `Alerte historique ${Date.now()}`,
+      message: "Alerte d'historique importée.",
+      isHistorique: true,
+      createdBy: admin.id,
+      publishedAt: new Date().toISOString(),
+    });
+
+    await stepToCloture(admin.token, eventId);
+
+    expect((await alertsRepository.findById(active.id))?.status).toBe('ARCHIVEE');
+    expect((await alertsRepository.findById(historical.id))?.status).toBe('PUBLIEE');
+  });
+
+  it("job d'auto-archivage : rattrape les alertes d'un événement clôturé hors ligne", async () => {
+    const eventId = await createEvent(admin.token);
+    const alert = await alertsRepository.create({
+      eventId,
+      districtId,
+      type: 'CYCLONE',
+      severity: 'ELEVEE',
+      status: 'PUBLIEE',
+      title: `Alerte cloture deferlee ${Date.now()}`,
+      message: 'Alerte qui sera archivée par le job.',
+      createdBy: admin.id,
+      publishedAt: new Date().toISOString(),
+    });
+
+    // Clôture « automatique » : directement en base, sans passer par le service
+    // (donc sans archivage immédiat) — reproduit la détection / la sync cyclone.
+    await db.query(`UPDATE hazard_events SET status = 'CLOTURE' WHERE id = $1`, [eventId]);
+
+    expect((await alertsRepository.findById(alert.id))?.status).toBe('PUBLIEE');
+
+    await alertsService.archiveForClosedEvents();
+
+    expect((await alertsRepository.findById(alert.id))?.status).toBe('ARCHIVEE');
   });
 });

@@ -184,6 +184,11 @@ const envSchema = z.object({
 
   RISK_RECALCULATION_CRON: z.string().default('10 * * * *'),
 
+  // Auto-archivage des alertes dont l'événement est clôturé : toutes les
+  // 10 minutes. Cycle court pour qu'une alerte d'événement fini ne reste pas
+  // visible en « Alertes actives » plus que nécessaire.
+  ALERTS_AUTO_ARCHIVE_CRON: z.string().default('*/10 * * * *'),
+
   DETECTION_NORMAL_CYCLES_BEFORE_MONITORING: z.coerce.number().int().min(1).default(3),
   DETECTION_MONITORING_HOURS: z.coerce.number().min(1).default(24),
   DETECTION_DEDUPE_HOURS: z.coerce.number().min(1).default(48),

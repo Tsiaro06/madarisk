@@ -63,7 +63,7 @@ export function AlertesPage() {
   const navigate = useNavigate();
   const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
   const [page, setPage] = useState(1);
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState('PUBLIEE');
   const [type, setType] = useState('');
   const [origine, setOrigine] = useState('');
   const [historique, setHistorique] = useState('');

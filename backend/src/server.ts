@@ -8,6 +8,7 @@ import { startWeatherHourlyPurgeJob } from './jobs/weather-hourly-purge.job';
 import { startRiskRecalculationJob } from './jobs/risk-recalculation.job';
 import { startDgmMaproomIngestJob } from './jobs/dgm-maproom-ingest.job';
 import { startCycloneSyncJob } from './jobs/cyclone-sync.job';
+import { startAlertsAutoArchiveJob } from './jobs/alerts-auto-archive.job';
 
 let httpServer: Server | undefined;
 let shuttingDown = false;
@@ -77,6 +78,7 @@ async function main(): Promise<void> {
   startRiskRecalculationJob();
   startDgmMaproomIngestJob();
   startCycloneSyncJob();
+  startAlertsAutoArchiveJob();
 }
 
 process.on('SIGINT', () => void shutdown('SIGINT'));
