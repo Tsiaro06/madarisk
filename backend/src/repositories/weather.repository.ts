@@ -1114,9 +1114,47 @@ export const weatherRepository = {
     }));
   },
 
+  /**
+   * Nombre de communes ciblées par un run national.
+   *
+   * Sert au garde de budget du rattrapage : un run national coûte un appel par
+   * commune ciblée, et il faut savoir ce qu'il coûte AVANT de décider de le
+   * lancer. Un simple décompte évite de charger 1 579 lignes pour la seule
+   * longueur du tableau.
+   */
+  async countTargetCommunes(query: TargetCommunesQuery = {}): Promise<number> {
+    const conditions: string[] = [];
+    const values: unknown[] = [];
+    let idx = 1;
+
+    if (query.communeIds?.length) {
+      conditions.push(`c.id = ANY($${idx++}::uuid[])`);
+      values.push(query.communeIds);
+    }
+    if (query.districtId) {
+      conditions.push(`c.district_id = $${idx++}`);
+      values.push(query.districtId);
+    }
+    if (query.eventId) {
+      conditions.push(
+        `EXISTS (
+           SELECT 1 FROM exposed_communes ec
+           WHERE ec.commune_id = c.id AND ec.event_id = $${idx++}
+         )`,
+      );
+      values.push(query.eventId);
+    }
+
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await db.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count FROM communes c ${where}`,
+      values,
+    );
+    return parseInt(result.rows[0]?.count ?? '0', 10);
+  },
+
   async insertObservations(rows: WeatherInsertData[], sourceId: string): Promise<number> {
     if (rows.length === 0) return 0;
-
     let inserted = 0;
     for (const batch of chunk(rows, INSERT_CHUNK_ROWS)) {
       inserted += await insertObservationBatch(batch, sourceId);

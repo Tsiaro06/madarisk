@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   attemptedRecently,
+  canAffordNationalRun,
   lastScheduledSlot,
   missedScheduledScopes,
   scopesToCatchUp,
@@ -230,5 +231,68 @@ describe('weather-refresh : périmètres à rattraper', () => {
         candidate({ scope: 'FORECASTS', lastAttemptAt: at(120) }),
       ]),
     ).toEqual([]);
+  });
+});
+
+/**
+ * Garde de budget du rattrapage automatique.
+ *
+ * Régression constatée le 19/10 et le 21/10 : les rattrapages de la matinée
+ * (07:27, 08:12, 09:19…) se sont succédé alors que le budget Open-Meteo était
+ * déjà à ~8700/9000 appels. Chaque tentative refusée écrit une ligne `FAILED`
+ * sans sauver la moindre donnée : elle consomme une tentative du plafond par
+ * créneau et encombre le journal, sans aucun espoir d'aboutir avant le reset du
+ * compteur (03:00 heure Madagascar).
+ */
+describe('weather-refresh : le rattrapage sait attendre faute de budget', () => {
+  const COMMUNES = 1579;
+
+  it('autorise un run d’observations quand le budget couvre le run national', () => {
+    expect(
+      canAffordNationalRun({
+        scope: 'OBSERVATIONS',
+        communes: COMMUNES,
+        remainingCalls: COMMUNES + 1,
+      }),
+    ).toBe(true);
+  });
+
+  it('refuse un run national quand il ne reste pas de quoi le payer', () => {
+    expect(
+      canAffordNationalRun({
+        scope: 'OBSERVATIONS',
+        communes: COMMUNES,
+        remainingCalls: COMMUNES - 1,
+      }),
+    ).toBe(false);
+  });
+
+  it('exige le double du budget pour un rattrapage des deux périmètres', () => {
+    // Observations + prévisions : 2 x 1579 appels. Avec 1579 restants, un seul
+    // périmètre passe — lancer les deux ferait échouer le second en plein vol.
+    expect(
+      canAffordNationalRun({
+        scope: 'OBSERVATIONS_AND_FORECASTS',
+        communes: COMMUNES,
+        remainingCalls: 2 * COMMUNES,
+      }),
+    ).toBe(true);
+    expect(
+      canAffordNationalRun({
+        scope: 'OBSERVATIONS_AND_FORECASTS',
+        communes: COMMUNES,
+        remainingCalls: 2 * COMMUNES - 1,
+      }),
+    ).toBe(false);
+  });
+
+  it('refuse tout run à budget nul, plutôt que d’empiler des échecs', () => {
+    expect(
+      canAffordNationalRun({
+        scope: 'OBSERVATIONS',
+        communes: COMMUNES,
+        remainingCalls: 0,
+      }),
+    ).toBe(false);
   });
 });

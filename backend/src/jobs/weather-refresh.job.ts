@@ -4,6 +4,7 @@ import { logger } from '../config/logger';
 import { weatherRepository } from '../repositories/weather.repository';
 import { weatherSyncRepository } from '../repositories/weather-sync.repository';
 import { SYNC_SOURCE, weatherSyncService } from '../services/weather-sync.service';
+import { getQuotaSnapshot } from '../services/weather-quota';
 import type { WeatherSyncScope } from '../types/weather.types';
 
 let started = false;
@@ -228,6 +229,30 @@ export function scopesToCatchUp(input: {
 }
 
 /**
+ * Un run national complet est-il encore payable sur le budget du jour ?
+ *
+ * Un run qui échoue faute de budget enregistre quand même une ligne `FAILED` :
+ * il consomme une tentative du plafond par créneau sans rapporter la moindre
+ * donnée. Quand il ne reste plus de quoi payer les deux périmètres, retenter
+ * toutes les 15 min jusqu'au soir ne fait qu'épuiser les tentatives et remplir
+ * le journal — le prochain espoir réel est le reset du compteur à 03:00 heure
+ * Madagascar. On préfère donc attendre franchement.
+ *
+ * Estimation volontairement grossière (±1 commune par périmètre) : le but est
+ * d'éviter l'acharnement, pas de calculer un budget à l'appel près.
+ */
+export function canAffordNationalRun(input: {
+  scope: WeatherSyncScope;
+  communes: number;
+  remainingCalls: number;
+}): boolean {
+  const scopes: WeatherSyncScope[] =
+    input.scope === 'OBSERVATIONS_AND_FORECASTS' ? ['OBSERVATIONS', 'FORECASTS'] : [input.scope];
+  const needed = scopes.length * input.communes;
+  return input.remainingCalls >= needed;
+}
+
+/**
  * Solde les runs restés RUNNING après un process tué en plein vol.
  *
  * Best-effort : un échec ici ne doit jamais empêcher le rattrapage lui-même.
@@ -345,9 +370,35 @@ async function catchUpIfStale(trigger: CatchUpTrigger): Promise<void> {
       },
       'Job météo : créneau manqué ou données périmées, synchronisation de rattrapage',
     );
-    await weatherSyncService.runScheduled(
-      scopes.length > 1 ? 'OBSERVATIONS_AND_FORECASTS' : scopes[0],
-    );
+
+    // Garde de budget : un rattrapage refusé faute de quota épuise une tentative
+    // sans écrire la moindre donnée. On le laisse au créneau planifié (qui part
+    // juste après le reset du compteur) plutôt que de retenter toutes les 15 min.
+    const communeCount = await weatherRepository.countTargetCommunes();
+    const quota = await getQuotaSnapshot();
+    const plannedScope: WeatherSyncScope =
+      scopes.length > 1 ? 'OBSERVATIONS_AND_FORECASTS' : scopes[0];
+    if (
+      !canAffordNationalRun({
+        scope: plannedScope,
+        communes: communeCount,
+        remainingCalls: quota.remainingCalls,
+      })
+    ) {
+      logger.warn(
+        {
+          trigger,
+          scopes,
+          remainingCalls: quota.remainingCalls,
+          needed: communeCount * scopes.length,
+          resetsAt: quota.resetsAt,
+        },
+        'Job météo : rattrapage reporté, budget Open-Meteo insuffisant',
+      );
+      return;
+    }
+
+    await weatherSyncService.runScheduled(plannedScope);
   } catch (err) {
     logger.warn({ err, trigger }, 'Job météo : rattrapage ignoré (échec)');
   }

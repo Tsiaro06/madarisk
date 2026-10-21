@@ -136,10 +136,12 @@ const envSchema = z.object({
   // suffit pour la veille cyclone, et la carte affiche jusqu'à 25 h
   // d'ancienneté — le bandeau de fraîcheur le dit explicitement.
   //
-  // 06:00 (heure Madagascar) tombe après le reset du quota à 00:00 UTC
-  // (03:00 MG), et loin du cron de prévisions de 12 h 20.
-  // 06:00 (heure Madagascar) tombe après le reset du quota à 00:00 UTC
-  // (03:00 MG), et loin du cron de prévisions de 12 h 20.
+  // Le créneau est placé JUSTE APRÈS le reset du compteur Open-Meteo (00:00 UTC
+  // = 03:00 heure Madagascar), pas 3 h plus tard : le budget de la journée est
+  // alors intact, alors qu'à 06:00 les rattrapages de la nuit précédente en ont
+  // déjà consommé une partie — c'est ce qui refusait le lot national dès 07:48
+  // le 19/10 et 21/10 (8716/9000). Un décalage de 5 min après le reset laisse
+  // au fournisseur le temps de basculer son compteur.
   //
   // Un cron ne se déclenche que si le process tourne à cette minute : un
   // créneau manqué (poste éteint la nuit) est rattrapé au démarrage ou au
@@ -147,19 +149,19 @@ const envSchema = z.object({
   // (`missedScheduledScopes`) — une seule fois par créneau, sinon le seuil de
   // fraîcheur de 25 h passait sous une période de 24 h et laissait des journées
   // entières sans synchronisation. Un contrôle périodique (15 min) reprend
-  // aussi un run de 06:00 échoué, sans attendre un redémarrage.
-  WEATHER_REFRESH_CRON: z.string().default('0 6 * * *'),
-  WEATHER_OBSERVATION_CRON: z.string().default(process.env.WEATHER_REFRESH_CRON ?? '0 6 * * *'),
-  // Volontairement décalé de 6 h après le cron d'observations (06 h 00). Les
-  // deux à la même minute, les lots partaient en parallèle et Open-Meteo — qui
-  // rationne par IP — refusait la requête (`too many concurrent requests`). Le
-  // run d'observations pouvant durer 15 min quand il converge, l'écart doit
-  // dépasser cette durée.
+  // aussi un run manqué, sans attendre un redémarrage, et s'abstient désormais
+  // si le budget restant ne peut pas payer un run national.
+  WEATHER_REFRESH_CRON: z.string().default('5 3 * * *'),
+  WEATHER_OBSERVATION_CRON: z.string().default(process.env.WEATHER_REFRESH_CRON ?? '5 3 * * *'),
+  // Volontairement décalé du cron d'observations : les deux à la même minute,
+  // les lots partaient en parallèle et Open-Meteo — qui rationne par IP —
+  // refusait la requête (`too many concurrent requests`). Le run d'observations
+  // pouvant durer 15 min quand il converge, l'écart doit dépasser cette durée.
   //
   // Un seul run quotidien : les prévisions ne changent pas d'une demi-heure à
   // l'autre et un point de situation quotidien suffit pour la veille cyclone.
   // C'est ce qui finance la marge nécessaire aux relances manuelles.
-  WEATHER_FORECAST_CRON: z.string().default('20 12 * * *'),
+  WEATHER_FORECAST_CRON: z.string().default('20 6 * * *'),
   // Doit dépasser la période du cron d'observations (24 h) sans la trop, sinon le
   // bandeau vire au rouge pendant le cycle normal. 1500 min = 24 h de cycle plus
   // 1 h de marge, donc un run complet peut être manqué avant que le bandeau ne

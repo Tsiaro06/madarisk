@@ -84,13 +84,13 @@ Requêtes SQL paramétrées sur PostgreSQL / PostGIS (agrégeats typés `Pg`), u
 ## Tâches planifiées (cron)
 
 Optionnellement, le serveur planifie des tâches récurrentes pilotées par `ENABLE_SCHEDULED_JOBS` (désactivées par défaut) :
-- `WEATHER_OBSERVATION_CRON` (par défaut `0 6 * * *`, 1×/jour) : synchronise les observations météo (lot Open-Meteo, batch ≤ 400 communes, pacing ≤ 600 coordonnées/min).
-- `WEATHER_FORECAST_CRON` (par défaut `20 12 * * *`, 1×/jour) : synchronise les prévisions quotidiennes persistées.
+- `WEATHER_OBSERVATION_CRON` (par défaut `5 3 * * *`, 1×/jour) : synchronise les observations météo (lot Open-Meteo, batch ≤ 400 communes, pacing ≤ 600 coordonnées/min).
+- `WEATHER_FORECAST_CRON` (par défaut `20 6 * * *`, 1×/jour) : synchronise les prévisions quotidiennes persistées.
 - `RISK_RECALCULATION_CRON` (par défaut `10 * * * *`) : recalculation des risques.
 
 Chaque exécution est journalisée dans `weather_sync_runs` (statut RUNNING/SUCCESS/PARTIAL/FAILED), les erreurs fournisseur dans `provider_errors`, et une exécution déjà en cours empêche tout chevauchement (coordination en mémoire + déduplication par clé `(commune, source, timestamp/jour)`).
 
-Un cron ne s'exécute que si le process tourne à l'heure prévue : au démarrage, au retour de veille et par un contrôle toutes les 15 min, `weather-refresh.job` rattrape donc un créneau manqué (dernière réussite antérieure au dernier créneau planifié, relu en heure locale comme `node-cron`) ou des données périmées au sens du bandeau. Deux gardes bornent les relances : 30 min minimum entre deux tentatives (un run dure 4 à 15 min) et 3 tentatives automatiques au plus par créneau (un fournisseur en panne ne doit pas consommer le budget Open-Meteo) — la relance manuelle reste toujours possible.
+Un cron ne s'exécute que si le process tourne à l'heure prévue : au démarrage, au retour de veille et par un contrôle toutes les 15 min, `weather-refresh.job` rattrape donc un créneau manqué (dernière réussite antérieure au dernier créneau planifié, relu en heure locale comme `node-cron`) ou des données périmées au sens du bandeau. Trois gardes bornent les relances : 30 min minimum entre deux tentatives (un run dure 4 à 15 min), 3 tentatives automatiques au plus par créneau (un fournisseur en panne ne doit pas consommer le budget Open-Meteo), et un contrôle de budget — un run national coûtant un appel par commune, le rattrapage s'abstient si le budget restant ne peut pas le payer, au lieu d'empiler des échecs `FAILED` sans données jusqu'au reset de 03:00. La relance manuelle reste toujours possible.
 
 ## Décisions clés
 
