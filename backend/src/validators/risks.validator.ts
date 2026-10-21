@@ -113,21 +113,22 @@ export const communeIdParamsSchema = z.object({
   communeId: z.string().uuid('Identifiant de commune invalide'),
 });
 
-export const recalculateRiskSchema = z
-  .object({
-    eventId: z.string().uuid("Identifiant d'événement invalide").optional(),
-    communeIds: z
-      .array(z.string().uuid('Identifiant de commune invalide'))
-      .min(1, 'Au moins un identifiant de commune')
-      .max(2000, 'Trop de communes (maximum 2000)')
-      .optional(),
-    districtId: z.string().uuid('Identifiant de district invalide').optional(),
-    phase: riskPhaseEnum,
-  })
-  .refine((data) => Boolean(data.eventId) || Boolean(data.communeIds) || Boolean(data.districtId), {
-    message: 'Précisez au moins un filtre (eventId, communeIds ou districtId)',
-    path: ['eventId'],
-  });
+/**
+ * Recalcul des risques. Aucun filtre = recalcul global : toutes les communes de
+ * la plateforme sont évaluées (proximité neutre et sans multiplicateur
+ * d'événement). C'est le mode « Tous (global) » de la page Niveaux de risque,
+ * qui permet d'obtenir un état de référence même sans événement actif.
+ */
+export const recalculateRiskSchema = z.object({
+  eventId: z.string().uuid("Identifiant d'événement invalide").optional(),
+  communeIds: z
+    .array(z.string().uuid('Identifiant de commune invalide'))
+    .min(1, 'Au moins un identifiant de commune')
+    .max(2000, 'Trop de communes (maximum 2000)')
+    .optional(),
+  districtId: z.string().uuid('Identifiant de district invalide').optional(),
+  phase: riskPhaseEnum,
+});
 
 export const recalculateEventRiskSchema = z.object({
   phase: riskPhaseEnum,
@@ -146,6 +147,7 @@ export const priorityCommunesQuerySchema = z.object({
   districtId: z.string().uuid('Identifiant de district invalide').optional(),
   riskLevel: riskLevelEnum.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
 });
 
 export const riskMapLayerQuerySchema = z.object({

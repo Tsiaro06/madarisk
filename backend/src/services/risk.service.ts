@@ -550,15 +550,19 @@ export const risksService = {
     districtId?: string;
     riskLevel?: RiskLevel;
     limit: number;
-  }): Promise<PriorityCommune[]> {
+    offset: number;
+  }): Promise<PaginatedResult<PriorityCommune>> {
     const configuration = await risksRepository.getActiveConfiguration();
     const { thresholds } = asConfiguration(configuration);
 
+    const total = await risksRepository.countAssessedCommunes();
     const rows = await risksRepository.priorityCommunes(query);
-    return rows.map((r) => {
+    const items = rows.map((r) => {
       const presentation = presentationFor(r.riskScore, thresholds);
       return { ...r, ...presentation };
     });
+
+    return { items, page: query.offset / query.limit + 1, limit: query.limit, total };
   },
 
   async mapLayer(query: {

@@ -577,12 +577,30 @@ describe('Risques - recalcul sans événement et configurations', () => {
     expect(mine.factors.proximityScore).toBe(50);
   });
 
-  it('rejette un recalcul sans filtre (422)', async () => {
+  it('recalcule globalement sans filtre (toutes les communes évaluées)', async () => {
     const res = await request(app)
       .post('/api/v1/risks/recalculate')
       .set('Authorization', `Bearer ${admin.token}`)
       .send({ phase: 'PENDANT' });
-    expect(res.status).toBe(422);
+    expect(res.status).toBe(200);
+    expect(res.body.data.totalCommunes).toBeGreaterThan(0);
+
+    // La couverture est bien celle du parc : l'endpoint de priorité renvoie un
+    // total en meta, ce qui alimente l'indicateur de la page.
+    const priority = await request(app)
+      .get('/api/v1/risks/priority-communes?limit=5')
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(priority.status).toBe(200);
+    expect(priority.body.meta.total).toBeGreaterThan(0);
+    expect(priority.body.meta.total).toBe(res.body.data.totalCommunes);
+  });
+
+  it('rejette un recalcul global piloté par un CLIENT (403)', async () => {
+    const res = await request(app)
+      .post('/api/v1/risks/recalculate')
+      .set('Authorization', `Bearer ${client.token}`)
+      .send({ phase: 'PENDANT' });
+    expect(res.status).toBe(403);
   });
 
   it('liste les configurations pour tout utilisateur authentifié', async () => {

@@ -177,12 +177,14 @@ const AI_TOOLS: AITool[] = [
     description: 'Communes prioritaires selon le dernier score de risque.',
     execute: async (parameters, _user) => {
       const params = priorityParamsSchema.parse(parameters);
-      return risksService.priorityCommunes({
+      const result = await risksService.priorityCommunes({
         eventId: params.eventId,
         districtId: params.districtId,
         riskLevel: undefined,
         limit: params.limit ?? 10,
+        offset: 0,
       });
+      return result.items;
     },
   },
   {

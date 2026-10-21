@@ -25,9 +25,11 @@ import type {
   EventsTimelineEntry,
   EventTimeline,
   ExposedCommuneRow,
+  PaginationMeta,
   PriorityCommune,
   RiskAssessment,
   RiskDistribution,
+  RiskPhase,
   SanitizedUser,
   TerritorySearchResult,
   TrackState,
@@ -310,9 +312,14 @@ export const risksApi = {
     apiGet<RiskAssessment | null>(`/risks/communes/${communeId}`, { params }),
   priority: (params?: Record<string, string | number | undefined>) =>
     apiGet<PriorityCommune[]>("/risks/priority-communes", { params }),
+  priorityDetailed: (
+    params?: Record<string, string | number | undefined>,
+  ): Promise<{ data: PriorityCommune[]; meta?: PaginationMeta }> =>
+    apiGetPage<PriorityCommune[]>("/risks/priority-communes", { params }),
   mapLayer: (params?: Record<string, string | undefined>) =>
     apiGet<FeatureCollection>("/risks/map-layer", { params }),
-  recalculate: (body: unknown) => apiPost("/risks/recalculate", body),
+  recalculate: (body: unknown) =>
+    apiPost<{ phase: RiskPhase; totalCommunes: number }>("/risks/recalculate", body),
   configurations: () => apiGet<RiskConfiguration[]>("/risk-configurations"),
   configuration: (id: string) => apiGet<RiskConfiguration>(`/risk-configurations/${id}`),
   createConfiguration: (body: unknown) =>

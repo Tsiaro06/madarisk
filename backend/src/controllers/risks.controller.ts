@@ -84,8 +84,9 @@ export const risksController = {
 
   priorityCommunes: async (req: Request, res: Response): Promise<void> => {
     const query = req.validatedQuery as PriorityCommunesQuery;
-    const communes = await risksService.priorityCommunes(query);
-    res.status(200).json(successResponse(communes, 'Communes prioritaires'));
+    const result = await risksService.priorityCommunes(query);
+    const meta = paginate(result.page, result.limit, result.total);
+    res.status(200).json(successResponse(result.items, 'Communes prioritaires', meta));
   },
 
   mapLayer: async (req: Request, res: Response): Promise<void> => {

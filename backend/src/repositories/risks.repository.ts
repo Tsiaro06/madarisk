@@ -129,6 +129,7 @@ export interface PriorityQuery {
   districtId?: string;
   riskLevel?: RiskLevel;
   limit: number;
+  offset: number;
 }
 
 export interface RiskMapQuery {
@@ -294,7 +295,11 @@ export const risksRepository = {
       values.push(query.eventId);
     }
 
-    if (conditions.length === 0) return [];
+    if (conditions.length === 0) {
+      // Aucun filtre : portée globale, toutes les communes de la plateforme.
+      const all = await db.query<{ id: string }>(`SELECT id FROM communes`);
+      return all.rows.map((r) => r.id);
+    }
 
     const result = await db.query<{ id: string }>(
       `SELECT c.id
@@ -566,8 +571,8 @@ export const risksRepository = {
        JOIN communes c ON c.id = l.commune_id
        LEFT JOIN districts d ON d.id = c.district_id
        ORDER BY l.risk_score DESC, c.population DESC NULLS LAST
-       LIMIT $${idx}`,
-      [...values, query.limit],
+       LIMIT $${idx++} OFFSET $${idx}`,
+      [...values, query.limit, query.offset],
     );
 
     return result.rows.map((r) => ({
@@ -583,6 +588,19 @@ export const risksRepository = {
       population: r.population,
       assessedAt: r.assessedAt,
     }));
+  },
+
+  /**
+   * Nombre de communes distinctes disposant d'au moins une évaluation de
+   * risque. Alimente l'indicateur de couverture de la page Niveaux de risque :
+   * sur 1579 communes, savoir que seules 40 sont évaluées explique une carte
+   * presque vide, là où un simple tableau vide laisserait croire à une panne.
+   */
+  async countAssessedCommunes(): Promise<number> {
+    const result = await db.query<{ count: string }>(
+      `SELECT COUNT(DISTINCT commune_id)::text AS count FROM risk_assessments`,
+    );
+    return parseCount(result.rows[0]);
   },
 
   async riskMapLayer(query: RiskMapQuery): Promise<RiskMapGeoJson> {

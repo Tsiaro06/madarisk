@@ -56,9 +56,9 @@ export const dashboardService = {
 
     const includeMatchings = actor.role === 'ANALYSTE_SIG' || actor.role === 'SUPER_ADMIN';
 
-    const [latestAlerts, priorityCommunes, pendingMatchings] = await Promise.all([
+    const [latestAlerts, priorityResult, pendingMatchings] = await Promise.all([
       dashboardRepository.latestAlerts(5, eventId),
-      risksService.priorityCommunes({ eventId, limit: 5 }),
+      risksService.priorityCommunes({ eventId, limit: 5, offset: 0 }),
       includeMatchings ? dashboardRepository.countPendingMatchings() : Promise.resolve(0),
     ]);
 
@@ -66,7 +66,7 @@ export const dashboardService = {
       ...data,
       pendingMatchings: includeMatchings ? pendingMatchings : undefined,
       latestAlerts,
-      priorityCommunes,
+      priorityCommunes: priorityResult.items,
     };
   },
 
@@ -104,10 +104,12 @@ export const dashboardService = {
   },
 
   async priorityCommunes(query: DashboardPriorityQueryInput): Promise<PriorityCommune[]> {
-    return risksService.priorityCommunes({
+    const result = await risksService.priorityCommunes({
       eventId: query.eventId,
       districtId: query.districtId,
       limit: query.limit,
+      offset: 0,
     });
+    return result.items;
   },
 };

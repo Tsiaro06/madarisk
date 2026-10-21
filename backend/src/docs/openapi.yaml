@@ -2704,7 +2704,7 @@ paths:
     post:
       tags: [Risques]
       summary: Recalculer les risques (ADMIN / SUPER_ADMIN)
-      description: Recalcule les risques pour le périmètre choisi (événement, communes ou district) dans une phase donnée.
+      description: Recalcule les risques pour le périmètre choisi (événement, communes ou district) dans une phase donnée. Si aucun filtre n'est fourni, le recalcul est global : toutes les communes de la plateforme sont évaluées (proximité neutre, sans multiplicateur d'événement).
       security:
         - bearerAuth: []
       operationId: recalculateRisks
@@ -2742,7 +2742,9 @@ paths:
                   data:
                     type: object
                     properties:
-                      communesRecalculated: { type: integer }
+                      phase: { $ref: '#/components/schemas/RiskPhase' }
+                      totalCommunes:
+                        { type: integer, description: Nombre de communes évaluées }
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2816,6 +2818,18 @@ paths:
             required: false,
             schema: { type: integer, minimum: 1, maximum: 100, default: 20 },
           }
+        - {
+            name: offset,
+            in: query,
+            required: false,
+            schema: { type: integer, minimum: 0, default: 0 },
+          }
+        - {
+            name: phase,
+            in: query,
+            required: false,
+            schema: { $ref: '#/components/schemas/RiskPhase' },
+          }
       responses:
         '200':
           description: Communes prioritaires
@@ -2829,6 +2843,7 @@ paths:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/CommuneRisk' }
+                  meta: { $ref: '#/components/schemas/PaginationMeta' }
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
