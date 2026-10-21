@@ -48,6 +48,28 @@ const REFRESH_REQUEST_DELAY_MS = 150;
  */
 const MIN_HOURS_FOR_DAILY_LAYER = 12;
 
+/**
+ * Borne haute (UTC) des observations retenues pour une date locale.
+ *
+ * `date` est une date LOCALE (Madagascar, UTC+3) alors que
+ * `weather_observations.observed_at` est stocké en UTC. Interpréter
+ * `...T23:59:59.000Z` comme une borne UTC reviendrait à remonter jusqu'à
+ * 02:59 du lendemain local : les observations du lendemain fuiteraient dans la
+ * journée demandée, et les 3 dernières heures du jour ne seraient jamais
+ * couvertes. On ancre donc l'instant en heure locale puis on convertit en UTC.
+ *
+ * Avec une heure choisie, la borne est le début de cette heure ; sans heure,
+ * la fin de la journée. `null` si la date est illisible — appeler
+ * `.toISOString()` sur un `Invalid Date` ferait échouer l'endpoint en 500.
+ */
+function observationUpperBound(date: string, hour?: number): Date | undefined {
+  const hh = String(hour ?? 23).padStart(2, '0');
+  const mm = hour !== undefined ? '00' : '59';
+  const ss = hour !== undefined ? '00' : '59';
+  const bound = new Date(`${date}T${hh}:${mm}:${ss}+03:00`);
+  return Number.isNaN(bound.getTime()) ? undefined : bound;
+}
+
 function assertAdmin(actor: { role: UserRole }): void {
   if (actor.role !== 'ADMIN' && actor.role !== 'SUPER_ADMIN') {
     throw AppError.forbidden('Seuls ADMIN et SUPER_ADMIN peuvent administrer les données météo');
@@ -507,13 +529,7 @@ export const weatherService = {
       // la journée demandée, et les 3 dernières heures du jour n'étaient
       // jamais couvertes. On ancre donc l'instant en heure locale puis on
       // convertit en UTC.
-      const hh = String(query.hour ?? 23).padStart(2, '0');
-      const mm = query.hour !== undefined ? '00' : '59';
-      const ss = query.hour !== undefined ? '00' : '59';
-      const localEnd = new Date(`${query.date}T${hh}:${mm}:${ss}+03:00`);
-      // Garde-fou : une date illisible produirait un `Invalid Date` et ferait
-      // échouer le `.toISOString()` du repository en 500 sur l'endpoint.
-      if (!Number.isNaN(localEnd.getTime())) observedAt = localEnd;
+      observedAt = observationUpperBound(query.date, query.hour);
     }
     return weatherRepository.mapPoints({
       districtId: query.districtId,
@@ -563,6 +579,31 @@ export const weatherService = {
 
   async latestObservationAt(): Promise<string | null> {
     return weatherRepository.latestObservationAt();
+  },
+
+  /**
+   * Jour LOCAL (Madagascar) de l'observation la plus récente réellement servie
+   * pour une date consultée, ou `null` si aucune donnée.
+   *
+   * La page météo ouvre sur « aujourd'hui » et sert la dernière observation
+   * disponible : si la synchronisation du matin n'a pas eu lieu, cet
+   * « aujourd'hui » est en fait la veille. Comparer ce jour à la date consultée
+   * permet à l'interface d'afficher « données du 20/10 » au lieu de laisser
+   * croire à de la donnée du jour. Les dates futures (prévisions) n'ont pas de
+   * jour d'observation : on renvoie `null`.
+   */
+  async effectiveObservationDay(date?: string): Promise<string | null> {
+    if (!date) return weatherRepository.latestObservationDay();
+
+    const now = new Date();
+    const todayStr = new Date(now.getTime() + 3 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    if (date > todayStr) return null;
+
+    const bound = observationUpperBound(date);
+    if (!bound || bound.getTime() > now.getTime()) {
+      return weatherRepository.latestObservationDay();
+    }
+    return weatherRepository.latestObservationDay(bound);
   },
 
   async ingestDgmMaproom(actor: ActorRef, req: RequestContext): Promise<WeatherDgmIngestResult> {

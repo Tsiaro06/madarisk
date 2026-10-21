@@ -72,6 +72,7 @@ export function useWeatherMapLayer({
 
   const layer = query.data?.collection ?? null;
   const latestObservationAt = query.data?.meta?.latestObservationAt ?? null;
+  const dataDay = query.data?.meta?.dataDay ?? null;
 
   const pointByCommune = useMemo(() => {
     const map = new Map<string, WeatherMapFeatureProperties>();
@@ -84,5 +85,5 @@ export function useWeatherMapLayer({
     return map;
   }, [layer]);
 
-  return { query, layer, pointByCommune, latestObservationAt };
+  return { query, layer, pointByCommune, latestObservationAt, dataDay };
 }

@@ -112,6 +112,54 @@ export function isAfterMax(dateISO: string, maxISO: string | null): boolean {
   return maxISO != null && dateISO > maxISO;
 }
 
+export interface ObservationFreshness {
+  /** Jour local de la donnée servie, ou `null` si inconnu / prévision. */
+  dataDay: string | null;
+  /** Vrai si la donnée servie provient bien du jour consulté. */
+  isCurrentDay: boolean;
+  /**
+   * Vrai si la carte « aujourd'hui » affiche en réalité une journée antérieure
+   * (la synchronisation du jour n'a pas eu lieu). C'est le cas à signaler
+   * franchement : la carte n'est pas vide, donc rien ne semble anormal.
+   */
+  isBehind: boolean;
+}
+
+/**
+ * Fraîcheur de la couche d'observation servie pour une date consultée.
+ *
+ * La page ouvre sur « aujourd'hui » et sert la dernière observation
+ * disponible : sans synchronisation le jour même, cet « aujourd'hui » contient
+ * en réalité la veille. Comparer le jour effectif de la donnée (`dataDay`,
+ * calculé par le backend en heure de Madagascar) à la date consultée permet de
+ * l'annoncer explicitement plutôt que de laisser croire à de la donnée du jour.
+ *
+ * `mode` restreint la lecture : en prévision ou en historique volontaire, il n'y
+ * a pas de « retard » à signaler.
+ */
+export function getObservationFreshness(input: {
+  consultedDate: string;
+  dataDay: string | null;
+  mode: WeatherViewMode;
+  today?: string;
+}): ObservationFreshness {
+  const today = input.today ?? todayISO();
+  const dataDay = input.dataDay ?? null;
+
+  if (input.mode !== "OBSERVATION" || dataDay === null) {
+    return { dataDay, isCurrentDay: false, isBehind: false };
+  }
+
+  const isCurrentDay = dataDay === input.consultedDate;
+  const isToday = input.consultedDate === today;
+
+  return {
+    dataDay,
+    isCurrentDay,
+    isBehind: isToday && !isCurrentDay,
+  };
+}
+
 export interface WeatherForecastPoint {
   time: string;
   value: number | null;

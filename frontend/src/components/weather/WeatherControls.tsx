@@ -3,10 +3,11 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import { cn, formatDate, syncRunStatusLabel } from "@/lib/utils";
-import { RefreshCw } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 import {
   addDaysToToday,
   formatShortDate,
+  getObservationFreshness,
   HOUR_OPTIONS,
   isAfterMax,
   todayISO,
@@ -32,6 +33,10 @@ interface WeatherControlsProps {
   lastDataAt: string | null;
   lastSyncAt: string | null;
   lastSyncStatus?: string | null;
+  /** Jour local de la donnée réellement servie pour la date consultée. */
+  dataDay?: string | null;
+  /** L'utilisateur peut relancer une synchronisation (ADMIN / SUPER_ADMIN). */
+  canRefresh?: boolean;
   onMetricChange: (metric: WeatherMetric) => void;
   onDateChange: (date: string) => void;
   onHourChange: (hour: number | null) => void;
@@ -52,6 +57,8 @@ export function WeatherControls({
   lastDataAt,
   lastSyncAt,
   lastSyncStatus,
+  dataDay = null,
+  canRefresh = false,
   onMetricChange,
   onDateChange,
   onHourChange,
@@ -61,6 +68,7 @@ export function WeatherControls({
   onRefresh,
 }: WeatherControlsProps) {
   const today = todayISO();
+  const freshness = getObservationFreshness({ consultedDate: date, dataDay, mode });
   const shortcuts = [1, 3].map((days) => ({
     days,
     label: `+${days} jour${days > 1 ? "s" : ""}`,
@@ -172,6 +180,13 @@ export function WeatherControls({
           <span className="font-medium text-ink">Date des données :</span>{" "}
           {lastDataAt ? formatDate(lastDataAt) : "—"}
         </p>
+        {freshness.dataDay && mode === "OBSERVATION" ? (
+          <p>
+            <span className="font-medium text-ink">Jour affiché :</span>{" "}
+            {formatShortDate(freshness.dataDay)}
+            {freshness.isCurrentDay ? " (à jour)" : ""}
+          </p>
+        ) : null}
         <p>
           <span className="font-medium text-ink">Synchronisation :</span>{" "}
           {lastSyncAt
@@ -183,6 +198,25 @@ export function WeatherControls({
             : "—"}
         </p>
       </div>
+
+      {freshness.isBehind ? (
+        <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+          <div>
+            <p className="font-medium">
+              La carte n’affiche pas encore la météo d’aujourd’hui.
+            </p>
+            <p className="mt-0.5">
+              Les données les plus récentes datent du{" "}
+              {formatShortDate(freshness.dataDay ?? date)}. La synchronisation du
+              jour n’a pas encore eu lieu
+              {canRefresh
+                ? " — relancez-la ci-dessous pour obtenir la météo du jour."
+                : "."}
+            </p>
+          </div>
+        </div>
+      ) : null}
 
       <AdministrativeInterventionPanel compact>
         <Button

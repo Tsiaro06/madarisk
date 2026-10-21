@@ -65,6 +65,14 @@ export interface WeatherMetricConfig {
 
 export interface WeatherMapLayerMeta {
   latestObservationAt: string | null;
+  /**
+   * Jour LOCAL (Madagascar, `YYYY-MM-DD`) de l'observation la plus récente
+   * réellement servie pour la date consultée. `null` pour une date future
+   * (prévisions). Permet d'annoncer « données du 20/10 » quand la
+   * synchronisation du jour n'a pas eu lieu, au lieu de laisser croire que la
+   * carte « aujourd'hui » contient la météo du jour.
+   */
+  dataDay?: string | null;
 }
 
 export interface WeatherRefreshResult {

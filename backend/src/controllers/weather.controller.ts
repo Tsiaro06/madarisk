@@ -77,11 +77,14 @@ export const weatherController = {
 
   mapLayer: async (req: Request, res: Response): Promise<void> => {
     const query = req.validatedQuery as WeatherMapQuery;
-    const [geojson, latestObservationAt] = await Promise.all([
+    const [geojson, latestObservationAt, dataDay] = await Promise.all([
       weatherService.mapLayer(query),
       weatherService.latestObservationAt(),
+      weatherService.effectiveObservationDay(query.date),
     ]);
-    res.status(200).json(successResponse(geojson, 'Couche météo', { latestObservationAt }));
+    res
+      .status(200)
+      .json(successResponse(geojson, 'Couche météo', { latestObservationAt, dataDay }));
   },
 
   hourlySeries: async (req: Request, res: Response): Promise<void> => {

@@ -1187,6 +1187,25 @@ export const weatherRepository = {
     return result.rows[0]?.max ?? null;
   },
 
+  /**
+   * Jour LOCAL (Madagascar, UTC+3) de l'observation la plus récente réellement
+   * en base, pour une borne haute optionnelle.
+   *
+   * La page météo ouvre sur « aujourd'hui » et sert la dernière observation
+   * disponible : si la synchronisation du matin n'a pas eu lieu, cet
+   * « aujourd'hui » est en réalité la veille. Renvoyer le jour effectif permet à
+   * l'interface de l'annoncer au lieu de laisser croire à de la donnée du jour.
+   */
+  async latestObservationDay(before?: Date): Promise<string | null> {
+    const result = await db.query<{ day: string | null }>(
+      `SELECT ((MAX(observed_at) AT TIME ZONE 'Indian/Antananarivo')::date)::text AS day
+       FROM weather_observations
+       WHERE ($1::timestamptz IS NULL OR observed_at <= $1)`,
+      [before ? before.toISOString() : null],
+    );
+    return result.rows[0]?.day ?? null;
+  },
+
   async weatherSources(): Promise<
     {
       name: string;

@@ -19,6 +19,8 @@ import { AdministrativeActionConfirmDialog } from "@/components/ui/Administrativ
 import { canManageOps } from "@/lib/roles";
 import {
   addDaysToToday,
+  formatShortDate,
+  getObservationFreshness,
   getWeatherViewMode,
   todayISO,
 } from "@/services/weather.service";
@@ -158,6 +160,16 @@ export function WeatherMapPage() {
     !weather.query.isLoading &&
     weather.layer !== null &&
     weather.layer.features.length === 0;
+
+  // La carte « aujourd'hui » peut contenir la veille si la synchronisation du
+  // jour n'a pas eu lieu : sans ce signal, une carte colorée semble normale
+  // alors qu'elle est en retard d'un jour.
+  const freshness = getObservationFreshness({
+    consultedDate: date,
+    dataDay: weather.dataDay,
+    mode,
+  });
+  const dataBehind = freshness.isBehind && !layerEmpty;
 
   const noDataForHistory = mode === "HISTORIQUE" && layerEmpty;
   const noDataForObservation =
@@ -342,6 +354,8 @@ export function WeatherMapPage() {
       lastDataAt={lastDataAt}
       lastSyncAt={lastSyncAt}
       lastSyncStatus={lastSyncStatus}
+      dataDay={weather.dataDay}
+      canRefresh={canRefresh}
       onMetricChange={setMetric}
       onDateChange={setDate}
       onHourChange={setHour}
@@ -441,6 +455,12 @@ export function WeatherMapPage() {
             <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 px-3 py-2 text-sm text-amber-800 shadow-sm">
               Prévisions momentanément indisponibles : la limite de requêtes
               est atteinte. Réessai automatique dans quelques minutes.
+            </div>
+          ) : dataBehind ? (
+            <div className="absolute left-1/2 top-3 z-30 w-[min(30rem,90vw)] -translate-x-1/2 rounded-lg border border-amber-300 bg-amber-50/95 px-3 py-2 text-sm text-amber-800 shadow-sm">
+              La carte affiche les données du{" "}
+              {formatShortDate(freshness.dataDay ?? date)} : la météo
+              d’aujourd’hui n’est pas encore synchronisée.
             </div>
           ) : noDataForHistory || noDataForObservation ? (
             <div className="absolute left-1/2 top-3 z-30 w-[min(26rem,90vw)] -translate-x-1/2 rounded-lg border border-sky-300 bg-sky-50/95 px-3 py-2 text-sm text-sky-800 shadow-sm">

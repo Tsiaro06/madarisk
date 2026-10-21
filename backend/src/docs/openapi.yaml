@@ -2292,7 +2292,11 @@ paths:
         Renvoie la dernière observation (≤ date/heure cibles) de chaque commune.
         `metric` est accepté pour compatibilité (toutes les métriques sont retournées dans `properties`) ;
         `date` (+ éventuellement `hour`) filtre sur une période passée. La réponse inclut
-        `meta.latestObservationAt` (dernière observation disponible toutes sources confondues).
+        `meta.latestObservationAt` (dernière observation disponible toutes sources confondues) et
+        `meta.dataDay` (jour LOCAL Madagascar de la donnée réellement servie pour la date consultée,
+        `null` pour une date future). Comparer `dataDay` à la date demandée permet d'annoncer
+        « données du 20/10 » quand la synchronisation du jour n'a pas eu lieu, au lieu de laisser
+        croire que la couche « aujourd'hui » contient la météo du jour.
       security:
         - bearerAuth: []
       operationId: weatherMapLayer
@@ -2341,6 +2345,12 @@ paths:
                     type: object
                     properties:
                       latestObservationAt: { type: [string, 'null'], format: date-time }
+                      dataDay:
+                        type: [string, 'null']
+                        description: >
+                          Jour local (Madagascar, UTC+3) de l'observation la plus récente servie pour
+                          la date consultée, ou `null` si la date est future (prévisions).
+                        pattern: '^\d{4}-\d{2}-\d{2}$'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
