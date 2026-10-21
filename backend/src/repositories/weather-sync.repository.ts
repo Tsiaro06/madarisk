@@ -71,6 +71,34 @@ export const weatherSyncRepository = {
     );
   },
 
+  /**
+   * Marque FAILED les runs restés RUNNING au-delà de `olderThanMinutes`.
+   *
+   * Un processus tué en plein run (`tsx watch`, veille machine, crash) laisse
+   * une ligne RUNNING éternelle. Comme `latestRun` fait foi pour décider d'un
+   * rattrapage, cette ligne finit par être lue comme « une tentative est en
+   * cours » : le délai minimal de 30 min n'expire jamais puisqu'il se compte
+   * depuis ce même `started_at` figé, et tous les rattrapages suivants sont
+   * bloqués en silence. Le seuil (≫ durée réelle d'un run, 4 à 15 min) garantit
+   * qu'on ne solde jamais un run réellement en cours.
+   */
+  async failInterruptedRuns(olderThanMinutes: number): Promise<number> {
+    const result = await db.query(
+      `UPDATE weather_sync_runs
+          SET finished_at = now(),
+              status = 'FAILED',
+              errors_count = errors_count + 1,
+              error_message = COALESCE(
+                error_message,
+                'Synchronisation interrompue (processus arrêté avant la fin)'
+              )
+        WHERE status = 'RUNNING'
+          AND started_at < now() - make_interval(mins => $1::int)`,
+      [olderThanMinutes],
+    );
+    return result.rowCount ?? 0;
+  },
+
   async latestRun(scope: string, source: string): Promise<WeatherSyncRunInfo | null> {
     const result = await db.query<RunRow>(
       `SELECT id, started_at, finished_at, status, scope, source,

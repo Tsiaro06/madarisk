@@ -228,6 +228,27 @@ export function scopesToCatchUp(input: {
 }
 
 /**
+ * Solde les runs restés RUNNING après un process tué en plein vol.
+ *
+ * Best-effort : un échec ici ne doit jamais empêcher le rattrapage lui-même.
+ * Sans ce nettoyage, `latestRun` lit une ligne RUNNING figée comme une
+ * « tentative en cours » et bloque tous les rattrapages suivants (voir
+ * `weatherSyncRepository.failInterruptedRuns`).
+ */
+async function failInterruptedRuns(trigger: CatchUpTrigger): Promise<void> {
+  try {
+    const interrupted = await weatherSyncRepository.failInterruptedRuns(
+      env.WEATHER_STALE_RUN_MINUTES,
+    );
+    if (interrupted > 0) {
+      logger.warn({ interrupted, trigger }, 'Job météo : runs interrompus marqués FAILED');
+    }
+  } catch (err) {
+    logger.warn({ err, trigger }, 'Job météo : nettoyage des runs interrompus impossible');
+  }
+}
+
+/**
  * Rattrapage au démarrage, au retour de veille et périodiquement.
  *
  * Deux raisons indépendantes, réunies : un créneau planifié manqué (le process
@@ -237,6 +258,10 @@ export function scopesToCatchUp(input: {
  */
 async function catchUpIfStale(trigger: CatchUpTrigger): Promise<void> {
   try {
+    // Hygiène d'observabilité d'abord : une ligne RUNNING figée fausserait la
+    // lecture de `latestRun` juste en dessous et neutraliserait le rattrapage.
+    await failInterruptedRuns(trigger);
+
     const now = new Date();
     const sourceId = await weatherRepository.getSourceId();
     const observationSlot = lastScheduledSlot(env.WEATHER_OBSERVATION_CRON, now);

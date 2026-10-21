@@ -166,6 +166,14 @@ const envSchema = z.object({
   // signale la péremption. Retenir deux cycles entiers (2880 min) le laisserait
   // vert pendant 24 h sur une panne.
   WEATHER_OBSERVATION_STALE_MINUTES: z.coerce.number().default(1500),
+  // Run interrompu : un journal `weather_sync_runs` resté RUNNING au-delà de ce
+  // délai est marqué FAILED au démarrage et à chaque contrôle de fraîcheur
+  // (processus tué en plein run : `tsx watch`, veille machine, crash). Sans ce
+  // nettoyage, la ligne RUNNING reste éternelle et `latestRun` — qui fait foi
+  // pour le rattrapage — la voit comme « tentative en cours » : tous les
+  // rattrapages suivants sont alors bloqués en silence. Très supérieur à la
+  // durée réelle d'un run (4 à 15 min pour le run national).
+  WEATHER_STALE_RUN_MINUTES: z.coerce.number().min(1).default(60),
   // Idem côté prévisions : cycle de 24 h, seuil à 26 h.
   WEATHER_FORECAST_STALE_HOURS: z.coerce.number().default(26),
 
