@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle } from "lucide-react";
 import {
   alertsApi,
   eventsApi,
@@ -21,7 +19,6 @@ import { useTrackPlayback } from "@/lib/useTrackPlayback";
 import { useLiveCycloneQuery } from "@/lib/useLiveCyclone";
 import { useAuthStore } from "@/stores/authStore";
 import { ActiveEventProvider, useActiveEvent } from "@/stores/activeEvent";
-import { AlertBanner } from "@/components/ui/AlertBanner";
 import { CrisisHeader } from "@/components/crisis/CrisisHeader";
 import { CrisisSideRail } from "@/components/crisis/CrisisSideRail";
 import { LeftPanel } from "@/components/crisis/LeftPanel";
@@ -30,7 +27,6 @@ import { CrisisMap, type MapPlayback } from "@/components/crisis/CrisisMap";
 import { CreateEventModal } from "@/components/crisis/CreateEventModal";
 import { buildExposureIndex } from "@/lib/crisisData";
 import { cn, formatDate } from "@/lib/utils";
-import { SEVERITY_LABELS } from "@/lib/eventMeta";
 
 const REFRESH_INTERVAL_MS = 5 * 60_000;
 
@@ -60,7 +56,7 @@ function CrisisRoomView() {
     null,
   );
   const [focusReq, setFocusReq] = useState(0);
-  const [urgentDismissed, setUrgentDismissed] = useState(false);
+
   const [mapPhase, setMapPhase] = useState("");
   const [districtId, setDistrictId] = useState("");
 
@@ -287,9 +283,7 @@ function CrisisRoomView() {
     staleTime: 30_000,
     refetchInterval: REFRESH_INTERVAL_MS,
   });
-  const urgentAlerts = (urgentQ.data?.data ?? [])
-    .filter((a) => a.status === "PUBLIEE")
-    .slice(0, 4);
+  void urgentQ;
 
   const observationSync = monitoringQ.data?.sync?.observations;
 
@@ -326,32 +320,7 @@ function CrisisRoomView() {
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden bg-canvas">
-      {urgentAlerts.length > 0 && !urgentDismissed ? (
-        <div className="px-3 pt-3">
-          <AlertBanner
-            tone="danger"
-            title="Alertes actives"
-            onClose={() => setUrgentDismissed(true)}
-          >
-            <ul className="space-y-1">
-              {urgentAlerts.map((a) => (
-                <li key={a.id} className="flex items-center gap-2">
-                  <AlertTriangle className="size-3.5 shrink-0" />
-                  <Link
-                    to="/alertes"
-                    className="underline-offset-2 hover:underline"
-                  >
-                    {a.title}
-                  </Link>
-                  <span className="text-xs opacity-80">
-                    · {SEVERITY_LABELS[a.severity] ?? a.severity}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </AlertBanner>
-        </div>
-      ) : null}
+
 
       <div className="flex min-h-0 flex-1">
         <aside
