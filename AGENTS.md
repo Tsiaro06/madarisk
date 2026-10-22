@@ -13,6 +13,9 @@ Both packages must be handled independently (`cd backend` / `cd frontend`).
 - `npm run db:migrate` / `npm run db:seed` / `npm run db:check` — DB via `tsx`
 - `npm run db:seed:batsirai` — (re)importe l'événement historique Cyclone Batsirai 2022 (trajectoire IBTrACS + rayons de vent RSMC documentés)
 - `npm run db:generate:batsirai-radii` — régénère `database/seeds/batsirai-2022-radii.ts` depuis IBTrACS v04r01 (télécharge le CSV du bassin Sud-Indien, ou passer un CSV local en argument)
+- `npm run db:seed:gezani` — (ré)importe l'événement historique Cyclone Gezani 2026 (29 bulletins officiels DGM + trajectoire IBTrACS + rayons RSMC documentés)
+- `npm run db:seed:gezani-alerts` — rejoue les bulletins DGM dans `event_commune_alert_history` (alertes officielles par région/district + estimations de vent) ; à lancer après `db:seed:gezani`
+- `npm run db:generate:gezani-radii` — régénère `database/seeds/gezani-2026-radii.ts` depuis IBTrACS v04r01 (SID 2026035S11065)
 - `npm run db:seed` creates demo account `admin@madarisk.mg` / `Admin@123!`
 - Verification order: `npm run lint` (eslint, `--max-warnings 0`) → `npm run typecheck` (`tsc --noEmit`) → `npm test` (vitest)
 - Formatting is Prettier (`npm run format`), enforced separately from lint; run `npm run format:check` too

@@ -23,6 +23,9 @@
     "db:seed:batsirai": "tsx database/scripts/seed-batsirai.ts",
     "db:seed:batsirai-alerts": "tsx database/scripts/seed-batsirai-alerts.ts",
     "db:generate:batsirai-radii": "tsx database/scripts/generate-batsirai-radii.ts",
+    "db:seed:gezani": "tsx database/scripts/seed-gezani.ts",
+    "db:seed:gezani-alerts": "tsx database/scripts/seed-gezani-alerts.ts",
+    "db:generate:gezani-radii": "tsx database/scripts/generate-gezani-radii.ts",
     "db:check": "tsx database/scripts/check-database.ts",
     "db:import-population": "tsx database/scripts/import-commune-population.ts",
     "db:backfill-weather-hourly": "tsx database/scripts/backfill-weather-hourly.ts"
