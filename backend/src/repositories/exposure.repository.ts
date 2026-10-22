@@ -8,7 +8,7 @@ import {
   ExposureRun,
   ExposureTrigger,
 } from '../types/exposure.types';
-import { RiskLevel, RiskPhase } from '../types/event.types';
+import { RiskLevel, RiskPhase, SeverityLevel } from '../types/event.types';
 import { GeoJsonGeometry } from '../types/territory.types';
 
 interface CountRow {
@@ -36,18 +36,25 @@ export const exposureRepository = {
     const values: unknown[] = [eventId];
     let idx = 2;
     for (const r of rows) {
-      placeholders.push(`($1, $${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3})`);
-      values.push(r.communeId, r.metric ?? null, r.value ?? null, r.threshold ?? null);
-      idx += 4;
+      placeholders.push(`($1, $${idx}, $${idx + 1}, $${idx + 2}, $${idx + 3}, $${idx + 4})`);
+      values.push(
+        r.communeId,
+        r.metric ?? null,
+        r.value ?? null,
+        r.threshold ?? null,
+        r.severity ?? null,
+      );
+      idx += 5;
     }
 
     const result = await db.query<NumericRow>(
-      `INSERT INTO event_detection_communes (event_id, commune_id, metric, value, threshold)
+      `INSERT INTO event_detection_communes (event_id, commune_id, metric, value, threshold, severity)
        VALUES ${placeholders.join(', ')}
        ON CONFLICT (event_id, commune_id)
        DO UPDATE SET metric = EXCLUDED.metric,
                      value = EXCLUDED.value,
                      threshold = EXCLUDED.threshold,
+                     severity = EXCLUDED.severity,
                      recorded_at = now()
        RETURNING id`,
       values,
@@ -61,8 +68,9 @@ export const exposureRepository = {
       metric: string | null;
       value: string | null;
       threshold: string | null;
+      severity: SeverityLevel | null;
     }>(
-      `SELECT commune_id, metric, value::text AS value, threshold::text AS threshold
+      `SELECT commune_id, metric, value::text AS value, threshold::text AS threshold, severity
        FROM event_detection_communes
        WHERE event_id = $1
        ORDER BY commune_id`,
@@ -73,6 +81,7 @@ export const exposureRepository = {
       metric: r.metric,
       value: r.value !== null ? parseFloat(r.value) : null,
       threshold: r.threshold !== null ? parseFloat(r.threshold) : null,
+      severity: r.severity,
     }));
   },
 

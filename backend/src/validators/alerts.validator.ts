@@ -6,6 +6,9 @@ const alertTypeEnum = z.enum([
   'FORTE_PLUIE',
   'VENT_VIOLENT',
   'SECHERESSE',
+  'VAGUE_DE_CHALEUR',
+  'GLISSEMENT_TERRAIN',
+  'FEU_VEGETATION',
   'INFORMATION',
   'URGENCE',
 ]);

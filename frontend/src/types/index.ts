@@ -9,6 +9,7 @@ export type EventType =
   | 'VENT_VIOLENT'
   | 'GLISSEMENT_TERRAIN'
   | 'FEU_VEGETATION'
+  | 'VAGUE_DE_CHALEUR'
   | 'AUTRE';
 export type SeverityLevel = 'FAIBLE' | 'MODEREE' | 'ELEVEE' | 'EXTREME';
 export type AlertStatus = 'BROUILLON' | 'PUBLIEE' | 'ARCHIVEE' | 'EXPIREE';
@@ -19,6 +20,9 @@ export type AlertType =
   | 'FORTE_PLUIE'
   | 'VENT_VIOLENT'
   | 'SECHERESSE'
+  | 'VAGUE_DE_CHALEUR'
+  | 'GLISSEMENT_TERRAIN'
+  | 'FEU_VEGETATION'
   | 'INFORMATION'
   | 'URGENCE';
 

@@ -4575,7 +4575,19 @@ components:
       enum: [BROUILLON, PUBLIEE, ARCHIVEE, EXPIREE]
     AlertType:
       type: string
-      enum: [CYCLONE, INONDATION, FORTE_PLUIE, VENT_VIOLENT, SECHERESSE, INFORMATION, URGENCE]
+      enum:
+        [
+          CYCLONE,
+          INONDATION,
+          FORTE_PLUIE,
+          VENT_VIOLENT,
+          SECHERESSE,
+          VAGUE_DE_CHALEUR,
+          GLISSEMENT_TERRAIN,
+          FEU_VEGETATION,
+          INFORMATION,
+          URGENCE,
+        ]
     ImportStatus:
       type: string
       enum: [BROUILLON, EN_COURS, TERMINE, ECHEC]
@@ -5608,6 +5620,9 @@ components:
         created: { type: integer }
         updated: { type: integer }
         unchanged: { type: integer }
+        withdrawn:
+          type: integer
+          description: Alertes archivées car la commune n'atteint plus la sévérité minimale requise
         alerts:
           type: array
           items: { $ref: '#/components/schemas/Alert' }

@@ -30,6 +30,7 @@ import { CrisisMap, type MapPlayback } from "@/components/crisis/CrisisMap";
 import { CreateEventModal } from "@/components/crisis/CreateEventModal";
 import { buildExposureIndex } from "@/lib/crisisData";
 import { cn, formatDate } from "@/lib/utils";
+import { SEVERITY_LABELS } from "@/lib/eventMeta";
 
 const REFRESH_INTERVAL_MS = 5 * 60_000;
 
@@ -342,7 +343,9 @@ function CrisisRoomView() {
                   >
                     {a.title}
                   </Link>
-                  <span className="text-xs opacity-80">· {a.severity}</span>
+                  <span className="text-xs opacity-80">
+                    · {SEVERITY_LABELS[a.severity] ?? a.severity}
+                  </span>
                 </li>
               ))}
             </ul>

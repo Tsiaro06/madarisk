@@ -20,6 +20,7 @@ import { AdministrativeInterventionPanel } from '@/components/admin/Administrati
 import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
 import { useToast } from '@/components/ui/Toast';
 import { cn, formatDate } from '@/lib/utils';
+import { ALERT_STATUS_LABELS, ALERT_TYPE_LABELS, SEVERITY_LABELS } from '@/lib/eventMeta';
 
 const STATUS_GROUPS = [
   { value: '', label: 'Toutes' },
@@ -34,6 +35,9 @@ const ALERT_TYPES: AlertType[] = [
   'FORTE_PLUIE',
   'VENT_VIOLENT',
   'SECHERESSE',
+  'VAGUE_DE_CHALEUR',
+  'GLISSEMENT_TERRAIN',
+  'FEU_VEGETATION',
   'INFORMATION',
   'URGENCE',
 ];
@@ -198,7 +202,7 @@ export function AlertesPage() {
       title: 'Créer une alerte exceptionnelle\u00a0?',
       variant: 'warning',
       actionLabel: 'Confirmer la création',
-      description: `Titre : ${form.title || '—'} · Type : ${form.type} · Sévérité : ${form.severity}${
+      description: `Titre : ${form.title || '—'} · Type : ${ALERT_TYPE_LABELS[form.type] ?? form.type} · Sévérité : ${SEVERITY_LABELS[form.severity] ?? form.severity}${
         form.eventId ? ` · Événement : ${form.eventId}` : ''
       }${form.districtId ? ` · District : ${form.districtId}` : ''}${
         form.communeId ? ` · Commune : ${form.communeId}` : ''
@@ -269,7 +273,7 @@ export function AlertesPage() {
             setStatus(e.target.value);
             setPage(1);
           }}
-          options={STATUSES.map((s) => ({ value: s, label: s }))}
+          options={STATUSES.map((s) => ({ value: s, label: ALERT_STATUS_LABELS[s] ?? s }))}
         />
         <Select
           label="Type"
@@ -279,7 +283,7 @@ export function AlertesPage() {
             setType(e.target.value);
             setPage(1);
           }}
-          options={ALERT_TYPES.map((t) => ({ value: t, label: t }))}
+          options={ALERT_TYPES.map((t) => ({ value: t, label: ALERT_TYPE_LABELS[t] ?? t }))}
         />
         <Select
           label="Origine"
@@ -330,9 +334,11 @@ export function AlertesPage() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <h3 className="font-medium text-ink">{a.title}</h3>
-                        <Badge tone={statusTone(a.status)}>{a.status}</Badge>
-                        <Badge tone="warning">{a.severity}</Badge>
-                        <Badge tone="brand">{a.type}</Badge>
+                        <Badge tone={statusTone(a.status)}>
+                          {ALERT_STATUS_LABELS[a.status] ?? a.status}
+                        </Badge>
+                        <Badge tone="warning">{SEVERITY_LABELS[a.severity] ?? a.severity}</Badge>
+                        <Badge tone="brand">{ALERT_TYPE_LABELS[a.type] ?? a.type}</Badge>
                         {a.isHistorique ? (
                           <Badge tone="neutral">
                             Historique · bulletin du{' '}
@@ -440,13 +446,13 @@ export function AlertesPage() {
               label="Type"
               value={form.type}
               onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as AlertType }))}
-              options={ALERT_TYPES.map((t) => ({ value: t, label: t }))}
+              options={ALERT_TYPES.map((t) => ({ value: t, label: ALERT_TYPE_LABELS[t] ?? t }))}
             />
             <Select
               label="Sévérité"
               value={form.severity}
               onChange={(e) => setForm((f) => ({ ...f, severity: e.target.value as SeverityLevel }))}
-              options={SEVERITIES.map((t) => ({ value: t, label: t }))}
+              options={SEVERITIES.map((t) => ({ value: t, label: SEVERITY_LABELS[t] ?? t }))}
             />
             <p className="text-xs text-muted">
               Cible : renseignez un événement et/ou un territoire (district OU commune).

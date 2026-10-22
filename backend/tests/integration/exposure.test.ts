@@ -206,6 +206,7 @@ async function markCommuneOverThreshold(eventId: string, communeId: string): Pro
       metric: 'precipitation_mm',
       value: 150,
       threshold: 100,
+      severity: 'ELEVEE',
     },
   ]);
 }

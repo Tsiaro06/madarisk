@@ -7,8 +7,10 @@ import {
   frenchHazardName,
   hazardShortCode,
   intensityScore,
+  maxSeverity,
   metricToForecastColumn,
   metricToObservationColumn,
+  severityAtLeast,
   severityForScore,
   WIND_METRICS,
   PRESSURE_METRICS,
@@ -100,6 +102,26 @@ describe('severityForScore', () => {
     expect(severityForScore(rules, 35)).toBe('MODEREE');
     expect(severityForScore(rules, 75)).toBe('ELEVEE');
     expect(severityForScore(rules, 95)).toBe('EXTREME');
+  });
+});
+
+describe('garde de sévérité minimale', () => {
+  it('compare les sévérités selon l’ordre de gravité', () => {
+    expect(severityAtLeast('FAIBLE', 'MODEREE')).toBe(false);
+    expect(severityAtLeast('MODEREE', 'MODEREE')).toBe(true);
+    expect(severityAtLeast('ELEVEE', 'MODEREE')).toBe(true);
+    expect(severityAtLeast('EXTREME', 'ELEVEE')).toBe(true);
+    expect(severityAtLeast('ELEVEE', 'EXTREME')).toBe(false);
+  });
+
+  it('une garde à FAIBLE laisse passer tout le monde', () => {
+    expect(severityAtLeast('FAIBLE', 'FAIBLE')).toBe(true);
+  });
+
+  it('retient la sévérité la plus élevée', () => {
+    expect(maxSeverity('FAIBLE', 'MODEREE')).toBe('MODEREE');
+    expect(maxSeverity('EXTREME', 'ELEVEE')).toBe('EXTREME');
+    expect(maxSeverity('ELEVEE', 'ELEVEE')).toBe('ELEVEE');
   });
 });
 

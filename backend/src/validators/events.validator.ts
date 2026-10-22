@@ -8,6 +8,7 @@ const eventTypeEnum = z.enum([
   'VENT_VIOLENT',
   'GLISSEMENT_TERRAIN',
   'FEU_VEGETATION',
+  'VAGUE_DE_CHALEUR',
   'AUTRE',
 ]);
 

@@ -56,13 +56,13 @@ interface CreateEventBody {
   expectedEndAt: string;
 }
 
-function makeEventBody(status: string): CreateEventBody {
+function makeEventBody(status: string, severity = 'ELEVEE'): CreateEventBody {
   return {
     eventCode: `EV-TEST-AUTO-${Date.now()}-${Math.floor(Math.random() * 100000)}`,
     name: 'Cyclone test alertes automatiques',
     type: 'CYCLONE',
     status,
-    severity: 'ELEVEE',
+    severity,
     description: 'Événement de test pour les alertes automatiques',
     sourceName: 'Météo France',
     startedAt: testEventStartAt,
@@ -70,11 +70,11 @@ function makeEventBody(status: string): CreateEventBody {
   };
 }
 
-async function createEvent(status: string, token: string): Promise<string> {
+async function createEvent(status: string, token: string, severity = 'ELEVEE'): Promise<string> {
   const res = await request(app)
     .post('/api/v1/events')
     .set('Authorization', `Bearer ${token}`)
-    .send(makeEventBody(status));
+    .send(makeEventBody(status, severity));
   expect(res.status).toBe(201);
   const id = res.body.data.id as string;
   createdEventIds.push(id);
@@ -117,22 +117,24 @@ afterAll(async () => {
   for (const eventId of createdEventIds) {
     await detachDetectionCommune(eventId);
   }
-  await db.query(
-    `DELETE FROM hazard_events WHERE id = ANY($1::uuid[])`,
-    [createdEventIds.length ? createdEventIds : [null]],
-  );
-  await db.query(
-    `DELETE FROM user_sessions WHERE user_id IN ($1, $2, $3)`,
-    [admin.id, superAdmin.id, client.id],
-  );
-  await db.query(
-    `DELETE FROM audit_logs WHERE user_id IN ($1, $2, $3)`,
-    [admin.id, superAdmin.id, client.id],
-  );
-  await db.query(
-    `DELETE FROM users WHERE id IN ($1, $2, $3)`,
-    [admin.id, superAdmin.id, client.id],
-  );
+  await db.query(`DELETE FROM hazard_events WHERE id = ANY($1::uuid[])`, [
+    createdEventIds.length ? createdEventIds : [null],
+  ]);
+  await db.query(`DELETE FROM user_sessions WHERE user_id IN ($1, $2, $3)`, [
+    admin.id,
+    superAdmin.id,
+    client.id,
+  ]);
+  await db.query(`DELETE FROM audit_logs WHERE user_id IN ($1, $2, $3)`, [
+    admin.id,
+    superAdmin.id,
+    client.id,
+  ]);
+  await db.query(`DELETE FROM users WHERE id IN ($1, $2, $3)`, [
+    admin.id,
+    superAdmin.id,
+    client.id,
+  ]);
   await db.pool.end();
 });
 
@@ -167,7 +169,7 @@ describe('Alertes automatiques - prévision dangereuse', () => {
   it('crée une alerte de vigilance liée à un événement PREVISION', async () => {
     eventId = await createEvent('PREVISION', admin.token);
     await exposureRepository.upsertDetectionCommunes(eventId, [
-      { communeId, metric: 'wind_speed', value: 120, threshold: 100 },
+      { communeId, metric: 'wind_speed', value: 120, threshold: 100, severity: 'ELEVEE' },
     ]);
 
     const res = await request(app)
@@ -234,7 +236,7 @@ describe('Alertes automatiques - observation confirmée (mise à jour sans doubl
   it('remplace la prévision par une alerte actuelle lors du passage en ACTIF', async () => {
     eventId = await createEvent('PREVISION', admin.token);
     await exposureRepository.upsertDetectionCommunes(eventId, [
-      { communeId, metric: 'wind_speed', value: 120, threshold: 100 },
+      { communeId, metric: 'wind_speed', value: 120, threshold: 100, severity: 'ELEVEE' },
     ]);
 
     const first = await request(app)
@@ -349,7 +351,7 @@ describe('Alertes automatiques - politique de publication', () => {
   it('avec autoPublish, l alerte est directement PUBLIEE', async () => {
     const eventId = await createEvent('PREVISION', admin.token);
     await exposureRepository.upsertDetectionCommunes(eventId, [
-      { communeId, metric: 'wind_speed', value: 120, threshold: 100 },
+      { communeId, metric: 'wind_speed', value: 120, threshold: 100, severity: 'ELEVEE' },
     ]);
 
     const result = await automaticAlertService.generateForEvent({
@@ -382,5 +384,115 @@ describe('Alertes automatiques - politique de publication', () => {
     });
     expect(result.created).toBe(0);
     expect(result.updated).toBe(0);
+  });
+});
+
+describe('Alertes automatiques - garde de sévérité minimale', () => {
+  it('une détection FAIBLE ne produit aucune alerte', async () => {
+    const eventId = await createEvent('PREVISION', admin.token, 'FAIBLE');
+    await exposureRepository.upsertDetectionCommunes(eventId, [
+      { communeId, metric: 'temperature_max_c', value: 40.4, threshold: 40, severity: 'FAIBLE' },
+    ]);
+
+    const result = await automaticAlertService.generateForEvent({
+      eventId,
+      trigger: 'DETECTION',
+      autoPublish: true,
+    });
+    expect(result.created).toBe(0);
+    expect(result.updated).toBe(0);
+    expect(result.withdrawn).toBe(0);
+
+    const list = await request(app)
+      .get(`/api/v1/alerts/automatic?eventId=${eventId}`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(list.body.data.length).toBe(0);
+  });
+
+  it('la sévérité de l alerte est celle de la commune, pas celle de l événement', async () => {
+    // L'événement est au niveau ELEVEE (autre commune dépassant le seuil),
+    // mais cette commune n'est qu'à MODEREE : l'alerte ne doit porter que
+    // la sévérité de la commune ciblée.
+    const eventId = await createEvent('PREVISION', admin.token, 'ELEVEE');
+    await exposureRepository.upsertDetectionCommunes(eventId, [
+      {
+        communeId,
+        metric: 'precipitation_sum_mm',
+        value: 61.7,
+        threshold: 50,
+        severity: 'MODEREE',
+      },
+    ]);
+
+    const result = await automaticAlertService.generateForEvent({
+      eventId,
+      trigger: 'DETECTION',
+      autoPublish: true,
+    });
+    expect(result.created).toBe(1);
+    const alert = result.alerts[0];
+    createdAlertIds.push(alert.id);
+    expect(alert.severity).toBe('MODEREE');
+    expect(alert.message).toContain('Niveau : modérée');
+  });
+
+  it('une alerte déjà publiée est archivée quand la commune repasse sous le seuil', async () => {
+    const eventId = await createEvent('PREVISION', admin.token, 'MODEREE');
+    await exposureRepository.upsertDetectionCommunes(eventId, [
+      {
+        communeId,
+        metric: 'precipitation_sum_mm',
+        value: 61.7,
+        threshold: 50,
+        severity: 'MODEREE',
+      },
+    ]);
+
+    const first = await automaticAlertService.generateForEvent({
+      eventId,
+      trigger: 'DETECTION',
+      autoPublish: true,
+    });
+    expect(first.created).toBe(1);
+    const alertId = first.alerts[0].id;
+    createdAlertIds.push(alertId);
+
+    // La prévision est révisée à la baisse : la commune repasse en FAIBLE.
+    await exposureRepository.upsertDetectionCommunes(eventId, [
+      {
+        communeId,
+        metric: 'precipitation_sum_mm',
+        value: 52.1,
+        threshold: 50,
+        severity: 'FAIBLE',
+      },
+    ]);
+
+    const second = await automaticAlertService.generateForEvent({
+      eventId,
+      trigger: 'DETECTION',
+      autoPublish: true,
+    });
+    expect(second.created).toBe(0);
+    expect(second.withdrawn).toBe(1);
+
+    const list = await request(app)
+      .get(`/api/v1/alerts/automatic?eventId=${eventId}`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    const active = list.body.data.filter(
+      (a: { status: string }) => a.status === 'BROUILLON' || a.status === 'PUBLIEE',
+    );
+    expect(active.length).toBe(0);
+    expect(list.body.data[0].status).toBe('ARCHIVEE');
+
+    const history = await request(app)
+      .get(`/api/v1/alerts/${alertId}/history`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(history.status).toBe(200);
+    const withdrawal = history.body.data.find(
+      (h: { toStatus: string }) => h.toStatus === 'ARCHIVEE',
+    );
+    expect(withdrawal).toBeDefined();
+    expect(withdrawal.fromStatus).toBe('PUBLIEE');
   });
 });

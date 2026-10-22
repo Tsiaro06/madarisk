@@ -18,6 +18,7 @@ import type { LucideIcon } from 'lucide-react';
 import { alertsApi } from '@/api';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
+import { SEVERITY_LABELS } from '@/lib/eventMeta';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Spinner } from '@/components/ui/Spinner';
@@ -208,7 +209,7 @@ export function AppShell() {
                   <li key={a.id} className="flex items-center gap-2">
                     <AlertTriangle className="size-3.5 shrink-0" />
                     <Link to="/alertes" className="underline-offset-2 hover:underline">
-                      {a.title} · {a.severity}
+                      {a.title} · {SEVERITY_LABELS[a.severity] ?? a.severity}
                     </Link>
                   </li>
                 ))}

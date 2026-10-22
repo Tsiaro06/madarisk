@@ -1,7 +1,7 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Download, FileText, MapPin } from 'lucide-react';
 import { reportsApi } from '@/api';
-import type { RiskLevel } from '@/types';
+import type { AlertStatus, RiskLevel } from '@/types';
 import { RISK_LABELS } from '@/types';
 import { ApiClientError } from '@/api/client';
 import { Badge } from '@/components/ui/Badge';
@@ -12,6 +12,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate, formatNumber } from '@/lib/utils';
+import { ALERT_STATUS_LABELS } from '@/lib/eventMeta';
 import { canManageOps } from '@/lib/roles';
 import { useAuthStore } from '@/stores/authStore';
 
@@ -303,10 +304,12 @@ export function EventBilanTab({ eventId }: { eventId: string }) {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-ink">{a.title}</p>
                       <p className="text-xs text-muted">
-                        {a.publishedAt ? `Publiée ${formatDate(a.publishedAt)}` : a.status}
+                        {a.publishedAt
+                          ? `Publiée ${formatDate(a.publishedAt)}`
+                          : (ALERT_STATUS_LABELS[a.status as AlertStatus] ?? a.status)}
                       </p>
                     </div>
-                    <Badge>{a.status}</Badge>
+                    <Badge>{ALERT_STATUS_LABELS[a.status as AlertStatus] ?? a.status}</Badge>
                   </li>
                 ))}
               </ul>

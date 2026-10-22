@@ -8,6 +8,7 @@ export type EventType =
   | 'VENT_VIOLENT'
   | 'GLISSEMENT_TERRAIN'
   | 'FEU_VEGETATION'
+  | 'VAGUE_DE_CHALEUR'
   | 'AUTRE';
 
 export const EVENT_TYPES: EventType[] = [
@@ -18,6 +19,7 @@ export const EVENT_TYPES: EventType[] = [
   'VENT_VIOLENT',
   'GLISSEMENT_TERRAIN',
   'FEU_VEGETATION',
+  'VAGUE_DE_CHALEUR',
   'AUTRE',
 ];
 

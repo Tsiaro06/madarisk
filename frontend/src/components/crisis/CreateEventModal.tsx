@@ -57,6 +57,7 @@ const TYPE_PREFIX: Partial<Record<CreateEventForm['type'], string>> = {
   VENT_VIOLENT: 'VV',
   GLISSEMENT_TERRAIN: 'GT',
   FEU_VEGETATION: 'FV',
+  VAGUE_DE_CHALEUR: 'VC',
   AUTRE: 'EV',
 };
 

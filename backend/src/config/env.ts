@@ -211,6 +211,13 @@ const envSchema = z.object({
     .transform((v) => v === 'true')
     .default('false'),
 
+  // Sévérité minimale qu'une détection automatique doit atteindre pour
+  // générer une alerte. Un dépassement marginal du seuil (ex. 40,0 °C pour un
+  // seuil à 40 °C) reste tracé comme événement — visible sur la carte et dans
+  // le calcul d'exposition — mais ne produit aucune alerte. Mettre 'FAIBLE'
+  // désactive complètement cette garde.
+  ALERTS_AUTO_MIN_SEVERITY: z.enum(['FAIBLE', 'MODEREE', 'ELEVEE', 'EXTREME']).default('MODEREE'),
+
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 });
 

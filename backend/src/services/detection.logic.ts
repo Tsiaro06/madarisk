@@ -149,6 +149,24 @@ export function severityForScore(
   return level;
 }
 
+/** Ordre de gravité des sévérités, du plus faible au plus élevé. */
+export const SEVERITY_ORDER: Record<SeverityLevel, number> = {
+  FAIBLE: 0,
+  MODEREE: 1,
+  ELEVEE: 2,
+  EXTREME: 3,
+};
+
+/** `true` si `severity` atteint au moins le niveau `minimum`. */
+export function severityAtLeast(severity: SeverityLevel, minimum: SeverityLevel): boolean {
+  return SEVERITY_ORDER[severity] >= SEVERITY_ORDER[minimum];
+}
+
+/** Sévérité la plus élevée entre deux niveaux. */
+export function maxSeverity(a: SeverityLevel, b: SeverityLevel): SeverityLevel {
+  return SEVERITY_ORDER[b] > SEVERITY_ORDER[a] ? b : a;
+}
+
 export function detectionKeyFor(hazardType: string, geoKey: string): string {
   return `${hazardType}:${geoKey}`;
 }

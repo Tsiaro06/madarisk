@@ -1,4 +1,4 @@
-import { RiskLevel, RiskPhase } from './event.types';
+import { RiskLevel, RiskPhase, SeverityLevel } from './event.types';
 import { GeoJsonGeometry } from './territory.types';
 
 /** Origine du déclenchement d'un calcul d'exposition. */
@@ -44,6 +44,12 @@ export interface DetectionCommuneRow {
   metric: string | null;
   value: number | null;
   threshold: number | null;
+  /**
+   * Sévérité propre à la commune, déduite de l'écart au seuil. Permet de
+   * n'alerter que les communes dont le dépassement est significatif, plutôt
+   * que d'appliquer à toutes la sévérité maximale de l'événement.
+   */
+  severity: SeverityLevel | null;
 }
 
 export interface ExposureLayerProperties {

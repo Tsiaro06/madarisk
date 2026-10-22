@@ -10,6 +10,9 @@ export type AlertType =
   | 'FORTE_PLUIE'
   | 'VENT_VIOLENT'
   | 'SECHERESSE'
+  | 'VAGUE_DE_CHALEUR'
+  | 'GLISSEMENT_TERRAIN'
+  | 'FEU_VEGETATION'
   | 'INFORMATION'
   | 'URGENCE';
 
@@ -19,6 +22,9 @@ export const ALERT_TYPES: AlertType[] = [
   'FORTE_PLUIE',
   'VENT_VIOLENT',
   'SECHERESSE',
+  'VAGUE_DE_CHALEUR',
+  'GLISSEMENT_TERRAIN',
+  'FEU_VEGETATION',
   'INFORMATION',
   'URGENCE',
 ];

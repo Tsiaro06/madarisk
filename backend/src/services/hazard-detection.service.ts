@@ -13,9 +13,11 @@ import {
   eventCodeFor,
   eventNameFor,
   intensityScore,
+  maxSeverity,
   metricToForecastColumn,
   metricToObservationColumn,
   severityForScore,
+  SEVERITY_ORDER,
   WIND_METRICS,
   PRESSURE_METRICS,
   RAIN_METRICS,
@@ -38,28 +40,17 @@ interface RunningLock {
   startedAt: number;
 }
 
-const SEVERITY_ORDER: Record<SeverityLevel, number> = {
-  FAIBLE: 0,
-  MODEREE: 1,
-  ELEVEE: 2,
-  EXTREME: 3,
-};
+const HISTORY_SOURCE = 'HAZARD_DETECTION';
 
-function maxSeverity(a: SeverityLevel, b: SeverityLevel): SeverityLevel {
-  return SEVERITY_ORDER[b] > SEVERITY_ORDER[a] ? b : a;
-}
-
-function snapshotTrigger(trigger: 'SCHEDULED' | 'MANUAL'): string {
-  return trigger === 'MANUAL' ? 'MANUAL_DETECTION' : 'AUTO_DETECTION';
-}
+let activeRun: RunningLock | null = null;
 
 function riskLevelSummary(dist: EventRiskDistribution | null): Record<string, unknown> {
   return Object.fromEntries(Object.entries(dist ?? {}));
 }
 
-const HISTORY_SOURCE = 'HAZARD_DETECTION';
-
-let activeRun: RunningLock | null = null;
+function snapshotTrigger(trigger: 'SCHEDULED' | 'MANUAL'): string {
+  return trigger === 'MANUAL' ? 'MANUAL_DETECTION' : 'AUTO_DETECTION';
+}
 
 export const hazardDetectionService = {
   async run(options: DetectionRunOptions = {}): Promise<DetectionRunOutcome> {
@@ -517,17 +508,39 @@ async function recordSnapshot(
   });
 }
 
-/** Communes uniques au-dessus du seuil, avec la valeur la plus intense par commune. */
+/**
+ * Communes uniques au-dessus du seuil, avec la valeur la plus intense par commune.
+ *
+ * La sévérité conservée est celle de la commune elle-même (et non la
+ * sévérité maximale de l'événement) : c'est elle qui décide si la commune
+ * mérite une alerte. Une commune à 57,8 mm pour un seuil à 50 mm reste
+ * FAIBLE même si une autre commune du même événement atteint 61,7 mm.
+ */
 function detectionCommunesFor(signals: DetectionSignal[]): DetectionCommuneRow[] {
   const byCommune = new Map<string, DetectionCommuneRow>();
   for (const s of signals) {
     const existing = byCommune.get(s.communeId);
-    if (!existing || (existing.value ?? -Infinity) < s.value) {
+    if (!existing) {
       byCommune.set(s.communeId, {
         communeId: s.communeId,
         metric: s.metric,
         value: s.value,
         threshold: s.threshold,
+        severity: s.severity,
+      });
+      continue;
+    }
+    // On garde le signal le plus sévère ; à sévérité égale, le plus intense.
+    const existingSeverity = existing.severity ?? 'FAIBLE';
+    const moreSevere = SEVERITY_ORDER[s.severity] > SEVERITY_ORDER[existingSeverity];
+    const moreIntense = (s.value ?? -Infinity) > (existing.value ?? -Infinity);
+    if (moreSevere || (s.severity === existingSeverity && moreIntense)) {
+      byCommune.set(s.communeId, {
+        communeId: s.communeId,
+        metric: s.metric,
+        value: s.value,
+        threshold: s.threshold,
+        severity: s.severity,
       });
     }
   }

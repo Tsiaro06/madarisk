@@ -14,8 +14,11 @@ export default defineConfig({
     // Pinne le mode publication : les tests s'attendent à des alertes en
     // BROUILLON, quel que soit le .env de développement (dotenv ne
     // surcharge pas les variables déjà définies).
+    // Idem pour la sévérité minimale : une détection FAIBLE ne doit jamais
+    // produire d'alerte, indépendamment du .env local.
     env: {
       ALERTS_AUTO_PUBLISH: 'false',
+      ALERTS_AUTO_MIN_SEVERITY: 'MODEREE',
     },
     coverage: {
       provider: 'v8',

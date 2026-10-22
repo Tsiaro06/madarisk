@@ -3,6 +3,7 @@ import { logger } from '../config/logger';
 import { eventsRepository } from '../repositories/events.repository';
 import { exposureRepository } from '../repositories/exposure.repository';
 import { alertsRepository } from '../repositories/alerts.repository';
+import { severityAtLeast } from './detection.logic';
 import type {
   Alert,
   AlertBasis,
@@ -28,6 +29,8 @@ export interface AlertGenerationResult {
   created: number;
   updated: number;
   unchanged: number;
+  /** Alertes archivées : la commune n'atteint plus la sévérité minimale requise. */
+  withdrawn: number;
   alerts: Alert[];
 }
 
@@ -39,6 +42,7 @@ const HAZARD_LABELS: Record<string, string> = {
   SECHERESSE: 'Sécheresse',
   GLISSEMENT_TERRAIN: 'Glissement de terrain',
   FEU_VEGETATION: 'Feu de végétation',
+  VAGUE_DE_CHALEUR: 'Vague de chaleur',
   AUTRE: 'Aléa',
 };
 
@@ -64,6 +68,9 @@ function mapEventTypeToAlertType(type: EventType): AlertType {
     FORTE_PLUIE: 'FORTE_PLUIE',
     VENT_VIOLENT: 'VENT_VIOLENT',
     SECHERESSE: 'SECHERESSE',
+    GLISSEMENT_TERRAIN: 'GLISSEMENT_TERRAIN',
+    FEU_VEGETATION: 'FEU_VEGETATION',
+    VAGUE_DE_CHALEUR: 'VAGUE_DE_CHALEUR',
   };
   return map[type] ?? 'INFORMATION';
 }
@@ -126,14 +133,39 @@ function buildMessage(
   return parts.filter(Boolean).join(' ');
 }
 
-async function resolveAffectedCommunes(eventId: string, communeIds?: string[]): Promise<string[]> {
-  if (communeIds && communeIds.length > 0) return communeIds;
+/** Commune ciblée par une alerte automatique, avec sa sévérité de détection. */
+interface TargetCommune {
+  communeId: string;
+  /** Sévérité propre à la commune ; null si elle est inconnue. */
+  severity: SeverityLevel | null;
+}
 
+/**
+ * Communes à alerter, avec la sévérité de détection de chacune.
+ *
+ * La sévérité est lue dans `event_detection_communes` : elle est celle du
+ * dépassement de seuil de la commune, pas la sévérité maximale de l'événement.
+ */
+async function resolveAffectedCommunes(
+  eventId: string,
+  communeIds?: string[],
+): Promise<TargetCommune[]> {
   const detection = await exposureRepository.listDetectionCommunes(eventId);
-  if (detection.length > 0) return detection.map((d) => d.communeId);
+  const severityByCommune = new Map(detection.map((d) => [d.communeId, d.severity]));
+
+  if (communeIds && communeIds.length > 0) {
+    return communeIds.map((communeId) => ({
+      communeId,
+      severity: severityByCommune.get(communeId) ?? null,
+    }));
+  }
+
+  if (detection.length > 0) {
+    return detection.map((d) => ({ communeId: d.communeId, severity: d.severity }));
+  }
 
   const exposed = await eventsRepository.listExposedCommuneIds(eventId);
-  return exposed;
+  return exposed.map((communeId) => ({ communeId, severity: null }));
 }
 
 async function resolveTerritoryNames(
@@ -169,12 +201,56 @@ function shouldUpdate(
   existing: Alert,
   newTitle: string,
   newMessage: string,
+  newSeverity: SeverityLevel,
   targetStatus: AlertStatus,
 ): boolean {
   if (existing.title !== newTitle) return true;
   if (existing.message !== newMessage) return true;
+  if (existing.severity !== newSeverity) return true;
   if (existing.status !== targetStatus) return true;
   return false;
+}
+
+/**
+ * Archive l'alerte automatique d'une cible qui n'atteint plus la sévérité
+ * minimale requise (la commune est repassée sous le niveau de vigilance).
+ * Sans ce retrait, une alerte déjà publiée resterait visible alors que la
+ * situation ne justifie plus de vigilance.
+ */
+async function withdrawAlert(
+  eventId: string,
+  target: { communeId?: string; districtId?: string; regionId?: string },
+  severity: SeverityLevel,
+  trigger: AlertGenerationTrigger,
+): Promise<Alert | null> {
+  const existing = await alertsRepository.findAutomaticForTarget(eventId, {
+    communeId: target.communeId,
+    districtId: target.districtId,
+    regionId: target.regionId,
+  });
+  if (!existing) return null;
+
+  const archived = await alertsRepository.archive(existing.id);
+  if (!archived) return null;
+
+  await alertsRepository.addUpdateEntry({
+    alertId: existing.id,
+    kind: 'UPDATED',
+    fromStatus: existing.status,
+    toStatus: 'ARCHIVEE',
+    trigger,
+    autoPublish: false,
+    oldTitle: existing.title,
+    newTitle: existing.title,
+    oldMessage: existing.message,
+    newMessage: existing.message,
+    oldSeverity: existing.severity,
+    newSeverity: severity,
+    oldBasis: existing.basis,
+    newBasis: existing.basis,
+  });
+
+  return archived;
 }
 
 export const automaticAlertService = {
@@ -188,6 +264,7 @@ export const automaticAlertService = {
         created: 0,
         updated: 0,
         unchanged: 0,
+        withdrawn: 0,
         alerts: [],
       };
     }
@@ -203,6 +280,7 @@ export const automaticAlertService = {
         created: 0,
         updated: 0,
         unchanged: 0,
+        withdrawn: 0,
         alerts: [],
       };
     }
@@ -216,17 +294,38 @@ export const automaticAlertService = {
     const period = formatPeriod(event.startedAt, event.expectedEndAt);
     const hzName = hazardName(event.type);
     const alertType = mapEventTypeToAlertType(event.type);
+    const minSeverity = env.ALERTS_AUTO_MIN_SEVERITY;
 
     const communes = await resolveAffectedCommunes(opts.eventId, opts.communeIds);
     const alerts: Alert[] = [];
     let created = 0;
     let updated = 0;
     let unchanged = 0;
+    let withdrawn = 0;
 
-    const targets: Array<{ communeId?: string; districtId?: string; regionId?: string }> =
-      communes.length > 0 ? communes.map((c) => ({ communeId: c })) : [{}];
+    const targets: Array<{
+      communeId?: string;
+      districtId?: string;
+      regionId?: string;
+      severity: SeverityLevel | null;
+    }> =
+      communes.length > 0
+        ? communes.map((c) => ({ communeId: c.communeId, severity: c.severity }))
+        : [{ severity: null }];
 
     for (const target of targets) {
+      // Sévérité applicable à la commune : la sienne quand elle est connue,
+      // sinon celle de l'événement. Une commune dont le dépassement de seuil
+      // reste marginal (FAIBLE) ne déclenche pas d'alerte : le seuil est un
+      // interrupteur binaire, la vigilance exige un niveau significatif.
+      const severity = target.severity ?? event.severity;
+
+      if (!severityAtLeast(severity, minSeverity)) {
+        const archived = await withdrawAlert(opts.eventId, target, severity, opts.trigger);
+        if (archived) withdrawn += 1;
+        continue;
+      }
+
       const { communeName, districtName, regionName } = await resolveTerritoryNames(
         target.communeId ?? null,
         target.districtId ?? null,
@@ -235,7 +334,7 @@ export const automaticAlertService = {
 
       const zone = zoneLabel(communeName, districtName, regionName, event.name);
       const title = buildTitle(basis, hzName, zone);
-      const message = buildMessage(basis, hzName, zone, event.severity, source, period, isDraft);
+      const message = buildMessage(basis, hzName, zone, severity, source, period, isDraft);
 
       const existing = await alertsRepository.findAutomaticForTarget(opts.eventId, {
         communeId: target.communeId,
@@ -247,7 +346,7 @@ export const automaticAlertService = {
         const effectiveTargetStatus: AlertStatus =
           existing.status === 'PUBLIEE' ? 'PUBLIEE' : targetStatus;
 
-        if (!shouldUpdate(existing, title, message, effectiveTargetStatus)) {
+        if (!shouldUpdate(existing, title, message, severity, effectiveTargetStatus)) {
           unchanged += 1;
           continue;
         }
@@ -256,7 +355,7 @@ export const automaticAlertService = {
           title,
           message,
           type: alertType,
-          severity: event.severity,
+          severity,
           status: effectiveTargetStatus,
           basis,
           source,
@@ -281,7 +380,7 @@ export const automaticAlertService = {
             oldMessage: existing.message,
             newMessage: message,
             oldSeverity: existing.severity,
-            newSeverity: event.severity,
+            newSeverity: severity,
             oldBasis: existing.basis,
             newBasis: basis,
           });
@@ -295,7 +394,7 @@ export const automaticAlertService = {
           communeId: target.communeId ?? null,
           regionId: target.regionId ?? null,
           type: alertType,
-          severity: event.severity,
+          severity,
           status: targetStatus,
           title,
           message,
@@ -317,7 +416,7 @@ export const automaticAlertService = {
           autoPublish,
           newTitle: title,
           newMessage: message,
-          newSeverity: event.severity,
+          newSeverity: severity,
           newBasis: basis,
         });
 
@@ -326,9 +425,17 @@ export const automaticAlertService = {
       }
     }
 
-    if (created > 0 || updated > 0) {
+    if (created > 0 || updated > 0 || withdrawn > 0) {
       logger.info(
-        { eventId: opts.eventId, created, updated, basis, trigger: opts.trigger },
+        {
+          eventId: opts.eventId,
+          created,
+          updated,
+          withdrawn,
+          basis,
+          trigger: opts.trigger,
+          minSeverity,
+        },
         'Alertes automatiques générées',
       );
       const payload = {
@@ -336,14 +443,24 @@ export const automaticAlertService = {
         basis,
         created,
         updated,
+        withdrawn,
         status: targetStatus,
         automatic: true,
       };
       if (created > 0) realtimeService.publish('alert.created', payload);
-      if (updated > 0) realtimeService.publish('alert.updated', payload);
+      if (updated > 0 || withdrawn > 0) realtimeService.publish('alert.updated', payload);
     }
 
-    return { eventId: opts.eventId, basis, autoPublish, created, updated, unchanged, alerts };
+    return {
+      eventId: opts.eventId,
+      basis,
+      autoPublish,
+      created,
+      updated,
+      unchanged,
+      withdrawn,
+      alerts,
+    };
   },
 
   async generateForActiveEvents(): Promise<AlertGenerationResult[]> {
