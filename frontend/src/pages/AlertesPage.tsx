@@ -363,17 +363,26 @@ export function AlertesPage() {
                           ? `${a.communeCount} communes touchées`
                           : a.communeName || a.districtName || 'Territoire non précisé'}{' '}
                         · {formatDate(a.publishedAt || a.createdAt)}
-                        {a.basis === 'PREVISION' && a.validFrom ? (
+                        {a.basis === 'PREVISION' ? (
                           <>
                             {' '}
                             ·{' '}
                             <span className="inline-flex items-center gap-1">
                               <CalendarClock className="size-3" />
-                              Prévu pour le{' '}
-                              {new Date(a.validFrom).toLocaleDateString('fr-FR', {
-                                timeZone: 'Indian/Antananarivo',
-                              })}
-                              {a.expiresAt
+                              {(() => {
+                                const m =
+                                  a.message.match(/prévue pour le (\d{2}\/\d{2}\/\d{4})/i) ||
+                                  a.message.match(/prévue du (\d{2}\/\d{2}\/\d{4})/i);
+                                if (m?.[1]) return `Prévu pour le ${m[1]}`;
+                                if (a.validFrom) {
+                                  return `Prévu pour le ${new Date(a.validFrom).toLocaleDateString(
+                                    'fr-FR',
+                                    { timeZone: 'Indian/Antananarivo' },
+                                  )}`;
+                                }
+                                return 'Prévision';
+                              })()}
+                              {a.expiresAt && !a.message.match(/prévue du|prévue jusqu'au/i)
                                 ? ` jusqu'au ${new Date(a.expiresAt).toLocaleDateString('fr-FR', {
                                     timeZone: 'Indian/Antananarivo',
                                   })}`
