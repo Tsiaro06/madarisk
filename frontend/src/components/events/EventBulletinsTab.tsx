@@ -15,11 +15,12 @@ interface EventBulletinsTabProps {
 
 type Tone = 'neutral' | 'success' | 'warning' | 'danger' | 'info';
 
-/** Couleur du niveau de vigilance d'un bulletin (VERTE/JAUNE/ROUGE…). */
+/** Couleur du niveau de vigilance d'un bulletin (VERT/VERTE, JAUNE, ROUGE, BLEU). */
 function levelTone(level: string | null): Tone {
   const normalized = (level ?? '').toUpperCase();
   if (normalized.includes('ROUGE')) return 'danger';
   if (normalized.includes('JAUNE')) return 'warning';
+  if (normalized.includes('BLEU')) return 'info';
   if (normalized.includes('VERTE') || normalized.includes('VERT')) return 'success';
   return 'neutral';
 }
