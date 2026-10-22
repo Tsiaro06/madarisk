@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
-import { Spinner } from '@/components/ui/Spinner';
+import { SkeletonTable } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Pagination } from '@/components/ui/Pagination';
@@ -219,7 +219,7 @@ export function EvenementsPage() {
             Impossible de charger la liste des événements. Réessayez ou rechargez la page.
           </AlertBanner>
         ) : listQ.isLoading ? (
-          <Spinner />
+          <SkeletonTable rows={8} columns={6} />
         ) : (listQ.data?.data.length ?? 0) === 0 ? (
           <EmptyState
             title="Aucun événement"

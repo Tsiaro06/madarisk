@@ -18,7 +18,8 @@ import { alertsApi } from '@/api';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { Spinner } from '@/components/ui/Spinner';
+import { Skeleton, SkeletonGroup } from '@/components/ui/Skeleton';
+import { GlobalProgressBar } from '@/components/ui/GlobalProgressBar';
 import { AiChatBubble } from '@/components/ai/AiChatBubble';
 import { Sidebar, SIDEBAR_RAIL_WIDTH, SIDEBAR_WIDTH } from './Sidebar';
 import { AccountMenu } from './AccountMenu';
@@ -132,13 +133,27 @@ export function AppShell() {
   // Le sidebar est en `fixed` : la colonne de contenu se décale d'autant.
   const reserved = isDesktop ? (collapsed ? SIDEBAR_RAIL_WIDTH : SIDEBAR_WIDTH) : 0;
 
-  if (!user) return <Spinner label="Chargement de la session…" />;
+  if (!user) {
+    return (
+      <SkeletonGroup
+        label="Chargement de la session…"
+        className="flex min-h-screen items-center justify-center p-6"
+      >
+        <div className="w-full max-w-md space-y-4">
+          <Skeleton className="h-10 w-40" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-4/5" />
+        </div>
+      </SkeletonGroup>
+    );
+  }
 
   return (
     <div
       className="min-h-screen lg:h-screen lg:overflow-hidden"
       style={{ '--sidebar-offset': `${reserved}px` } as CSSProperties}
     >
+      <GlobalProgressBar />
       <Sidebar
         visible
         open={open}

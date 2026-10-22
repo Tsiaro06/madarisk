@@ -4,7 +4,7 @@ import { Info, Settings2, X } from "lucide-react";
 import { territoriesApi, weatherApi } from "@/api";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { Spinner } from "@/components/ui/Spinner";
+import { SkeletonMap } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
 import { WeatherMap } from "@/components/weather/WeatherMap";
 import { WeatherControls } from "@/components/weather/WeatherControls";
@@ -425,9 +425,7 @@ export function WeatherMapPage() {
 
         <main className="relative min-w-0 flex-1">
           {communesQ.isLoading && !communesQ.data ? (
-            <div className="grid h-full place-items-center">
-              <Spinner label="Chargement de la carte…" />
-            </div>
+            <SkeletonMap height={520} className="h-full" />
           ) : (
             <WeatherMap
               communes={communesData}

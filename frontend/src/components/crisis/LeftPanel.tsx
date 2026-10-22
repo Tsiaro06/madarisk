@@ -21,7 +21,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
-import { Spinner } from '@/components/ui/Spinner';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
@@ -404,7 +404,19 @@ export function LeftPanel({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
           {listQ.isLoading ? (
-            <Spinner label="Chargement…" />
+            <ul className="space-y-2">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <li key={i}>
+                  <div className="rounded-xl border border-line bg-white p-3">
+                    <Skeleton className="h-3.5 w-4/5" />
+                    <div className="mt-2 flex gap-1.5">
+                      <Skeleton className="h-4 w-14 rounded-full" />
+                      <Skeleton className="h-4 w-14 rounded-full" />
+                    </div>
+                  </div>
+                </li>
+              ))}
+            </ul>
           ) : events.length === 0 ? (
             <EmptyState
               title="Aucun événement"

@@ -8,7 +8,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Spinner } from '@/components/ui/Spinner';
+import { SkeletonTable } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
@@ -80,7 +80,7 @@ export function AdminUsersPage() {
 
       <Card>
         {listQ.isLoading ? (
-          <Spinner />
+          <SkeletonTable rows={6} columns={6} />
         ) : (listQ.data?.data.length ?? 0) === 0 ? (
           <EmptyState title="Aucun utilisateur" />
         ) : (

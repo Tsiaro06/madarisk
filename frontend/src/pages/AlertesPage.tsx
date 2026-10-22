@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
-import { Spinner } from '@/components/ui/Spinner';
+import { SkeletonList } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Pagination } from '@/components/ui/Pagination';
@@ -319,7 +319,7 @@ export function AlertesPage() {
             Impossible de charger les alertes. Réessayez ou rechargez la page.
           </AlertBanner>
         ) : listQ.isLoading ? (
-          <Spinner />
+          <SkeletonList count={5} />
         ) : (listQ.data?.data.length ?? 0) === 0 ? (
           <EmptyState title="Aucune alerte" />
         ) : (

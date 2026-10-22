@@ -70,7 +70,8 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Select } from '@/components/ui/Select';
-import { Spinner } from '@/components/ui/Spinner';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { DetailPanelSkeleton } from '@/components/ui/Skeletons';
 import { useToast } from '@/components/ui/Toast';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
@@ -308,7 +309,7 @@ export function RightPanel({
         <PanelHeader onClose={onClose}>
           <p className="font-display text-base text-ink">Détails commune</p>
         </PanelHeader>
-        <Spinner label="Chargement de la commune…" />
+        <DetailPanelSkeleton />
       </div>
     );
   }
@@ -435,7 +436,14 @@ export function RightPanel({
         {/* Météo */}
         <Card title="Météo" className="!p-4">
           {latestQ.isLoading || forecastQ.isLoading ? (
-            <Spinner label="Chargement météo…" />
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="rounded-lg border border-line p-2">
+                  <Skeleton className="h-2.5 w-16" />
+                  <Skeleton className="mt-2 h-5 w-12" />
+                </div>
+              ))}
+            </div>
           ) : latest ? (
             <>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
@@ -566,7 +574,17 @@ export function RightPanel({
         {hasEvent ? (
           <Card title="Évaluation du risque" className="!p-4">
             {riskQ.isLoading ? (
-              <Spinner label="Chargement du risque…" />
+              <div className="space-y-3">
+                <Skeleton className="h-5 w-32 rounded-full" />
+                <div className="space-y-2">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Skeleton className="h-2.5 w-20 shrink-0" />
+                      <Skeleton className="h-2 flex-1 rounded-full" />
+                    </div>
+                  ))}
+                </div>
+              </div>
             ) : risk ? (
               <>
                 <div className="flex flex-wrap items-center gap-2">

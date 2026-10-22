@@ -4,7 +4,7 @@ import type { ReactNode } from 'react';
 import { weatherApi } from '@/api';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
-import { Spinner } from '@/components/ui/Spinner';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { formatDate } from '@/lib/utils';
@@ -47,7 +47,18 @@ export function EventBulletinsTab({ eventId }: EventBulletinsTabProps) {
   });
 
   if (query.isLoading) {
-    return <Spinner />;
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="rounded-xl border border-line bg-surface p-5">
+            <Skeleton className="h-4 w-1/2" />
+            <Skeleton className="mt-2 h-3 w-1/3" />
+            <Skeleton className="mt-4 h-3 w-full" />
+            <Skeleton className="mt-2 h-3 w-4/5" />
+          </div>
+        ))}
+      </div>
+    );
   }
 
   if (query.isError) {

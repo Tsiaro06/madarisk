@@ -9,7 +9,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
-import { Spinner } from '@/components/ui/Spinner';
+import { SkeletonMap, SkeletonTable } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { GeoJsonMap } from '@/components/maps/GeoJsonMap';
@@ -244,7 +244,7 @@ export function RisquesPage() {
       <div className="grid gap-5 xl:grid-cols-2">
         <Card title="Communes prioritaires">
           {priorityQ.isLoading ? (
-            <Spinner />
+            <SkeletonTable rows={6} columns={4} />
           ) : (priorityQ.data?.data.length ?? 0) === 0 ? (
             <EmptyState title="Aucune commune prioritaire" />
           ) : (
@@ -293,7 +293,7 @@ export function RisquesPage() {
 
         <Card title="Carte des risques">
           {mapQ.isLoading ? (
-            <Spinner />
+            <SkeletonMap height={480} />
           ) : (
             <>
               <GeoJsonMap data={mapQ.data} height={480} />

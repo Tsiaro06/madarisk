@@ -13,7 +13,8 @@ import {
 import { territoriesApi, weatherApi } from '@/api';
 import type { CommuneDetail, WeatherForecastData, WeatherObservation } from '@/types';
 import { Card } from '@/components/ui/Card';
-import { Spinner } from '@/components/ui/Spinner';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { DetailPageSkeleton } from '@/components/ui/Skeletons';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { formatDate, formatNumber } from '@/lib/utils';
 
@@ -65,7 +66,7 @@ export function CommuneDetailPage() {
     enabled: Boolean(id),
   });
 
-  if (communeQ.isLoading) return <Spinner />;
+  if (communeQ.isLoading) return <DetailPageSkeleton stats={4} height={288} />;
   if (communeQ.isError || !communeQ.data) {
     return <AlertBanner tone="danger">Impossible de charger la commune.</AlertBanner>;
   }
@@ -112,7 +113,9 @@ export function CommuneDetailPage() {
 
       <Card title="Prévisions météo">
         {forecastQ.isLoading ? (
-          <Spinner />
+          <div className="h-72 w-full">
+            <Skeleton className="h-full w-full rounded-xl" />
+          </div>
         ) : chartData.length === 0 ? (
           <p className="text-sm text-muted">Aucune prévision disponible.</p>
         ) : (

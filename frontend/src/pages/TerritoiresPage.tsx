@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import { territoriesApi } from '@/api';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
-import { Spinner } from '@/components/ui/Spinner';
+import { SkeletonMap, SkeletonTable } from '@/components/ui/Skeleton';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Pagination } from '@/components/ui/Pagination';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -148,7 +148,7 @@ export function TerritoiresPage() {
       <div className="grid gap-5 xl:grid-cols-[1.1fr_0.9fr]">
         <Card title={tab === 'communes' ? 'Liste des communes' : 'Liste des districts'}>
           {loading ? (
-            <Spinner />
+            <SkeletonTable rows={8} columns={4} />
           ) : tab === 'districts' ? (
             (districtsQ.data?.data?.length ?? 0) === 0 ? (
               <EmptyState title="Aucun district" />
@@ -246,7 +246,7 @@ export function TerritoiresPage() {
         <div ref={mapCardRef}>
           <Card title={tab === 'communes' ? 'Limites des communes' : 'Limites des districts'}>
             {mapLoading ? (
-              <Spinner />
+              <SkeletonMap height={520} />
             ) : (mapData?.features?.length ?? 0) === 0 ? (
               <EmptyState title={tab === 'communes' ? 'Aucune commune' : 'Aucun district'} />
             ) : (

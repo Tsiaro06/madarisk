@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Spinner } from '@/components/ui/Spinner';
+import { SkeletonTable } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Pagination } from '@/components/ui/Pagination';
@@ -104,7 +104,7 @@ export function RapportsPage() {
             Impossible de charger la liste des rapports. Réessayez ou rechargez la page.
           </AlertBanner>
         ) : listQ.isLoading ? (
-          <Spinner />
+          <SkeletonTable rows={6} columns={5} />
         ) : rows.length === 0 ? (
           <EmptyState title="Aucun rapport enregistré" />
         ) : (

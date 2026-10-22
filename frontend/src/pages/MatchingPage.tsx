@@ -4,7 +4,7 @@ import { matchingApi } from '@/api';
 import { ApiClientError } from '@/api/client';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Spinner } from '@/components/ui/Spinner';
+import { SkeletonList } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
@@ -83,7 +83,7 @@ export function MatchingPage() {
 
       <Card title="En attente de validation">
         {listQ.isLoading ? (
-          <Spinner />
+          <SkeletonList count={4} />
         ) : rows.length === 0 ? (
           <EmptyState title="Aucun matching en attente" />
         ) : (

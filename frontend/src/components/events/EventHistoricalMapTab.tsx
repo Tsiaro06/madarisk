@@ -27,7 +27,7 @@ import { RISK_COLORS, RISK_LABELS } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { AlertBanner } from '@/components/ui/AlertBanner';
-import { Spinner } from '@/components/ui/Spinner';
+import { SkeletonMap } from '@/components/ui/Skeleton';
 import { CommuneImpactLayer } from '@/components/events/CommuneImpactLayer';
 import {
   CycloneInformationPanel,
@@ -237,7 +237,7 @@ export function EventHistoricalMapTab({
   const swathCount = useMemo(() => documentedWindCircles(steps).length, [steps]);
   const eventTitle = eventName?.trim() || 'Événement historique';
 
-  if (tracksQ.isLoading || communesQ.isLoading) return <Spinner />;
+  if (tracksQ.isLoading || communesQ.isLoading) return <SkeletonMap height={520} />;
 
   if (tracksQ.isError) {
     return (

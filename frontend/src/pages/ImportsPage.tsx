@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Spinner } from '@/components/ui/Spinner';
+import { SkeletonTable } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
 import { Badge } from '@/components/ui/Badge';
@@ -97,7 +97,7 @@ export function ImportsPage() {
 
       <Card title="Historique">
         {listQ.isLoading ? (
-          <Spinner />
+          <SkeletonTable rows={6} columns={4} />
         ) : rows.length === 0 ? (
           <EmptyState title="Aucun import" />
         ) : (

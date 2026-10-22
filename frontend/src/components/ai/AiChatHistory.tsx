@@ -7,7 +7,7 @@ import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Pagination } from '@/components/ui/Pagination';
-import { Spinner } from '@/components/ui/Spinner';
+import { Skeleton } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
 import { cn, formatDate } from '@/lib/utils';
 
@@ -108,7 +108,16 @@ export function AiChatHistory({
             Impossible de charger l’historique. Réessayez plus tard.
           </AlertBanner>
         ) : listQ.isLoading ? (
-          <Spinner />
+          <ul className="space-y-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <li key={i}>
+                <div className="rounded-xl border border-line bg-surface p-2.5">
+                  <Skeleton className="h-3.5 w-3/5" />
+                  <Skeleton className="mt-2 h-3 w-4/5" />
+                </div>
+              </li>
+            ))}
+          </ul>
         ) : rows.length === 0 ? (
           <EmptyState
             title="Aucune conversation enregistrée"

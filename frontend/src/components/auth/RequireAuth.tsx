@@ -1,6 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import { Spinner } from '@/components/ui/Spinner';
+import { Skeleton, SkeletonGroup } from '@/components/ui/Skeleton';
 
 export function RequireAuth() {
   const bootstrapped = useAuthStore((s) => s.bootstrapped);
@@ -9,9 +9,16 @@ export function RequireAuth() {
 
   if (!bootstrapped) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Spinner label="Initialisation…" />
-      </div>
+      <SkeletonGroup
+        label="Initialisation…"
+        className="flex min-h-screen items-center justify-center p-6"
+      >
+        <div className="w-full max-w-md space-y-4">
+          <Skeleton className="h-9 w-64" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-3/4" />
+        </div>
+      </SkeletonGroup>
     );
   }
 

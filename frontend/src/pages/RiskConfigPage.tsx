@@ -9,7 +9,7 @@ import { riskConfigSchema } from '@/schemas/forms';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Spinner } from '@/components/ui/Spinner';
+import { SkeletonTable } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
@@ -88,7 +88,7 @@ export function RiskConfigPage() {
 
       <Card>
         {listQ.isLoading ? (
-          <Spinner />
+          <SkeletonTable rows={6} columns={5} />
         ) : configs.length === 0 ? (
           <EmptyState title="Aucune configuration" />
         ) : (

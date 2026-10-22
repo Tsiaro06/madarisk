@@ -2,7 +2,8 @@ import { Link, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { territoriesApi } from '@/api';
 import { Card } from '@/components/ui/Card';
-import { Spinner } from '@/components/ui/Spinner';
+import { Skeleton, SkeletonMap } from '@/components/ui/Skeleton';
+import { DetailPageSkeleton } from '@/components/ui/Skeletons';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { GeoJsonMap } from '@/components/maps/GeoJsonMap';
 import { formatNumber } from '@/lib/utils';
@@ -39,7 +40,7 @@ export function DistrictDetailPage() {
     enabled: Boolean(id),
   });
 
-  if (detailQ.isLoading) return <Spinner />;
+  if (detailQ.isLoading) return <DetailPageSkeleton stats={3} height={420} />;
   if (detailQ.isError || !detailQ.data) {
     return <AlertBanner tone="danger">District introuvable.</AlertBanner>;
   }
@@ -78,7 +79,14 @@ export function DistrictDetailPage() {
       <div className="grid gap-5 xl:grid-cols-2">
         <Card title="Communes du district">
           {communesQ.isLoading ? (
-            <Spinner />
+            <div className="space-y-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="flex items-center justify-between py-2">
+                  <Skeleton className="h-3.5 w-2/5" />
+                  <Skeleton className="h-3.5 w-16" />
+                </div>
+              ))}
+            </div>
           ) : (
             <ul className="divide-y divide-brand/10 text-sm">
               {(communesQ.data?.data ?? []).map((c) => (
@@ -93,7 +101,7 @@ export function DistrictDetailPage() {
           )}
         </Card>
         <Card title="Carte">
-          {mapQ.isLoading ? <Spinner /> : <GeoJsonMap data={mapQ.data} height={420} />}
+          {mapQ.isLoading ? <SkeletonMap height={420} /> : <GeoJsonMap data={mapQ.data} height={420} />}
         </Card>
       </div>
     </div>

@@ -8,6 +8,7 @@ import { useLiveCyclone } from '@/lib/useLiveCyclone';
 import { cn } from '@/lib/utils';
 import { EVENT_STATUS_TONE, EVENT_TYPE_LABELS } from '@/lib/eventMeta';
 import { Badge } from '@/components/ui/Badge';
+import { Skeleton } from '@/components/ui/Skeleton';
 
 export function EventSelector({ className }: { className?: string }) {
   const { activeEventId, setActiveEventId, activeEvent, activeEventLoading } = useActiveEvent();
@@ -104,7 +105,14 @@ export function EventSelector({ className }: { className?: string }) {
           </button>
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">
             {listQ.isLoading ? (
-              <p className="px-3 py-4 text-center text-sm text-muted">Chargement…</p>
+              <ul className="space-y-1 p-2">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <li key={i} className="px-3 py-3">
+                    <Skeleton className="h-3.5 w-3/4" />
+                    <Skeleton className="mt-2 h-3 w-1/2" />
+                  </li>
+                ))}
+              </ul>
             ) : events.length === 0 ? (
               <p className="px-3 py-4 text-center text-sm text-muted">Aucun événement</p>
             ) : (

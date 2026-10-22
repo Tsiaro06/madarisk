@@ -53,6 +53,15 @@
   --color-dash-body: #475569;
 }
 
+/* Teintes des squelettes de chargement (cf. `components/ui/Skeleton.tsx`).
+   Déclarées à part des jetons `@theme` car elles dépendent du thème actif :
+   le dégradé « sheen » doit rester lisible sur fond clair comme sur fond
+   sombre. */
+:root {
+  --skeleton-base: #e7edf4;
+  --skeleton-sheen: rgba(255, 255, 255, 0.92);
+}
+
 /* Bascule clair → sombre : on surcharge les mêmes jetons sémantiques, ce qui
    fait suivre la quasi-totalité des composants (ils utilisent `bg-surface`,
    `text-ink`, `border-line`…). Les couleurs codées en dur dans les pages
@@ -72,6 +81,8 @@
   --color-risk-modere: #d3bd78;
   --color-risk-eleve: #d79a74;
   --color-risk-extreme: #dc8484;
+  --skeleton-base: rgba(255, 255, 255, 0.09);
+  --skeleton-sheen: rgba(255, 255, 255, 0.2);
 }
 
 html,
@@ -107,6 +118,54 @@ h3 {
   font-family: var(--font-sans);
   background: #ffffff;
   z-index: 0;
+}
+
+/* ------------------------------------------------------------------
+   Squelettes de chargement — remplissage « shimmer » des zones en
+   attente de données. Une seule classe utilitaire (`skeleton`) pose la
+   teinte de fond et le balayage ; les composants de `ui/Skeleton.tsx`
+   se contentent d empiler des blocs de tailles différentes.
+   ------------------------------------------------------------------ */
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.skeleton {
+  background-color: var(--skeleton-base);
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--skeleton-sheen) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  background-repeat: no-repeat;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+/* Barre de progression globale (cf. `ui/GlobalProgressBar.tsx`) : le
+   remplissage est indéterminé, il indique qu'une requête est en vol
+   sans prétendre mesurer une durée. */
+@keyframes progress-indeterminate {
+  0% {
+    transform: translateX(-100%) scaleX(0.35);
+  }
+  50% {
+    transform: translateX(0%) scaleX(0.6);
+  }
+  100% {
+    transform: translateX(100%) scaleX(0.35);
+  }
+}
+
+.progress-indeterminate {
+  background: var(--color-brand);
+  animation: progress-indeterminate 1.25s ease-in-out infinite;
 }
 
 /* Login — entrées en matière et balayage « radar » du panneau cartographique. */
@@ -465,6 +524,10 @@ h3 {
   --color-line: #e8edf7;
   --color-ink: #0f172a;
   --color-muted: #64748b;
+  /* Le dashboard reste clair même en thème sombre : les squelettes suivent
+     la même règle et conservent leur teinte claire. */
+  --skeleton-base: #e9eef6;
+  --skeleton-sheen: rgba(255, 255, 255, 0.92);
   color: var(--color-ink);
   background-color: var(--color-canvas);
 }
@@ -541,7 +604,9 @@ h3 {
   .navbar-menu,
   .account-menu,
   .dash-rise,
-  .dash-fill {
+  .dash-fill,
+  .skeleton,
+  .progress-indeterminate {
     animation: none !important;
   }
 

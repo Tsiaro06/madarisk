@@ -7,7 +7,7 @@ import { KpiCard } from '@/components/dashboard/KpiCard';
 import { BarChartCard, type TimelineDatum } from '@/components/dashboard/BarChartCard';
 import { StatGrid } from '@/components/dashboard/StatGrid';
 import { PerformanceCard } from '@/components/dashboard/PerformanceCard';
-import { Spinner } from '@/components/ui/Spinner';
+import { DashboardSkeleton } from '@/components/ui/Skeletons';
 import { buildDashboardView } from '@/data/dashboardView';
 import { formatNumber } from '@/lib/utils';
 
@@ -104,9 +104,7 @@ export function DashboardPage() {
         />
 
         {isFirstLoad ? (
-          <div className="flex items-center justify-center py-24">
-            <Spinner label="Chargement du tableau de bord…" />
-          </div>
+          <DashboardSkeleton />
         ) : (
           <>
             {/* Le panneau bleu passe au-dessus sur tablette et mobile : il est le

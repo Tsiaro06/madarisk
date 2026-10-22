@@ -7,7 +7,7 @@ import { ApiClientError } from '@/api/client';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
-import { Spinner } from '@/components/ui/Spinner';
+import { Skeleton, SkeletonStats } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { useToast } from '@/components/ui/Toast';
@@ -119,7 +119,21 @@ export function EventBilanTab({ eventId }: { eventId: string }) {
     enabled: Boolean(eventId),
   });
 
-  if (bilanQ.isLoading) return <Spinner />;
+  if (bilanQ.isLoading) {
+    return (
+      <div className="space-y-5">
+        <div>
+          <Skeleton className="h-5 w-56" />
+          <Skeleton className="mt-2 h-3 w-96 max-w-full" />
+        </div>
+        <SkeletonStats count={4} />
+        <div className="rounded-xl border border-line bg-surface p-5">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="mt-4 h-40 w-full rounded-xl" />
+        </div>
+      </div>
+    );
+  }
   if (bilanQ.isError || !bilanQ.data) {
     return <AlertBanner tone="danger">Impossible de charger le bilan de l’événement.</AlertBanner>;
   }

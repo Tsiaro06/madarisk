@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ToastProvider } from '@/components/ui/Toast';
 import { useAuthStore } from '@/stores/authStore';
 import { AppRouter } from '@/routes/AppRouter';
-import { Spinner } from '@/components/ui/Spinner';
+import { Skeleton, SkeletonGroup } from '@/components/ui/Skeleton';
 import { RealtimeListener } from '@/lib/realtime';
 
 const queryClient = new QueryClient({
@@ -26,9 +26,17 @@ function AuthBootstrap({ children }: { children: ReactNode }) {
 
   if (!bootstrapped) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Spinner label="Démarrage MadaRisk…" />
-      </div>
+      <SkeletonGroup
+        label="Démarrage de MadaRisk…"
+        className="flex min-h-screen items-center justify-center p-6"
+      >
+        <div className="w-full max-w-md space-y-4">
+          <Skeleton className="h-12 w-48" />
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-4/5" />
+          <Skeleton className="h-10 w-full rounded-lg" />
+        </div>
+      </SkeletonGroup>
     );
   }
 

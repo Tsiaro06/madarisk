@@ -6,7 +6,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { ActiveEventProvider } from "@/stores/activeEvent";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
-import { Spinner } from "@/components/ui/Spinner";
+import { Skeleton, SkeletonGroup } from "@/components/ui/Skeleton";
 
 const CrisisRoomPage = lazy(() =>
   import("@/pages/CrisisRoomPage").then((m) => ({ default: m.CrisisRoomPage })),
@@ -61,9 +61,21 @@ const ForbiddenPage = lazy(() =>
 
 function RouteFallback() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <Spinner label="Chargement…" />
-    </div>
+    <SkeletonGroup
+      label="Chargement de la page…"
+      className="flex min-h-screen items-center justify-center p-6"
+    >
+      <div className="w-full max-w-5xl space-y-5">
+        <Skeleton className="h-9 w-72" />
+        <Skeleton className="h-3 w-96 max-w-full" />
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <Skeleton key={i} className="h-24 w-full rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-72 w-full rounded-xl" />
+      </div>
+    </SkeletonGroup>
   );
 }
 

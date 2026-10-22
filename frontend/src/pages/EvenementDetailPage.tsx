@@ -13,7 +13,8 @@ import { calculateAreaSchema } from '@/schemas/forms';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
-import { Spinner } from '@/components/ui/Spinner';
+import { SkeletonMap, SkeletonTable } from '@/components/ui/Skeleton';
+import { DetailPageSkeleton } from '@/components/ui/Skeletons';
 import { AlertBanner } from '@/components/ui/AlertBanner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Input } from '@/components/ui/Input';
@@ -305,7 +306,7 @@ export function EvenementDetailPage() {
     onError: (err) => toast(err instanceof ApiClientError ? err.message : 'Erreur', 'error'),
   });
 
-  if (eventQ.isLoading) return <Spinner />;
+  if (eventQ.isLoading) return <DetailPageSkeleton stats={4} />;
   if (eventQ.isError || !eventQ.data) {
     return <AlertBanner tone="danger">Événement introuvable.</AlertBanner>;
   }
@@ -456,7 +457,7 @@ export function EvenementDetailPage() {
         description="Étapes 1 à 4 · couches géographiques de l'événement et communes exposées"
       >
         {tracksQ.isLoading || areasQ.isLoading ? (
-          <Spinner />
+          <SkeletonMap height={420} />
         ) : (tracks?.features?.length || areas?.features?.length || riskFeatureCount) ? (
           <>
             <div className="mb-3 flex items-center justify-between gap-3">
@@ -577,7 +578,7 @@ export function EvenementDetailPage() {
             Impossible de charger les communes exposées. Réessayez ou rechargez la page.
           </AlertBanner>
         ) : exposedQ.isLoading ? (
-          <Spinner />
+          <SkeletonTable rows={6} columns={6} />
         ) : exposed.length === 0 ? (
           <EmptyState
             title="Aucune exposition calculée"

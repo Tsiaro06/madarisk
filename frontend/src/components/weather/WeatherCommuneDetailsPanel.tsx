@@ -14,7 +14,7 @@ import { weatherApi } from "@/api";
 import { ApiClientError } from "@/api/client";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Spinner } from "@/components/ui/Spinner";
+import { Skeleton } from "@/components/ui/Skeleton";
 import { Button } from "@/components/ui/Button";
 import {
   addDaysToISO,
@@ -236,7 +236,17 @@ export function WeatherCommuneDetailsPanel({
       </p>
 
       {layerLoading ? (
-        <Spinner label="Chargement des données météo…" />
+        <div className="space-y-4">
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <Skeleton className="h-3 w-32" />
+            <Skeleton className="mt-3 h-9 w-24" />
+            <Skeleton className="mt-2 h-3 w-40" />
+          </div>
+          <div className="rounded-xl border border-line bg-surface p-4">
+            <Skeleton className="h-3 w-28" />
+            <Skeleton className="mt-4 h-40 w-full rounded-xl" />
+          </div>
+        </div>
       ) : (
         <>
           <Card className="!p-4">
@@ -371,7 +381,9 @@ export function WeatherCommuneDetailsPanel({
               </div>
             ) : isHistory ? (
               historyQ.isLoading ? (
-                <Spinner label="Chargement de l'historique…" />
+                <div className="h-64 w-full">
+                  <Skeleton className="h-full w-full rounded-xl" />
+                </div>
               ) : historyQ.isError ? (
                 <EmptyState
                   title="Historique indisponible"
@@ -422,7 +434,9 @@ export function WeatherCommuneDetailsPanel({
                 </div>
               )
             ) : forecastQ.isLoading ? (
-              <Spinner label="Chargement des prévisions…" />
+              <div className="h-64 w-full">
+                <Skeleton className="h-full w-full rounded-xl" />
+              </div>
             ) : forecastQ.isError ? (
               <EmptyState
                 title={
