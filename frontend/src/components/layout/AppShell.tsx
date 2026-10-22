@@ -1,8 +1,7 @@
 import { useState, type CSSProperties } from 'react';
-import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
-  AlertTriangle,
   Clipboard,
   Clock3,
   CloudSun,
@@ -18,9 +17,7 @@ import type { LucideIcon } from 'lucide-react';
 import { alertsApi } from '@/api';
 import { useAuthStore } from '@/stores/authStore';
 import { cn } from '@/lib/utils';
-import { SEVERITY_LABELS } from '@/lib/eventMeta';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { AlertBanner } from '@/components/ui/AlertBanner';
 import { Spinner } from '@/components/ui/Spinner';
 import { AiChatBubble } from '@/components/ai/AiChatBubble';
 import { Sidebar, SIDEBAR_RAIL_WIDTH, SIDEBAR_WIDTH } from './Sidebar';
@@ -201,22 +198,7 @@ export function AppShell() {
           </div>
         </header>
 
-        {!fullBleed && urgent.length > 0 ? (
-          <div className="space-y-2 px-4 pt-4 sm:px-6">
-            <AlertBanner tone="danger" title="Alertes actives — à consulter">
-              <ul className="space-y-1">
-                {urgent.map((a) => (
-                  <li key={a.id} className="flex items-center gap-2">
-                    <AlertTriangle className="size-3.5 shrink-0" />
-                    <Link to="/alertes" className="underline-offset-2 hover:underline">
-                      {a.title} · {SEVERITY_LABELS[a.severity] ?? a.severity}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </AlertBanner>
-          </div>
-        ) : null}
+
 
         <main
           className={cn(
