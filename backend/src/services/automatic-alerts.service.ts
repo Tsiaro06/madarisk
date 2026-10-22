@@ -110,13 +110,15 @@ function formatPeriod(
   };
 
   if (basis === 'PREVISION') {
-    if (startedAt && expectedEndAt) return `prévue du ${fmtDate(startedAt)} au ${fmtDate(expectedEndAt)}`;
+    if (startedAt && expectedEndAt)
+      return `prévue du ${fmtDate(startedAt)} au ${fmtDate(expectedEndAt)}`;
     if (startedAt) return `prévue pour le ${fmtDate(startedAt)}`;
     if (expectedEndAt) return `prévue jusqu'au ${fmtDate(expectedEndAt)}`;
     return '';
   }
 
-  if (startedAt && expectedEndAt) return `${fmtDateTime(startedAt)} → ${fmtDateTime(expectedEndAt)}`;
+  if (startedAt && expectedEndAt)
+    return `${fmtDateTime(startedAt)} → ${fmtDateTime(expectedEndAt)}`;
   if (startedAt) return `depuis ${fmtDateTime(startedAt)}`;
   if (expectedEndAt) return `jusqu'à ${fmtDateTime(expectedEndAt)}`;
   return '';
