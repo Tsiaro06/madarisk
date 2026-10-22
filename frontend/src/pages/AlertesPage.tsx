@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Eye, Plus, Radio } from 'lucide-react';
+import { CalendarClock, Eye, Plus, Radio } from 'lucide-react';
 import { alertsApi } from '@/api';
 import type { AlertListRow, AlertStatus, AlertType, SeverityLevel } from '@/types';
 import { ApiClientError } from '@/api/client';
@@ -363,6 +363,24 @@ export function AlertesPage() {
                           ? `${a.communeCount} communes touchées`
                           : a.communeName || a.districtName || 'Territoire non précisé'}{' '}
                         · {formatDate(a.publishedAt || a.createdAt)}
+                        {a.basis === 'PREVISION' && a.validFrom ? (
+                          <>
+                            {' '}
+                            ·{' '}
+                            <span className="inline-flex items-center gap-1">
+                              <CalendarClock className="size-3" />
+                              Prévu pour le{' '}
+                              {new Date(a.validFrom).toLocaleDateString('fr-FR', {
+                                timeZone: 'Indian/Antananarivo',
+                              })}
+                              {a.expiresAt
+                                ? ` jusqu'au ${new Date(a.expiresAt).toLocaleDateString('fr-FR', {
+                                    timeZone: 'Indian/Antananarivo',
+                                  })}`
+                                : ''}
+                            </span>
+                          </>
+                        ) : null}
                       </p>
                     </div>
                     {a.eventId ? (

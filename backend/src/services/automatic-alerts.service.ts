@@ -88,18 +88,38 @@ function zoneLabel(
   return 'la zone concernée';
 }
 
-function formatPeriod(startedAt: string | null, expectedEndAt: string | null): string {
+function formatPeriod(
+  startedAt: string | null,
+  expectedEndAt: string | null,
+  basis?: AlertBasis,
+): string {
   if (!startedAt && !expectedEndAt) return '';
-  const fmt = (s: string) => {
+  const fmtDate = (s: string) => {
+    try {
+      return new Date(s).toLocaleDateString('fr-FR', { timeZone: 'Indian/Antananarivo' });
+    } catch {
+      return s;
+    }
+  };
+  const fmtDateTime = (s: string) => {
     try {
       return new Date(s).toLocaleString('fr-FR', { timeZone: 'Indian/Antananarivo' });
     } catch {
       return s;
     }
   };
-  if (startedAt && expectedEndAt) return `${fmt(startedAt)} → ${fmt(expectedEndAt)}`;
-  if (startedAt) return `depuis ${fmt(startedAt)}`;
-  return `jusqu'à ${fmt(expectedEndAt!)}`;
+
+  if (basis === 'PREVISION') {
+    if (startedAt && expectedEndAt) return `prévue du ${fmtDate(startedAt)} au ${fmtDate(expectedEndAt)}`;
+    if (startedAt) return `prévue pour le ${fmtDate(startedAt)}`;
+    if (expectedEndAt) return `prévue jusqu'au ${fmtDate(expectedEndAt)}`;
+    return '';
+  }
+
+  if (startedAt && expectedEndAt) return `${fmtDateTime(startedAt)} → ${fmtDateTime(expectedEndAt)}`;
+  if (startedAt) return `depuis ${fmtDateTime(startedAt)}`;
+  if (expectedEndAt) return `jusqu'à ${fmtDateTime(expectedEndAt)}`;
+  return '';
 }
 
 function buildTitle(basis: AlertBasis, hzName: string, zone: string): string {
@@ -291,7 +311,7 @@ export const automaticAlertService = {
     const publishedAt = autoPublish ? new Date().toISOString() : null;
     const isDraft = !autoPublish;
     const source = event.sourceName ?? 'Détection automatique';
-    const period = formatPeriod(event.startedAt, event.expectedEndAt);
+    const period = formatPeriod(event.startedAt, event.expectedEndAt, basis);
     const hzName = hazardName(event.type);
     const alertType = mapEventTypeToAlertType(event.type);
     const minSeverity = env.ALERTS_AUTO_MIN_SEVERITY;

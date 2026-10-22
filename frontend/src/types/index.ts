@@ -441,6 +441,7 @@ export interface AlertListRow {
   message: string;
   source?: string | null;
   basis?: AlertBasis | null;
+  validFrom?: string | null;
   isAutomatic?: boolean;
   /** Alerte importée depuis un bulletin archivé : jamais active, jamais notifiée. */
   isHistorique?: boolean;
@@ -453,6 +454,7 @@ export interface AlertListRow {
   eventName: string | null;
   districtName: string | null;
   communeName: string | null;
+  regionName: string | null;
   /** Présents uniquement avec group=event (liste regroupée par événement). */
   groupIds?: string[];
   alertCount?: number;
