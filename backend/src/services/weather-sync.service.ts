@@ -37,6 +37,27 @@ export const SYNC_SOURCE = 'OPEN_METEO';
 
 type SyncSubScope = 'OBSERVATIONS' | 'FORECASTS';
 
+/**
+ * Refuse un run quand le fournisseur a déjà fermé son circuit (429 horaire ou
+ * journalier).
+ *
+ * Constaté le 23/10 : un run national lancé une minute après un 429 a passé
+ * 35 minutes à relancer des lots que le fournisseur refusait, puis s'est
+ * terminé sans une donnée. Le run suivant était en plus bloqué par le verrou
+ * « exécution en cours ». Renoncer tout de suite laisse le créneau au
+ * rattrapage suivant, avec un motif daté au lieu d'un run zombie.
+ */
+function assertProviderAvailable(provider: ReturnType<typeof getWeatherProvider>): void {
+  const until = provider.rateLimitedUntil?.() ?? null;
+  if (until === null) return;
+
+  throw AppError.tooManyRequests(
+    `Synchro météo reportée : Open-Meteo est en limite de débit jusqu'à ${until.toISOString()}. ` +
+      "Aucun lot n'a été envoyé ; les données restent celles du dernier run réussi.",
+    Math.max(60, Math.ceil((until.getTime() - Date.now()) / 1000)),
+  );
+}
+
 const REFRESH_CONCURRENCY = 10;
 const REFRESH_REQUEST_DELAY_MS = 150;
 
@@ -437,6 +458,7 @@ export function findHourlyGaps(items: WeatherCurrentBatchItem[], maxGapHours = 1
 
 async function syncObservations(opts: { communeIds?: string[] }): Promise<SyncOutcome> {
   const provider = getWeatherProvider();
+  assertProviderAvailable(provider);
   const sourceId = await weatherRepository.getSourceId();
 
   // Sans filtre préalable, chaque run cron requesting les 1579 communes même
@@ -475,8 +497,8 @@ async function syncObservations(opts: { communeIds?: string[] }): Promise<SyncOu
 
   // Courbe horaire (passé + prévision) : même appel Open-Meteo, donc aucun
   // quota supplémentaire. Elle est écrite pour toutes les communes ciblées par
-  // le run — à chaque cron de 6 h le cutoff de fraîcheur est dépassé, donc les
-  // 1579 communes passent, et la fenêtre glissante de 48 h est reconstituée.
+  // le run — le cron quotidien dépasse toujours le seuil de fraîcheur, donc les
+  // 1579 communes passent, et la fenêtre glissante est reconstituée.
   const hourlyGaps = findHourlyGaps(items);
   if (hourlyGaps.length > 0) {
     logger.warn(
@@ -524,6 +546,7 @@ async function syncObservations(opts: { communeIds?: string[] }): Promise<SyncOu
 
 async function syncForecasts(opts: { communeIds?: string[] }): Promise<SyncOutcome> {
   const provider = getWeatherProvider();
+  assertProviderAvailable(provider);
   const sourceId = await weatherRepository.getSourceId();
 
   // Même logique que pour les observations : on ne retélécharge que les

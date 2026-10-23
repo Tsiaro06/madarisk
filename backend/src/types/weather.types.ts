@@ -10,6 +10,16 @@ export interface WeatherProvider {
 
   /** Lot de prévisions quotidiennes agrégées pour plusieurs communes (batch). */
   getForecastDailyBatch?(communes: BatchCommuneInput[]): Promise<WeatherForecastDailyItem[]>;
+
+  /**
+   * Fin du blocage si le fournisseur a armé son circuit (429 horaire ou
+   * journalier), `null` sinon.
+   *
+   * Permet au service de REFUSER un run national avant d'envoyer des lots
+   * voués au refus : sans cela, un run lancé juste après un 429 passait
+   * 20 à 35 minutes en relances et backoffs pour finir sans une donnée.
+   */
+  rateLimitedUntil?(): Date | null;
 }
 
 export interface BatchCommuneInput {

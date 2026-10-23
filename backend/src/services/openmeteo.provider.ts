@@ -211,7 +211,7 @@ export class OpenMeteoProvider implements WeatherProvider {
   private readonly client: AxiosInstance;
   private readonly maxRetries = 2;
   private readonly batchMaxRetries = 3;
-  private rateLimitedUntil = 0;
+  private circuitUntil = 0;
   /** Nature du plafond ayant fermé le circuit, pour adapter le message. */
   private rateLimitKind: RateLimitKind | null = null;
   private readonly forecastCache = new Map<string, ForecastCacheEntry>();
@@ -221,6 +221,18 @@ export class OpenMeteoProvider implements WeatherProvider {
   >();
   private readonly batchCacheKey = (date: string, hour?: number): string =>
     `${date}:${hour ?? 'day'}`;
+
+  /**
+   * Jusqu'à quand le fournisseur refuse-t-il les requêtes (circuit armé) ?
+   *
+   * Exposé au service de synchronisation pour qu'il refuse un run AVANT
+   * d'envoyer ses lots : un run national lancé juste après un 429 passait
+   * sinon 20 à 35 minutes en relances et backoffs (constaté le 23/10) pour
+   * finir sans une seule donnée, en bloquant au passage le rattrapage suivant.
+   */
+  rateLimitedUntil(): Date | null {
+    return Date.now() < this.circuitUntil ? new Date(this.circuitUntil) : null;
+  }
 
   /**
    * File d'attente des appels à Open-Meteo.
@@ -248,9 +260,9 @@ export class OpenMeteoProvider implements WeatherProvider {
    * reset, on rend donc une erreur unique, datée, que le frontend sait exploiter.
    */
   private abortIfDailyQuotaExhausted(): void {
-    if (this.rateLimitKind !== 'daily' || Date.now() >= this.rateLimitedUntil) return;
+    if (this.rateLimitKind !== 'daily' || Date.now() >= this.circuitUntil) return;
     throw AppError.tooManyRequests(
-      rateLimitMessage('daily', new Date(this.rateLimitedUntil)),
+      rateLimitMessage('daily', new Date(this.circuitUntil)),
       dailyResetRetryAfter(),
     );
   }
@@ -263,8 +275,8 @@ export class OpenMeteoProvider implements WeatherProvider {
    * budget journalier, ni faire attendre son lot une minute entière pour rien.
    */
   private assertCircuitOpen(): void {
-    if (Date.now() >= this.rateLimitedUntil) return;
-    const resetAt = new Date(this.rateLimitedUntil);
+    if (Date.now() >= this.circuitUntil) return;
+    const resetAt = new Date(this.circuitUntil);
     const retryAfter = Math.max(60, Math.ceil((resetAt.getTime() - Date.now()) / 1000));
     logger.warn(
       { until: resetAt.toISOString(), kind: this.rateLimitKind },
@@ -331,7 +343,7 @@ export class OpenMeteoProvider implements WeatherProvider {
           if (kind === 'daily') {
             const resetAt = nextDailyReset();
             this.rateLimitKind = 'daily';
-            this.rateLimitedUntil = resetAt.getTime();
+            this.circuitUntil = resetAt.getTime();
             logger.warn(
               { reason, until: resetAt.toISOString() },
               "Open-Meteo : quota journalier atteint, circuit couvert jusqu'au reset",
@@ -361,8 +373,8 @@ export class OpenMeteoProvider implements WeatherProvider {
                 ? Math.min(retryAfter * 1000, untilNextHour)
                 : untilNextHour;
             this.rateLimitKind = 'hourly';
-            this.rateLimitedUntil = Date.now() + Math.max(waitMs, 60 * 1000);
-            const resetAt = new Date(this.rateLimitedUntil);
+            this.circuitUntil = Date.now() + Math.max(waitMs, 60 * 1000);
+            const resetAt = new Date(this.circuitUntil);
             logger.warn(
               { until: resetAt.toISOString() },
               'Open-Meteo : limite horaire atteinte, circuit couvert jusqu au reset horaire',

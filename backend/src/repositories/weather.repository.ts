@@ -1008,7 +1008,7 @@ export const weatherRepository = {
 
   /**
    * Communes présentant au moins un créneau horaire manquant dans la fenêtre
-   * [`sinceIso`, `untilIso`).
+   * [`sinceIso`, `untilIso`), les trous les PLUS RÉCENTS d'abord.
    *
    * La réparation de la courbe horaire ne peut pas dépendre de la seule
    * fraîcheur des observations : si l'écriture horaire d'un run est tronquée
@@ -1016,6 +1016,12 @@ export const weatherRepository = {
    * son observation reste fraîche et le trou devient définitif. Cette sélection
    * est donc indépendante, et `limit` la borne pour qu'un run auto-réparateur ne
    * puisse pas repartir sur les 1579 communes d'un coup.
+   *
+   * L'ordre est un point de correction, pas un détail : trier par nombre de
+   * créneaux manquants croissant (ancienne règle) servait d'abord les communes
+   * les moins trouées, donc les trous ANCIENS — un trou de la journée en cours
+   * attendait que les 600 places passent. Un trou récent est celui que
+   * l'utilisateur voit dans la courbe ; c'est lui qui doit partir au run suivant.
    *
    * `sinceIso` et `untilIso` doivent être alignés sur l'heure exacte : les
    * créneaux attendus sont les heures pleines de la fenêtre.
@@ -1028,31 +1034,38 @@ export const weatherRepository = {
   ): Promise<TargetCommune[]> {
     if (limit <= 0) return [];
     const result = await db.query<{ id: string; longitude: string; latitude: string }>(
-      `WITH expected AS (
-         SELECT count(*)::int AS slot_count
-         FROM generate_series(
+      `WITH slots AS (
+         SELECT generate_series(
            $2::timestamptz,
            $3::timestamptz - interval '1 hour',
            interval '1 hour'
-         )
+         ) AS hour_at
        ),
        present AS (
-         SELECT h.commune_id, count(DISTINCT h.hour_at)::int AS slot_count
+         SELECT h.commune_id, h.hour_at
          FROM weather_hourly h
          WHERE h.weather_source_id = $1
            AND h.hour_at >= $2::timestamptz
            AND h.hour_at < $3::timestamptz
-         GROUP BY h.commune_id
+       ),
+       deficits AS (
+         SELECT c.id,
+                count(*)::int AS missing_count,
+                max(s.hour_at) AS newest_missing
+         FROM communes c
+         CROSS JOIN slots s
+         LEFT JOIN present p
+           ON p.commune_id = c.id AND p.hour_at = s.hour_at
+         WHERE p.hour_at IS NULL
+         GROUP BY c.id
        )
        SELECT
          c.id,
          ST_X(c.centroid)::text AS longitude,
          ST_Y(c.centroid)::text AS latitude
-       FROM communes c
-       CROSS JOIN expected e
-       LEFT JOIN present p ON p.commune_id = c.id
-       WHERE COALESCE(p.slot_count, 0) < e.slot_count
-       ORDER BY COALESCE(p.slot_count, 0) ASC, c.name
+       FROM deficits d
+       JOIN communes c ON c.id = d.id
+       ORDER BY d.newest_missing DESC, d.missing_count DESC, c.name
        LIMIT $4`,
       [sourceId, sinceIso, untilIso, limit],
     );
