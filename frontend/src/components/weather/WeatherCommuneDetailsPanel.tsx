@@ -55,6 +55,8 @@ interface WeatherCommuneDetailsPanelProps {
   lastDataAt: string | null;
   lastSyncAt: string | null;
   lastSyncStatus?: string | null;
+  /** Fournisseur des indicateurs courants (Open-Meteo), affiché tel quel. */
+  sourceName?: string | null;
   onClose?: () => void;
 }
 
@@ -68,6 +70,50 @@ function isRateLimited(err: unknown): boolean {
   return err instanceof ApiClientError && err.status === 429;
 }
 
+/** Cumul décadaire : toujours en millimètres, une décimale. */
+function formatMillimetres(value: number | null): string {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return `${Number.isInteger(value) ? value : value.toFixed(1)} mm`;
+}
+
+interface HourlyChartPoint {
+  time: string;
+  observed: number | null;
+  forecast: number | null;
+  value: number | null;
+}
+
+/**
+ * Insère un point nul entre deux heures non consécutives.
+ *
+ * Recharts relie les points d'une même série sans se soucier de l'écart
+ * temporel : un trou de 16 h était tracé comme une droite continue entre
+ * l'heure qui le précède et celle qui le suit. Le point nul, combiné à
+ * l'absence de `connectNulls`, casse le trait et rend le trou visible.
+ */
+function insertGapBreaks(points: HourlyChartPoint[]): HourlyChartPoint[] {
+  const ONE_HOUR_MS = 3_600_000;
+  const result: HourlyChartPoint[] = [];
+
+  for (const point of points) {
+    const previous = result[result.length - 1];
+    if (previous) {
+      const gapMs = Date.parse(point.time) - Date.parse(previous.time);
+      if (Number.isFinite(gapMs) && gapMs > ONE_HOUR_MS) {
+        result.push({
+          time: new Date(Date.parse(previous.time) + ONE_HOUR_MS).toISOString(),
+          observed: null,
+          forecast: null,
+          value: null,
+        });
+      }
+    }
+    result.push(point);
+  }
+
+  return result;
+}
+
 export function WeatherCommuneDetailsPanel({
   commune,
   point,
@@ -79,6 +125,7 @@ export function WeatherCommuneDetailsPanel({
   lastDataAt,
   lastSyncAt,
   lastSyncStatus,
+  sourceName,
   onClose,
 }: WeatherCommuneDetailsPanelProps) {
   const isHistory = mode === "HISTORIQUE";
@@ -124,6 +171,17 @@ export function WeatherCommuneDetailsPanel({
     enabled: Boolean(commune) && isHistory,
   });
 
+  // Cumul décadaire officiel (DGM) : donnée distincte des indicateurs
+  // horaires. On ne l'affiche jamais comme « pluie actuelle » — c'est une
+  // somme sur 10 jours, publiée en fin de décade.
+  const dekadalQ = useQuery({
+    queryKey: ["weather", "dekadal", commune?.id],
+    queryFn: () => (commune ? weatherApi.dekadal(commune.id) : null),
+    enabled: Boolean(commune),
+    staleTime: 10 * 60_000,
+    retry: 1,
+  });
+
   const displayDate = date ? formatShortDate(date) : "—";
   const displayHour =
     hour != null ? `${String(hour).padStart(2, "0")}h` : "Toute la journée";
@@ -139,22 +197,35 @@ export function WeatherCommuneDetailsPanel({
   // l'horloge), pas de `isForecast` : ce drapeau est figé à l'écriture de la
   // série, donc entre deux runs de 6 h il classe en « prévision » des heures
   // qui sont déjà écoulées.
-  const hourlyChart = useMemo(() => {
+  //
+  // Les heures ABSENTES de la série sont matérialisées par un point nul : sans
+  // cela Recharts relie directement l'heure qui précède le trou à celle qui le
+  // suit, et la courbe invente la météo manquante sur parfois 16 heures.
+  const hourlyChart = useMemo<HourlyChartPoint[]>(() => {
     const key = config.property;
-    return hourlySeries
-      .filter((p) => typeof p[key] === "number" && Number.isFinite(p[key]))
-      .map((p) => {
-        const future = isFutureHour(p.hourAt);
-        return {
-          time: p.hourAt,
-          observed: future ? null : (p[key] as number),
-          forecast: future ? (p[key] as number) : null,
-          value: p[key] as number,
-        };
-      });
+    const points = hourlySeries.map((p) => {
+      const raw = p[key];
+      const value =
+        typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+      const future = isFutureHour(p.hourAt);
+      return {
+        time: p.hourAt,
+        observed: future ? null : value,
+        forecast: future ? value : null,
+        value,
+      };
+    });
+    return insertGapBreaks(points);
   }, [hourlySeries, config.property]);
 
-  const chartData = hourlyChart.length > 0
+  const hasHourlyChart = useMemo(() => {
+    const key = config.property;
+    return hourlySeries.some(
+      (p) => typeof p[key] === "number" && Number.isFinite(p[key]),
+    );
+  }, [hourlySeries, config.property]);
+
+  const chartData = hasHourlyChart
     ? hourlyChart
     : isHistory
       ? buildHistorySeries(historyQ.data?.data ?? [], metric)
@@ -294,6 +365,10 @@ export function WeatherCommuneDetailsPanel({
                     }`
                   : "—"}
               </p>
+              <p>
+                <span className="font-medium text-ink">Source :</span>{" "}
+                {sourceName ?? "—"}
+              </p>
             </div>
           </Card>
 
@@ -312,16 +387,54 @@ export function WeatherCommuneDetailsPanel({
             </div>
           </Card>
 
+          {/*
+            Cumul décadaire DGM : bloc SÉPARÉ et explicitement daté. C'est une
+            somme sur 10 jours publiée en fin de décade — l'afficher à côté des
+            indicateurs horaires sans le dire ferait lire « 100 mm » comme une
+            averse en cours.
+          */}
+          <Card
+            title="Cumul de pluie sur 10 jours — Météo Madagascar"
+            description="Donnée officielle DGM, publiée en fin de décade."
+            className="!p-4"
+          >
+            {dekadalQ.isLoading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-24" />
+                <Skeleton className="h-3 w-40" />
+              </div>
+            ) : dekadalQ.data ? (
+              <>
+                <p className="font-display text-3xl text-ink">
+                  {formatMillimetres(dekadalQ.data.rainfallMm)}
+                </p>
+                <p className="mt-1 text-xs text-muted">
+                  Cumul du {dekadalQ.data.dekadLabel} · publié le{" "}
+                  {formatDate(dekadalQ.data.observedAt)}
+                </p>
+                <p className="mt-1 text-[11px] text-muted">
+                  Source : {dekadalQ.data.sourceName}. Cumul sur ~
+                  {dekadalQ.data.periodDays} jours, non comparable à la pluie
+                  horaire ou au cumul 24 h.
+                </p>
+              </>
+            ) : (
+              <p className="text-xs text-muted">
+                Aucun cumul décadaire disponible pour cette commune.
+              </p>
+            )}
+          </Card>
+
           <Card
             title={
-              hourlyChart.length > 0
+              hasHourlyChart
                 ? `Météo par heure — ${config.label}`
                 : isHistory
                   ? `Historique — ${config.label}`
                   : `Prévisions — ${config.label}`
             }
             description={
-              hourlyChart.length > 0
+              hasHourlyChart
                 ? `Relevés horaires, en ${config.unit}`
                 : isHistory
                   ? `Observations enregistrées autour du ${displayDate}, en ${config.unit}`
@@ -329,7 +442,7 @@ export function WeatherCommuneDetailsPanel({
             }
             className="!p-4"
           >
-            {hourlyChart.length > 0 ? (
+            {hasHourlyChart ? (
               <div className="h-40">
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
@@ -358,7 +471,6 @@ export function WeatherCommuneDetailsPanel({
                       stroke="#03224c"
                       strokeWidth={2}
                       dot={false}
-                      connectNulls
                       isAnimationActive={false}
                     />
                     <Line
@@ -369,14 +481,13 @@ export function WeatherCommuneDetailsPanel({
                       strokeWidth={2}
                       strokeDasharray="5 4"
                       dot={false}
-                      connectNulls
                       isAnimationActive={false}
                     />
                   </LineChart>
                 </ResponsiveContainer>
                 <p className="mt-1 text-[11px] text-muted">
                   Trait plein : heures écoulées (analyse du modèle). Pointillé
-                  vert : prévision.
+                  vert : prévision. Les heures manquantes ne sont pas reliées.
                 </p>
               </div>
             ) : isHistory ? (

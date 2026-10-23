@@ -154,6 +154,24 @@ export interface WeatherDgmIngestResult {
   saved: number;
 }
 
+/**
+ * Cumul de pluie décadaire officiel (Météo Madagascar / DGM).
+ *
+ * `rainfallMm` est un CUMUL sur ~10 jours, daté à la fin de la décade. Ce n'est
+ * ni une pluie horaire ni un cumul 24 h : l'interface doit l'afficher dans un
+ * bloc distinct, avec sa période, pour ne jamais le confondre avec la pluie
+ * courante d'Open-Meteo.
+ */
+export interface WeatherDekadalRainfall {
+  sourceName: string;
+  providerType: 'DGM_MAPROOM';
+  dekadLabel: string;
+  observedAt: string;
+  periodDays: number;
+  isCumulative: true;
+  rainfallMm: number | null;
+}
+
 export interface WeatherMapGeoJson {
   type: 'FeatureCollection';
   features: {

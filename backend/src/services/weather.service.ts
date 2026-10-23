@@ -3,12 +3,13 @@ import { logger } from '../config/logger';
 import { usersRepository } from '../repositories/users.repository';
 import { weatherRepository } from '../repositories/weather.repository';
 import { openMeteoProvider } from './openmeteo.provider';
-import { dgmMaproomProvider } from './weather-maproom.provider';
+import { dekadLabelFromEnd, dgmMaproomProvider } from './weather-maproom.provider';
 import { getWeatherProvider, setWeatherProvider } from './weather-provider';
-import { detectAfterSync } from './weather-sync.service';
+import { detectAfterSync, findHourlyGaps, hourlyRowsFromItems } from './weather-sync.service';
 import {
   WeatherBulletin,
   WeatherCurrent,
+  WeatherDekadalRainfall,
   WeatherDgmIngestResult,
   WeatherForecast,
   WeatherHourPoint,
@@ -346,6 +347,27 @@ export const weatherService = {
       totalSaved = await weatherRepository.insertObservations(rows, sourceId);
     }
 
+    // Courbe horaire : elle arrive dans la MÊME réponse que les observations,
+    // sans appel supplémentaire. Sans cette écriture, un rafraîchissement
+    // manuel (district ou commune) n'alimentait que `weather_observations` : la
+    // courbe horaire gardait son trou jusqu'au prochain run national, et
+    // l'interface le masquait en reliant les points voisins.
+    let hourlySaved = 0;
+    if (batch && batch.length > 0) {
+      const hourlyGaps = findHourlyGaps(batch);
+      if (hourlyGaps.length > 0) {
+        logger.warn(
+          {
+            communes: new Set(hourlyGaps.map((g) => g.communeId)).size,
+            gaps: hourlyGaps.length,
+            sample: hourlyGaps.slice(0, 5),
+          },
+          'Série horaire Open-Meteo discontinue lors du rafraîchissement manuel',
+        );
+      }
+      hourlySaved = await weatherRepository.insertHourly(hourlyRowsFromItems(batch), sourceId);
+    }
+
     await usersRepository.writeAudit({
       userId: actor.id,
       action: 'WEATHER_REFRESHED',
@@ -353,6 +375,7 @@ export const weatherService = {
       newValue: {
         targeted: totalTargeted,
         saved: totalSaved,
+        hourlySaved,
         failed: failures.length,
         districtId: input.districtId ?? null,
         eventId: input.eventId ?? null,
@@ -579,6 +602,39 @@ export const weatherService = {
 
   async latestObservationAt(): Promise<string | null> {
     return weatherRepository.latestObservationAt();
+  },
+
+  /** Source des observations courantes (Open-Meteo), affichée à côté des panneaux. */
+  async observationSource(): Promise<{ name: string; providerType: string } | null> {
+    return weatherRepository.observationSource();
+  },
+
+  /**
+   * Cumul de pluie décadaire officiel (Météo Madagascar / DGM) d'une commune.
+   *
+   * Route et panneau DÉDIÉS : ce n'est ni une pluie horaire ni un cumul 24 h,
+   * mais un cumul sur 10 jours daté à la fin de la décade. Le mélanger aux
+   * indicateurs courants ferait lire « 100 mm de pluie » comme une averse en
+   * cours.
+   */
+  async dekadalRainfall(communeId: string): Promise<WeatherDekadalRainfall> {
+    const exists = await weatherRepository.verifyCommuneExists(communeId);
+    if (!exists) {
+      throw AppError.notFound('Commune introuvable');
+    }
+    const row = await weatherRepository.latestDekadalRainfall(communeId);
+    if (!row) {
+      throw AppError.notFound('Aucun cumul décadaire DGM enregistré pour cette commune');
+    }
+    return {
+      sourceName: 'Météo Madagascar (DGM)',
+      providerType: 'DGM_MAPROOM',
+      dekadLabel: row.dekadLabel ?? dekadLabelFromEnd(new Date(row.observedAt)),
+      observedAt: row.observedAt,
+      periodDays: 10,
+      isCumulative: true,
+      rainfallMm: row.rainfallMm,
+    };
   },
 
   /**

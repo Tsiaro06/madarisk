@@ -97,4 +97,12 @@ router.get(
   asyncHandler(weatherController.hourlySeries),
 );
 
+// Cumul de pluie décadaire officiel (DGM) : route distincte de `latest` car la
+// valeur est un cumul de 10 jours, jamais une pluie courante.
+router.get(
+  '/communes/:communeId/dekadal',
+  validate({ params: communeIdParamsSchema }),
+  asyncHandler(weatherController.dekadal),
+);
+
 export default router;

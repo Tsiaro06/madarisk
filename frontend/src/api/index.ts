@@ -39,6 +39,7 @@ import type {
 } from "@/types";
 import type {
   WeatherBulletin,
+  WeatherDekadalRainfall,
   WeatherHourPoint,
   WeatherMapLayerMeta,
   WeatherMonitoring,
@@ -275,9 +276,29 @@ export const weatherApi = {
     communeId: string,
     params?: Record<string, string | undefined>,
   ) => apiGet<WeatherHourPoint[]>(`/weather/communes/${communeId}/hourly`, { params }),
+  // Cumul de pluie décadaire officiel (DGM) : cumul sur 10 jours, exposé à part
+  // pour ne jamais être lu comme une pluie horaire ou 24 h.
+  dekadal: (communeId: string) =>
+    apiGet<WeatherDekadalRainfall>(`/weather/communes/${communeId}/dekadal`),
   // Couche carte figée sur une heure exacte (passée ou future).
   hourlyLayer: (params?: Record<string, string | undefined>) =>
     apiGet<FeatureCollection>("/weather/hourly-layer", { params }),
+  // Variante avec `meta` : la source doit rester affichable quand une heure est
+  // sélectionnée (la couche est alors lue dans `weather_hourly`).
+  hourlyLayerDetailed: async (
+    params?: Record<string, string | undefined>,
+  ): Promise<{
+    data: FeatureCollection;
+    meta: WeatherMapLayerMeta | undefined;
+  }> => {
+    const res = await apiGetPage<FeatureCollection>("/weather/hourly-layer", {
+      params,
+    });
+    return {
+      data: res.data,
+      meta: res.meta as WeatherMapLayerMeta | undefined,
+    };
+  },
   mapLayer: (params?: Record<string, string | undefined>) =>
     apiGet<FeatureCollection>("/weather/map-layer", { params }),
   mapLayerDetailed: async (

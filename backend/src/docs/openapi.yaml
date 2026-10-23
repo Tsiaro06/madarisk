@@ -2292,11 +2292,13 @@ paths:
         Renvoie la dernière observation (≤ date/heure cibles) de chaque commune.
         `metric` est accepté pour compatibilité (toutes les métriques sont retournées dans `properties`) ;
         `date` (+ éventuellement `hour`) filtre sur une période passée. La réponse inclut
-        `meta.latestObservationAt` (dernière observation disponible toutes sources confondues) et
+        `meta.latestObservationAt` (dernière observation COURANTE, hors cumuls décadaires DGM) et
         `meta.dataDay` (jour LOCAL Madagascar de la donnée réellement servie pour la date consultée,
         `null` pour une date future). Comparer `dataDay` à la date demandée permet d'annoncer
         « données du 20/10 » quand la synchronisation du jour n'a pas eu lieu, au lieu de laisser
-        croire que la couche « aujourd'hui » contient la météo du jour.
+        croire que la couche « aujourd'hui » contient la météo du jour. `meta.source` nomme le
+        fournisseur des indicateurs courants (Open-Meteo) ; la pluie décadaire DGM est exposée par
+        `GET /weather/communes/{communeId}/dekadal`, jamais dans cette couche.
       security:
         - bearerAuth: []
       operationId: weatherMapLayer
@@ -2351,6 +2353,12 @@ paths:
                           Jour local (Madagascar, UTC+3) de l'observation la plus récente servie pour
                           la date consultée, ou `null` si la date est future (prévisions).
                         pattern: '^\d{4}-\d{2}-\d{2}$'
+                      source:
+                        type: [object, 'null']
+                        description: Fournisseur des indicateurs courants (hors cumuls DGM).
+                        properties:
+                          name: { type: string }
+                          providerType: { type: string }
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -2635,6 +2643,39 @@ paths:
                   success: { type: boolean }
                   message: { type: string }
                   data: { $ref: '#/components/schemas/WeatherObservation' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /weather/communes/{communeId}/dekadal:
+    get:
+      tags: [Météo]
+      summary: Cumul de pluie décadaire officiel d'une commune (Météo Madagascar / DGM)
+      description: >
+        Renvoie le dernier cumul de pluie publié par la Direction Générale de la Météo
+        (maproom DGM) pour la commune. `rainfallMm` est un CUMUL sur environ 10 jours,
+        daté à la fin de la décade : ce n'est ni une pluie horaire ni un cumul 24 h.
+        Cette donnée est volontairement séparée de `/latest` et de `/map-layer` pour
+        qu'elle ne soit jamais lue comme la pluie en cours.
+      security:
+        - bearerAuth: []
+      operationId: weatherDekadalRainfall
+      parameters:
+        - { $ref: '#/components/parameters/CommuneId' }
+      responses:
+        '200':
+          description: Cumul de pluie décadaire
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean }
+                  message: { type: string }
+                  data: { $ref: '#/components/schemas/WeatherDekadalRainfall' }
         '401':
           $ref: '#/components/responses/Unauthorized'
         '404':
@@ -5146,6 +5187,26 @@ components:
         dataKind: { type: string, default: OBSERVE }
         source: { type: string }
         createdAt: { type: string, format: date-time }
+    WeatherDekadalRainfall:
+      type: object
+      description: >
+        Cumul de pluie décadaire officiel (Météo Madagascar / DGM). `rainfallMm`
+        est une SOMME sur environ 10 jours, datée à la fin de la décade — jamais
+        une pluie horaire ou un cumul 24 h.
+      properties:
+        sourceName: { type: string, example: 'Météo Madagascar (DGM)' }
+        providerType: { type: string, enum: [DGM_MAPROOM] }
+        dekadLabel:
+          type: string
+          description: Période couverte, en heure locale (ex. « 11-20 Oct 2026 »).
+          example: '11-20 Oct 2026'
+        observedAt:
+          type: string
+          format: date-time
+          description: Fin de la décade (23:59:59 heure de Madagascar, stockée en UTC).
+        periodDays: { type: integer, example: 10 }
+        isCumulative: { type: boolean, enum: [true] }
+        rainfallMm: { type: [number, 'null'], description: 'Cumul sur la décade, en mm' }
     WeatherSyncRunInfo:
       type: object
       description: Exécution d'une synchronisation météo

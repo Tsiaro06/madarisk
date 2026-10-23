@@ -390,6 +390,51 @@ export function hourlyRowsFromItems(items: WeatherCurrentBatchItem[]): WeatherHo
   return rows;
 }
 
+export interface HourlyGap {
+  communeId: string;
+  /** Première heure présente avant le trou (UTC ISO). */
+  from: string;
+  /** Première heure présente après le trou (UTC ISO). */
+  to: string;
+  missingHours: number;
+}
+
+/**
+ * Détecte les discontinuités d'une série horaire AVANT son écriture.
+ *
+ * Une série trouée n'est pas une erreur d'insertion : elle est déjà trouée
+ * chez le fournisseur (lot partiel, réponse tronquée). L'écrire telle quelle
+ * laisse un trou définitif dans la courbe, et Recharts le masque en reliant
+ * les points voisins d'un trait continu — la courbe invente alors la météo
+ * manquante. On journalise le trou pour qu'il soit visible et réparable par le
+ * run suivant (`communesMissingHourlySlots` cible déjà ces communes), au lieu
+ * de le laisser silencieux.
+ */
+export function findHourlyGaps(items: WeatherCurrentBatchItem[], maxGapHours = 1): HourlyGap[] {
+  const gaps: HourlyGap[] = [];
+  const hourMs = 3_600_000;
+
+  for (const item of items) {
+    const hours = item?.hours ?? [];
+    let previousHour: number | null = null;
+    for (const h of hours) {
+      const t = Date.parse(h.hourAt);
+      if (!Number.isFinite(t)) continue;
+      const currentHour = Math.floor(t / hourMs);
+      if (previousHour !== null && currentHour - previousHour > maxGapHours) {
+        gaps.push({
+          communeId: item.communeId,
+          from: new Date(previousHour * hourMs).toISOString(),
+          to: new Date(currentHour * hourMs).toISOString(),
+          missingHours: currentHour - previousHour - 1,
+        });
+      }
+      previousHour = currentHour;
+    }
+  }
+  return gaps;
+}
+
 async function syncObservations(opts: { communeIds?: string[] }): Promise<SyncOutcome> {
   const provider = getWeatherProvider();
   const sourceId = await weatherRepository.getSourceId();
@@ -432,6 +477,18 @@ async function syncObservations(opts: { communeIds?: string[] }): Promise<SyncOu
   // quota supplémentaire. Elle est écrite pour toutes les communes ciblées par
   // le run — à chaque cron de 6 h le cutoff de fraîcheur est dépassé, donc les
   // 1579 communes passent, et la fenêtre glissante de 48 h est reconstituée.
+  const hourlyGaps = findHourlyGaps(items);
+  if (hourlyGaps.length > 0) {
+    logger.warn(
+      {
+        communes: new Set(hourlyGaps.map((g) => g.communeId)).size,
+        gaps: hourlyGaps.length,
+        missingHours: hourlyGaps.reduce((sum, g) => sum + g.missingHours, 0),
+        sample: hourlyGaps.slice(0, 5),
+      },
+      'Série horaire Open-Meteo discontinue : les trous seront réparés au prochain run',
+    );
+  }
   const hourlySaved = await weatherRepository.insertHourly(hourlyRowsFromItems(items), sourceId);
 
   const noSavedData = dedupe.kept.length === 0;

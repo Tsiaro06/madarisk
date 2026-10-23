@@ -1,6 +1,10 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { weatherSyncTriggerSchema } from '../../src/validators/weather.validator';
-import { dedupeByExisting, hourlyRowsFromItems } from '../../src/services/weather-sync.service';
+import {
+  dedupeByExisting,
+  findHourlyGaps,
+  hourlyRowsFromItems,
+} from '../../src/services/weather-sync.service';
 import { staleWeatherScopes } from '../../src/jobs/weather-refresh.job';
 import { hourlyRetentionCutoff } from '../../src/jobs/weather-hourly-purge.job';
 
@@ -363,5 +367,84 @@ describe('weather-sync : lignes horaires', () => {
     // Rien à écrire : surtout pas de ligne à l'heure du run, qui masquerait le
     // trou au lieu de le laisser visible.
     expect(hourlyRowsFromItems(item([]))).toHaveLength(0);
+  });
+});
+
+/**
+ * Détection des trous AVANT écriture.
+ *
+ * Une série trouée écrite telle quelle laisse un trou définitif dans la courbe.
+ * L'interface ne relie plus les points (point nul inséré), donc le trou devient
+ * visible — mais il faut aussi le journaliser pour qu'il soit réparé au run
+ * suivant plutôt que de rester silencieux.
+ */
+describe('weather-sync : détection des trous horaires', () => {
+  function item(communeId: string, hours: string[]) {
+    return [
+      {
+        communeId,
+        current: {} as never,
+        hours: hours.map((hourAt) => ({
+          hourAt,
+          temperatureC: 20,
+          humidityPercent: 50,
+          precipitationMm: 0,
+          rainMm: 0,
+          windSpeedKmh: 10,
+          windGustsKmh: 20,
+          windDirectionDeg: 180,
+          pressureHpa: 1010,
+          weatherCode: '1',
+        })),
+      },
+    ];
+  }
+
+  it('ne signale rien sur une série continue', () => {
+    const hours = [
+      '2026-10-02T09:00:00.000Z',
+      '2026-10-02T10:00:00.000Z',
+      '2026-10-02T11:00:00.000Z',
+    ];
+    expect(findHourlyGaps(item('c1', hours))).toEqual([]);
+  });
+
+  it('signale un trou et compte les heures manquantes', () => {
+    // 09 h puis 14 h : 4 heures absentes (10, 11, 12, 13).
+    const gaps = findHourlyGaps(
+      item('c1', ['2026-10-02T09:00:00.000Z', '2026-10-02T14:00:00.000Z']),
+    );
+
+    expect(gaps).toHaveLength(1);
+    expect(gaps[0]).toMatchObject({
+      communeId: 'c1',
+      from: '2026-10-02T09:00:00.000Z',
+      to: '2026-10-02T14:00:00.000Z',
+      missingHours: 4,
+    });
+  });
+
+  it('signale chaque trou d une série et ignore les communes sans heure', () => {
+    const gaps = findHourlyGaps([
+      ...item('c1', [
+        '2026-10-02T09:00:00.000Z',
+        '2026-10-02T10:00:00.000Z',
+        '2026-10-02T14:00:00.000Z',
+        '2026-10-02T16:00:00.000Z',
+      ]),
+      ...item('c2', []),
+    ]);
+
+    expect(gaps.map((g) => [g.communeId, g.missingHours])).toEqual([
+      ['c1', 3],
+      ['c1', 1],
+    ]);
+  });
+
+  it('ne déduit pas un trou d un horodatage illisible', () => {
+    const gaps = findHourlyGaps(
+      item('c1', ['2026-10-02T09:00:00.000Z', 'pas-une-date', '2026-10-02T10:00:00.000Z']),
+    );
+    expect(gaps).toEqual([]);
   });
 });

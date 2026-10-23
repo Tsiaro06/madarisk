@@ -98,10 +98,12 @@ export function WeatherMapPage() {
 
   const mode = getWeatherViewMode(date, hour);
 
-  // Ni le fournisseur ni le nom de la source ne sont affichés : dans une salle de
-  // crise l'utilisateur veut l'heure de la dernière observation, pas l'éditeur de
-  // l'API qui l'a servie. La fraîcheur reste lisible (bandeau `STALE`, dates des
-  // panneaux).
+  // La source est désormais affichée telle quelle : Open-Meteo alimente les
+  // indicateurs horaires, la DGM le cumul décadaire (bloc séparé du panneau).
+  // Dans une salle de crise, l'utilisateur a besoin de savoir d'où vient la
+  // valeur ET de quand elle date ; la fraîcheur reste lisible (bandeau `STALE`,
+  // dates des panneaux).
+  //
   // La dernière *tentative* prime sur la dernière réussite : une synchro stoppée
   // au milieu par le quota (PARTIAL) ne doit pas figer la date affichée à la
   // veille, son statut est affiché à côté de la date.
@@ -110,6 +112,7 @@ export function WeatherMapPage() {
   const lastSyncAt =
     lastRun?.finishedAt ?? lastRun?.startedAt ?? obsSync?.lastSuccessAt ?? null;
   const lastSyncStatus = lastRun?.status ?? null;
+  const sourceName = weather.source?.name ?? null;
   const lastDataAt = weather.latestObservationAt ?? lastSyncAt;
   const selectedFeature = useMemo(() => {
     if (!selectedId || !communesQ.data) return null;
@@ -355,6 +358,7 @@ export function WeatherMapPage() {
       lastSyncAt={lastSyncAt}
       lastSyncStatus={lastSyncStatus}
       dataDay={weather.dataDay}
+      sourceName={sourceName}
       canRefresh={canRefresh}
       onMetricChange={setMetric}
       onDateChange={setDate}
@@ -381,6 +385,7 @@ export function WeatherMapPage() {
       lastDataAt={lastDataAt}
       lastSyncAt={lastSyncAt}
       lastSyncStatus={lastSyncStatus}
+      sourceName={sourceName}
       onClose={mobileDetails ? () => setMobileDetails(false) : undefined}
     />
   );

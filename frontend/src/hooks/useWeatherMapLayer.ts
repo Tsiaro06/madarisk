@@ -46,8 +46,8 @@ export function useWeatherMapLayer({
       if (hour != null) params.hour = String(hour);
       if (districtId) params.districtId = districtId;
       if (usesHourlyLayer) {
-        const collection = await weatherApi.hourlyLayer(params);
-        return { collection, meta: null };
+        const res = await weatherApi.hourlyLayerDetailed(params);
+        return { collection: res.data, meta: res.meta };
       }
       const res = await weatherApi.mapLayerDetailed(params);
       return { collection: res.data, meta: res.meta };
@@ -73,6 +73,7 @@ export function useWeatherMapLayer({
   const layer = query.data?.collection ?? null;
   const latestObservationAt = query.data?.meta?.latestObservationAt ?? null;
   const dataDay = query.data?.meta?.dataDay ?? null;
+  const source = query.data?.meta?.source ?? null;
 
   const pointByCommune = useMemo(() => {
     const map = new Map<string, WeatherMapFeatureProperties>();
@@ -85,5 +86,5 @@ export function useWeatherMapLayer({
     return map;
   }, [layer]);
 
-  return { query, layer, pointByCommune, latestObservationAt, dataDay };
+  return { query, layer, pointByCommune, latestObservationAt, dataDay, source };
 }

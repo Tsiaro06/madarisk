@@ -35,6 +35,8 @@ interface WeatherControlsProps {
   lastSyncStatus?: string | null;
   /** Jour local de la donnée réellement servie pour la date consultée. */
   dataDay?: string | null;
+  /** Fournisseur des indicateurs courants (Open-Meteo). */
+  sourceName?: string | null;
   /** L'utilisateur peut relancer une synchronisation (ADMIN / SUPER_ADMIN). */
   canRefresh?: boolean;
   onMetricChange: (metric: WeatherMetric) => void;
@@ -58,6 +60,7 @@ export function WeatherControls({
   lastSyncAt,
   lastSyncStatus,
   dataDay = null,
+  sourceName = null,
   canRefresh = false,
   onMetricChange,
   onDateChange,
@@ -196,6 +199,10 @@ export function WeatherControls({
                   : ""
               }`
             : "—"}
+        </p>
+        <p>
+          <span className="font-medium text-ink">Source :</span>{" "}
+          {sourceName ?? "—"}
         </p>
       </div>
 

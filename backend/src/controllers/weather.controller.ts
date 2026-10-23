@@ -77,14 +77,29 @@ export const weatherController = {
 
   mapLayer: async (req: Request, res: Response): Promise<void> => {
     const query = req.validatedQuery as WeatherMapQuery;
-    const [geojson, latestObservationAt, dataDay] = await Promise.all([
+    const [geojson, latestObservationAt, dataDay, source] = await Promise.all([
       weatherService.mapLayer(query),
       weatherService.latestObservationAt(),
       weatherService.effectiveObservationDay(query.date),
+      weatherService.observationSource(),
     ]);
-    res
-      .status(200)
-      .json(successResponse(geojson, 'Couche météo', { latestObservationAt, dataDay }));
+    res.status(200).json(
+      successResponse(geojson, 'Couche météo', {
+        latestObservationAt,
+        dataDay,
+        source,
+      }),
+    );
+  },
+
+  /**
+   * Cumul de pluie décadaire officiel de la DGM : endpoint séparé pour que
+   * l'interface ne puisse pas le confondre avec une pluie horaire ou 24 h.
+   */
+  dekadal: async (req: Request, res: Response): Promise<void> => {
+    const { communeId } = req.validatedParams as CommuneIdParams;
+    const rainfall = await weatherService.dekadalRainfall(communeId);
+    res.status(200).json(successResponse(rainfall, 'Cumul de pluie décadaire (Météo Madagascar)'));
   },
 
   hourlySeries: async (req: Request, res: Response): Promise<void> => {
@@ -96,8 +111,14 @@ export const weatherController = {
 
   hourlyLayer: async (req: Request, res: Response): Promise<void> => {
     const query = req.validatedQuery as WeatherHourlyLayerQuery;
-    const geojson = await weatherService.hourlyMapLayer(query);
-    res.status(200).json(successResponse(geojson, 'Couche météo horaire'));
+    // La couche horaire est lue dans `weather_hourly`, donc alimentée par la
+    // même source que les observations courantes : on la nomme aussi, sinon le
+    // panneau afficherait « Source : — » dès qu'une heure est sélectionnée.
+    const [geojson, source] = await Promise.all([
+      weatherService.hourlyMapLayer(query),
+      weatherService.observationSource(),
+    ]);
+    res.status(200).json(successResponse(geojson, 'Couche météo horaire', { source }));
   },
 
   ingestDgmMaproom: async (req: Request, res: Response): Promise<void> => {

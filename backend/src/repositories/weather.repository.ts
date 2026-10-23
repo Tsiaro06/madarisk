@@ -265,6 +265,24 @@ const OBSERVATION_COLUMNS = `
 `;
 
 /**
+ * Filtre SQL excluant les sources décadaires (DGM).
+ *
+ * La DGM publie un CUMUL de pluie sur 10 jours, daté à la fin de la décade —
+ * une grandeur qui n'est PAS une observation courante. Tant que l'ingestion
+ * datait cette fin de décade dans le futur, `MAX(observed_at)` la désignait
+ * comme l'observation la plus récente de la base : le bandeau annonçait une
+ * donnée « fraîche » vieille en réalité de plusieurs jours, et la page
+ * pouvait croire que la synchronisation du jour avait eu lieu.
+ */
+const EXCLUDE_DEKADAL_SOURCES = `
+  NOT EXISTS (
+    SELECT 1 FROM weather_sources s
+    WHERE s.id = weather_observations.weather_source_id
+      AND s.provider_type = 'DGM_MAPROOM'
+  )
+`;
+
+/**
  * Upsert d'un lot d'observations.
  *
  * Clé naturelle : (weather_source_id, commune_id, observed_at, event_id), garantie
@@ -908,11 +926,11 @@ export const weatherRepository = {
    * Communes ayant déjà une observation pour la journée (UTC) donnée.
    *
    * Le cast doit être ancré sur UTC : `observed_at::date` convertit en heure de
-   * session, et la base tourne en Africa/Nairobi (+03). Pour une observation de
-   * fin de décade à 23:59:59Z, le cast session renvoyait donc le jour SUIVANT
-   * et ne correspondait jamais au `$2::date` (UTC) : la détection d'existant
-   * échouait silencieusement et le job DGM retéléchargait les 1579 communes à
-   * chaque exécution alors que rien n'avait changé.
+   * session, et la base tourne en Africa/Nairobi (+03). Une observation à
+   * 23:59:59Z basculait ainsi sur le lendemain local et ne correspondait
+   * jamais au `$2::date` (UTC) : la détection d'existant échouait
+   * silencieusement et le job DGM retéléchargeait les 1579 communes à chaque
+   * exécution alors que rien n'avait changé.
    */
   async existingCommunesForDate(sourceId: string, date: Date): Promise<Set<string>> {
     const result = await db.query<{ commune_id: string }>(
@@ -1218,30 +1236,94 @@ export const weatherRepository = {
     return result.rows[0] ? mapObservation(result.rows[0]) : null;
   },
 
+  /**
+   * Instant de la dernière observation COURANTE (hors cumuls décadaires DGM).
+   *
+   * Sert d'horodatage à la couche cartographique. Les lignes DGM ne portent
+   * aucun indicateur courant (température, humidité, vent, pression) et sont
+   * datées à la fin d'une décade : les inclure faisait afficher une « dernière
+   * observation » postérieure à l'heure réelle.
+   */
   async latestObservationAt(): Promise<string | null> {
     const result = await db.query<{ max: string | null }>(
-      `SELECT MAX(observed_at)::text AS max FROM weather_observations`,
+      `SELECT MAX(weather_observations.observed_at)::text AS max
+       FROM weather_observations
+       WHERE ${EXCLUDE_DEKADAL_SOURCES}`,
     );
     return result.rows[0]?.max ?? null;
   },
 
   /**
-   * Jour LOCAL (Madagascar, UTC+3) de l'observation la plus récente réellement
-   * en base, pour une borne haute optionnelle.
+   * Jour LOCAL (Madagascar, UTC+3) de l'observation courante la plus récente
+   * réellement en base, pour une borne haute optionnelle.
    *
    * La page météo ouvre sur « aujourd'hui » et sert la dernière observation
    * disponible : si la synchronisation du matin n'a pas eu lieu, cet
    * « aujourd'hui » est en réalité la veille. Renvoyer le jour effectif permet à
    * l'interface de l'annoncer au lieu de laisser croire à de la donnée du jour.
+   *
+   * Les cumuls DGM sont exclus : datés en fin de décade, ils dateraient la
+   * « donnée du jour » d'une décade entière.
    */
   async latestObservationDay(before?: Date): Promise<string | null> {
     const result = await db.query<{ day: string | null }>(
-      `SELECT ((MAX(observed_at) AT TIME ZONE 'Indian/Antananarivo')::date)::text AS day
+      `SELECT ((MAX(weather_observations.observed_at) AT TIME ZONE 'Indian/Antananarivo')::date)::text AS day
        FROM weather_observations
-       WHERE ($1::timestamptz IS NULL OR observed_at <= $1)`,
+       WHERE ($1::timestamptz IS NULL OR weather_observations.observed_at <= $1)
+         AND ${EXCLUDE_DEKADAL_SOURCES}`,
       [before ? before.toISOString() : null],
     );
     return result.rows[0]?.day ?? null;
+  },
+
+  /**
+   * Dernier cumul de pluie décadaire publié par la DGM pour une commune.
+   *
+   * Attention à la sémantique : `precipitation_mm` porte ici un cumul sur
+   * 10 jours, pas une pluie horaire ou 24 h. Il est exposé par un endpoint et
+   * un panneau dédiés, jamais comme « pluie actuelle ».
+   */
+  async latestDekadalRainfall(communeId: string): Promise<{
+    observedAt: string;
+    rainfallMm: number | null;
+    dekadLabel: string | null;
+  } | null> {
+    const result = await db.query<{
+      observed_at: string;
+      precipitation_mm: string | null;
+      dekad: string | null;
+    }>(
+      `SELECT w.observed_at::text AS observed_at,
+              w.precipitation_mm::text AS precipitation_mm,
+              w.raw_data->>'dekad' AS dekad
+         FROM weather_observations w
+         JOIN weather_sources s ON s.id = w.weather_source_id
+        WHERE w.commune_id = $1
+          AND s.provider_type = 'DGM_MAPROOM'
+        ORDER BY w.observed_at DESC
+        LIMIT 1`,
+      [communeId],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      observedAt: row.observed_at,
+      rainfallMm: row.precipitation_mm !== null ? parseFloat(row.precipitation_mm) : null,
+      dekadLabel: row.dekad && row.dekad.trim() !== '' ? row.dekad : null,
+    };
+  },
+
+  /** Source des observations courantes (Open-Meteo), pour l'affichage UI. */
+  async observationSource(): Promise<{ name: string; providerType: string } | null> {
+    const result = await db.query<{ name: string; provider_type: string }>(
+      `SELECT name, provider_type
+         FROM weather_sources
+        WHERE provider_type = 'OPEN_METEO'
+        ORDER BY is_active DESC, name ASC
+        LIMIT 1`,
+    );
+    const row = result.rows[0];
+    return row ? { name: row.name, providerType: row.provider_type } : null;
   },
 
   async weatherSources(): Promise<

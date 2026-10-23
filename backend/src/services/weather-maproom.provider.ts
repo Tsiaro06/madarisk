@@ -108,7 +108,37 @@ export function parseIridlCsv(text: string): { points: GridSample[]; timeLabel: 
   return { points, timeLabel };
 }
 
-/** Convertit un label de décade (« 16-25 Fév 2026 » ou « 26 Fév 2026 ») en fin de décade (23:59:59Z). */
+/**
+ * Décalage de Madagascar (UTC+3, sans heure d'été).
+ *
+ * Une décade se termine à 23:59:59 heure LOCALE, soit 20:59:59 UTC. Utiliser
+ * `Date.UTC(..., 23, 59, 59)` datait la valeur trois heures trop tard : la DGM
+ * apparaissait plus fraîche qu'elle ne l'est (21/10 02:59 heure locale pour une
+ * décade close le 20/10) et pouvait même dépasser l'heure courante.
+ */
+const MADAGASCAR_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+const MONTH_LABELS_FR = [
+  'Jan',
+  'Fév',
+  'Mar',
+  'Avr',
+  'Mai',
+  'Juin',
+  'Juil',
+  'Août',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Déc',
+];
+
+/** Fin de journée LOCALE (Madagascar) convertie en instant UTC. */
+function localEndOfDayUtc(year: number, monthIndex: number, day: number): Date {
+  return new Date(Date.UTC(year, monthIndex, day, 23, 59, 59) - MADAGASCAR_OFFSET_MS);
+}
+
+/** Convertit un label de décade (« 16-25 Fév 2026 » ou « 26 Fév 2026 ») en fin de décade LOCALE. */
 export function parseDekadEndDate(label: string | null): Date | null {
   if (!label) return null;
   const range = label.match(/(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([A-Za-zéû]+)\s+(\d{4})/i);
@@ -121,7 +151,7 @@ export function parseDekadEndDate(label: string | null): Date | null {
   const year = Number(range ? target[4] : target[3]);
 
   if (!month || day < 1 || day > 31 || year < 2000 || year > 2100) return null;
-  return new Date(Date.UTC(year, month - 1, day, 23, 59, 59));
+  return localEndOfDayUtc(year, month - 1, day);
 }
 
 /**
@@ -134,21 +164,51 @@ export function parseDekadEndDate(label: string | null): Date | null {
  * et faisait passer la DGM pour la source la plus fraîche alors qu'elle publie
  * une donnée décennale.
  *
- * Les décades malgaches sont 1-10, 11-20 puis 21-fin du mois ; la décade en
- * cours n'étant pas achevée avant son dernier jour, on retient 11-20 dès le 11.
+ * Les décades malgaches sont 1-10, 11-20 puis 21-fin du mois. Une décade n'est
+ * publiée qu'une fois ACHEVÉE : le 11 on ne connaît que la décade 1-10, le 21
+ * que la 11-20. Rendre la fin de la décade en cours datait la valeur jusqu'à
+ * 9 jours dans le futur (onze jours pour une fin de mois).
+ *
+ * Les composantes de date sont lues en heure LOCALE (Madagascar) : à 01:00
+ * locale le 11, `getUTCDate()` renvoie encore le 10 et choisirait la mauvaise
+ * décade.
  */
 export function lastCompletedDekadEnd(reference: Date): Date {
-  const year = reference.getUTCFullYear();
-  const month = reference.getUTCMonth();
-  const day = reference.getUTCDate();
+  const local = new Date(reference.getTime() + MADAGASCAR_OFFSET_MS);
+  const year = local.getUTCFullYear();
+  const month = local.getUTCMonth();
+  const day = local.getUTCDate();
 
   if (day <= 10) {
     // Décade 21..fin du mois précédent.
     const lastDayOfPrevMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    return new Date(Date.UTC(year, month - 1, lastDayOfPrevMonth, 23, 59, 59));
+    return localEndOfDayUtc(year, month - 1, lastDayOfPrevMonth);
   }
-  // Décade 11-20, que l'on soit en 11-20 ou au-delà.
-  return new Date(Date.UTC(year, month, 20, 23, 59, 59));
+  if (day <= 20) {
+    // Décade 1-10, achevée le 10.
+    return localEndOfDayUtc(year, month, 10);
+  }
+  // Décade 11-20, achevée le 20.
+  return localEndOfDayUtc(year, month, 20);
+}
+
+/**
+ * Libellé de la décade dont `end` marque la fin (ex. « 11-20 Oct 2026 »).
+ *
+ * Le flux IRI ne renvoie pas toujours de libellé de période ; dériver celui-ci
+ * de la date d'observation permet d'afficher « cumul du 11 au 20 octobre »
+ * plutôt qu'un simple horodatage, sans jamais confondre ce cumul avec une pluie
+ * horaire.
+ */
+export function dekadLabelFromEnd(end: Date): string {
+  const local = new Date(end.getTime() + MADAGASCAR_OFFSET_MS);
+  const year = local.getUTCFullYear();
+  const month = local.getUTCMonth();
+  const day = local.getUTCDate();
+  const lastDayOfMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const startDay = day <= 10 ? 1 : day <= 20 ? 11 : 21;
+  const endDay = day <= 10 ? 10 : day <= 20 ? 20 : lastDayOfMonth;
+  return `${startDay}-${endDay} ${MONTH_LABELS_FR[month]} ${year}`;
 }
 
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -258,7 +318,25 @@ export class DgmMaproomProvider {
       );
     }
 
-    const observedAt = parseDekadEndDate(timeLabel) ?? lastCompletedDekadEnd(new Date());
+    const parsedObservation = parseDekadEndDate(timeLabel);
+    // Garde-fou : `.T/last` peut exposer la décade EN COURS (le libellé couvre
+    // toute la période alors que les valeurs s'accumulent encore). La dater
+    // dans le futur ferait passer la DGM pour la source la plus fraîche et
+    // contaminerait toute lecture de type « dernière observation ». On ne
+    // retient donc que les décades réellement achevées.
+    const now = new Date();
+    const isCompleted = parsedObservation !== null && parsedObservation.getTime() <= now.getTime();
+    const observedAt = isCompleted ? parsedObservation : lastCompletedDekadEnd(now);
+    if (parsedObservation && !isCompleted) {
+      logger.warn(
+        { dekad: timeLabel, parsedObservedAt: parsedObservation.toISOString() },
+        'Décade DGM datée dans le futur — repli sur la dernière décade achevée',
+      );
+    }
+    // Le libellé doit désigner la décade réellement datée : conserver celui du
+    // flux alors qu'on a replié sur la décade précédente afficherait une
+    // période qui ne correspond pas à la valeur.
+    const dekadLabel = isCompleted && timeLabel ? timeLabel : dekadLabelFromEnd(observedAt);
     const sourceId = await weatherRepository.getDgmSourceId();
     const existing = await weatherRepository.existingCommunesForDate(sourceId, observedAt);
     const targets = await weatherRepository.targetCommunes({});
@@ -297,7 +375,7 @@ export class DgmMaproomProvider {
         windDirectionDeg: null,
         pressureHpa: null,
         weatherCode: null,
-        rawData: { provider: 'dgm-maproom', dekad: timeLabel ?? null },
+        rawData: { provider: 'dgm-maproom', dekad: dekadLabel },
       });
       communesSampled += 1;
     }
@@ -306,7 +384,7 @@ export class DgmMaproomProvider {
 
     logger.info(
       {
-        dekad: timeLabel ?? null,
+        dekad: dekadLabel,
         gridPoints: points.length,
         communesSampled,
         alreadyPresent: existing.size,
@@ -317,7 +395,7 @@ export class DgmMaproomProvider {
     );
 
     return {
-      dekadLabel: timeLabel ?? '',
+      dekadLabel,
       observedAt: observedAt.toISOString(),
       gridPoints: points.length,
       communesSampled,

@@ -73,6 +73,28 @@ export interface WeatherMapLayerMeta {
    * carte « aujourd'hui » contient la météo du jour.
    */
   dataDay?: string | null;
+  /**
+   * Fournisseur des observations courantes (Open-Meteo). La DGM n'alimente que
+   * le cumul décadaire, exposé séparément — jamais cette couche.
+   */
+  source?: { name: string; providerType: string } | null;
+}
+
+/**
+ * Cumul de pluie décadaire officiel (Météo Madagascar / DGM).
+ *
+ * `rainfallMm` est un CUMUL sur ~10 jours, daté à la fin de la décade : ce n'est
+ * ni une pluie horaire ni un cumul 24 h. Il doit rester dans un bloc distinct,
+ * jamais fondu dans les indicateurs courants.
+ */
+export interface WeatherDekadalRainfall {
+  sourceName: string;
+  providerType: "DGM_MAPROOM";
+  dekadLabel: string;
+  observedAt: string;
+  periodDays: number;
+  isCumulative: true;
+  rainfallMm: number | null;
 }
 
 export interface WeatherRefreshResult {

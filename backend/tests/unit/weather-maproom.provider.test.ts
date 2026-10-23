@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  dekadLabelFromEnd,
   lastCompletedDekadEnd,
   parseDekadEndDate,
   parseIridlCsv,
@@ -55,19 +56,20 @@ describe('parseIridlCsv', () => {
 });
 
 describe('parseDekadEndDate', () => {
-  it('convertit une décade en fin de période UTC', () => {
+  it('convertit une décade en fin de période LOCALE (Madagascar, UTC+3)', () => {
     const date = parseDekadEndDate('16-25 Fév 2026');
-    expect(date?.toISOString()).toBe('2026-02-25T23:59:59.000Z');
+    // 25 février 23:59:59 à Madagascar = 20:59:59 UTC.
+    expect(date?.toISOString()).toBe('2026-02-25T20:59:59.000Z');
   });
 
   it('accepte les mois anglais', () => {
     const date = parseDekadEndDate('1-10 Mar 2026');
-    expect(date?.toISOString()).toBe('2026-03-10T23:59:59.000Z');
+    expect(date?.toISOString()).toBe('2026-03-10T20:59:59.000Z');
   });
 
   it('gère les libellés à jour unique', () => {
     const date = parseDekadEndDate('26 Apr 2026');
-    expect(date?.toISOString()).toBe('2026-04-26T23:59:59.000Z');
+    expect(date?.toISOString()).toBe('2026-04-26T20:59:59.000Z');
   });
 
   it('retourne null si le libellé est invalide', () => {
@@ -79,28 +81,46 @@ describe('parseDekadEndDate', () => {
 describe('lastCompletedDekadEnd', () => {
   it('retombe sur la fin du mois précédent pendant la décade 1-10', () => {
     expect(lastCompletedDekadEnd(new Date('2026-02-05T00:00:00Z')).toISOString()).toBe(
-      '2026-01-31T23:59:59.000Z',
+      '2026-01-31T20:59:59.000Z',
     );
   });
 
-  it('retombe sur la décade 11-20 à partir du 11', () => {
+  it('retombe sur la décade 1-10 (achevée le 10) du 11 au 20', () => {
     expect(lastCompletedDekadEnd(new Date('2026-02-11T00:00:00Z')).toISOString()).toBe(
-      '2026-02-20T23:59:59.000Z',
+      '2026-02-10T20:59:59.000Z',
+    );
+    expect(lastCompletedDekadEnd(new Date('2026-02-20T12:00:00Z')).toISOString()).toBe(
+      '2026-02-10T20:59:59.000Z',
     );
   });
 
-  it('reste sur la décade 11-20 une fois la décade 21- commencée', () => {
-    expect(lastCompletedDekadEnd(new Date('2026-02-25T12:00:00Z')).toISOString()).toBe(
-      '2026-02-20T23:59:59.000Z',
+  it('retombe sur la décade 11-20 (achevée le 20) à partir du 21', () => {
+    expect(lastCompletedDekadEnd(new Date('2026-02-21T00:00:00Z')).toISOString()).toBe(
+      '2026-02-20T20:59:59.000Z',
     );
+    expect(lastCompletedDekadEnd(new Date('2026-02-25T12:00:00Z')).toISOString()).toBe(
+      '2026-02-20T20:59:59.000Z',
+    );
+  });
+
+  it('ne date jamais dans le futur (fin de mois)', () => {
+    const reference = new Date('2026-02-28T10:00:00Z');
+    const end = lastCompletedDekadEnd(reference);
+    expect(end.getTime()).toBeLessThan(reference.getTime());
+    expect(end.toISOString()).toBe('2026-02-20T20:59:59.000Z');
+  });
+
+  it('lit les composantes de date en heure locale (bascule de mois à 21 h UTC)', () => {
+    // 28/02 23:59:59 UTC = 01/03 02:59 locale : la décade 21-28 février est
+    // achevée, la décade 1-10 mars ne fait que commencer.
     expect(lastCompletedDekadEnd(new Date('2026-02-28T23:59:59Z')).toISOString()).toBe(
-      '2026-02-20T23:59:59.000Z',
+      '2026-02-28T20:59:59.000Z',
     );
   });
 
   it('gère le changement d’année en janvier', () => {
     expect(lastCompletedDekadEnd(new Date('2026-01-03T00:00:00Z')).toISOString()).toBe(
-      '2025-12-31T23:59:59.000Z',
+      '2025-12-31T20:59:59.000Z',
     );
   });
 
@@ -108,6 +128,14 @@ describe('lastCompletedDekadEnd', () => {
     const matin = lastCompletedDekadEnd(new Date('2026-03-04T01:00:00Z'));
     const soir = lastCompletedDekadEnd(new Date('2026-03-04T22:30:00Z'));
     expect(matin.toISOString()).toBe(soir.toISOString());
+  });
+});
+
+describe('dekadLabelFromEnd', () => {
+  it('libelle la décade à partir de sa fin locale', () => {
+    expect(dekadLabelFromEnd(new Date('2026-10-20T20:59:59Z'))).toBe('11-20 Oct 2026');
+    expect(dekadLabelFromEnd(new Date('2026-10-10T20:59:59Z'))).toBe('1-10 Oct 2026');
+    expect(dekadLabelFromEnd(new Date('2026-10-31T20:59:59Z'))).toBe('21-31 Oct 2026');
   });
 });
 
