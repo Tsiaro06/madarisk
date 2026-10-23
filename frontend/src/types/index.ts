@@ -44,6 +44,13 @@ export interface PaginationMeta {
   limit: number;
   total: number;
   totalPages: number;
+  /**
+   * Couverture globale renvoyée par `GET /risks/priority-communes` : communes
+   * évaluées tous filtres confondus. `total`, lui, ne compte que les résultats
+   * filtrés — les deux chiffres peuvent donc différer (0 vs 1 577 quand
+   * l'événement filtré n'a aucune évaluation).
+   */
+  coverageTotal?: number;
 }
 
 export interface SanitizedUser {

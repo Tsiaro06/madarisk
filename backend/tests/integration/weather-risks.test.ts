@@ -486,6 +486,45 @@ describe('Risques - recalcul lié à un événement', () => {
     expect(res.body.data[0].color).toBeDefined();
   });
 
+  it('compte les communes filtrées et garde la couverture globale à part', async () => {
+    const res = await request(app)
+      .get(`/api/v1/risks/priority-communes?eventId=${eventId}`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    // `total` décrit l'événement filtré, `coverageTotal` la couverture globale :
+    // les confondre affichait « 1 577 communes évaluées » sur une liste vide.
+    expect(res.body.meta.total).toBeGreaterThanOrEqual(1);
+    expect(res.body.meta.coverageTotal).toBeGreaterThanOrEqual(res.body.meta.total);
+  });
+
+  it('renvoie total = 0 pour un événement sans évaluation, sans perdre la couverture', async () => {
+    const emptyEventId = await createEvent(admin.token);
+    const res = await request(app)
+      .get(`/api/v1/risks/priority-communes?eventId=${emptyEventId}`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.meta.total).toBe(0);
+    expect(res.body.meta.coverageTotal).toBeGreaterThan(0);
+  });
+
+  it('filtre réellement sur la phase demandée', async () => {
+    const matching = await request(app)
+      .get(`/api/v1/risks/priority-communes?eventId=${eventId}&phase=PENDANT`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(matching.status).toBe(200);
+    expect(matching.body.meta.total).toBeGreaterThan(0);
+
+    // Le validateur supprimait `phase` : la liste ignorait le filtre alors que
+    // la carte l'appliquait, d'où des résultats incohérents entre les deux.
+    const other = await request(app)
+      .get(`/api/v1/risks/priority-communes?eventId=${eventId}&phase=AVANT`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(other.status).toBe(200);
+    expect(other.body.data).toEqual([]);
+    expect(other.body.meta.total).toBe(0);
+  });
+
   it('rejette un recalcul sans phase', async () => {
     const res = await request(app)
       .post(`/api/v1/events/${eventId}/risks/recalculate`)

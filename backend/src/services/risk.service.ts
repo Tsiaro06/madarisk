@@ -545,24 +545,42 @@ export const risksService = {
     };
   },
 
+  /**
+   * Communes prioritaires filtrées + couverture globale.
+   *
+   * `total` décrit les communes retenues par les filtres (il vaut 0 si
+   * l'événement choisi n'a aucune évaluation), tandis que `coverageTotal`
+   * reste le nombre de communes évaluées tous filtres confondus : les deux
+   * chiffres ne répondent pas à la même question et l'interface doit pouvoir
+   * afficher l'un sans faire croire que l'autre est filtré.
+   */
   async priorityCommunes(query: {
     eventId?: string;
     districtId?: string;
     riskLevel?: RiskLevel;
+    phase?: RiskPhase;
     limit: number;
     offset: number;
-  }): Promise<PaginatedResult<PriorityCommune>> {
+  }): Promise<PaginatedResult<PriorityCommune> & { coverageTotal: number }> {
     const configuration = await risksRepository.getActiveConfiguration();
     const { thresholds } = asConfiguration(configuration);
 
-    const total = await risksRepository.countAssessedCommunes();
-    const rows = await risksRepository.priorityCommunes(query);
-    const items = rows.map((r) => {
+    const [coverageTotal, page] = await Promise.all([
+      risksRepository.countAssessedCommunes(),
+      risksRepository.priorityCommunes(query),
+    ]);
+    const items = page.items.map((r) => {
       const presentation = presentationFor(r.riskScore, thresholds);
       return { ...r, ...presentation };
     });
 
-    return { items, page: query.offset / query.limit + 1, limit: query.limit, total };
+    return {
+      items,
+      page: query.offset / query.limit + 1,
+      limit: query.limit,
+      total: page.total,
+      coverageTotal,
+    };
   },
 
   async mapLayer(query: {

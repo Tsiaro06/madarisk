@@ -128,6 +128,7 @@ export interface PriorityQuery {
   eventId?: string;
   districtId?: string;
   riskLevel?: RiskLevel;
+  phase?: RiskPhase;
   limit: number;
   offset: number;
 }
@@ -518,7 +519,18 @@ export const risksRepository = {
     };
   },
 
-  async priorityCommunes(query: PriorityQuery): Promise<PriorityCommune[]> {
+  /**
+   * Communes prioritaires, une ligne par commune (dernière évaluation, tous
+   * événements confondus ou pour l'événement demandé).
+   *
+   * Le total est compté dans la requête (`count(*) OVER ()`) et non par un
+   * second appel sans filtres : la page affichait « 1 577 communes évaluées »
+   * en sélectionnant un événement qui n'en avait aucune, et le compteur ne
+   * pouvait donc pas servir à décider s'il fallait afficher « aucun résultat ».
+   */
+  async priorityCommunes(
+    query: PriorityQuery,
+  ): Promise<{ items: PriorityCommune[]; total: number }> {
     const conditions: string[] = [];
     const values: unknown[] = [];
     let idx = 1;
@@ -535,6 +547,10 @@ export const risksRepository = {
       conditions.push(`ra.risk_level = $${idx++}::risk_level`);
       values.push(query.riskLevel);
     }
+    if (query.phase) {
+      conditions.push(`ra.phase = $${idx++}::risk_phase`);
+      values.push(query.phase);
+    }
 
     const baseWhere = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -548,6 +564,7 @@ export const risksRepository = {
       riskLevel: RiskLevel;
       population: number | null;
       assessedAt: string;
+      totalCount: string;
     }>(
       `WITH latest AS (
          SELECT DISTINCT ON (ra.commune_id)
@@ -566,7 +583,10 @@ export const risksRepository = {
          l.risk_score::text AS "riskScore",
          l.risk_level AS "riskLevel",
          c.population,
-         l.assessed_at AS "assessedAt"
+         l.assessed_at AS "assessedAt",
+         -- Compté avant LIMIT/OFFSET : c'est le nombre de communes réellement
+         -- retenues par les filtres, pas la couverture globale.
+         count(*) OVER ()::text AS "totalCount"
        FROM latest l
        JOIN communes c ON c.id = l.commune_id
        LEFT JOIN districts d ON d.id = c.district_id
@@ -575,7 +595,7 @@ export const risksRepository = {
       [...values, query.limit, query.offset],
     );
 
-    return result.rows.map((r) => ({
+    const items = result.rows.map((r) => ({
       communeId: r.communeId,
       communeCode: r.communeCode,
       communeName: r.communeName,
@@ -588,6 +608,11 @@ export const risksRepository = {
       population: r.population,
       assessedAt: r.assessedAt,
     }));
+
+    return {
+      items,
+      total: Number(result.rows[0]?.totalCount ?? 0),
+    };
   },
 
   /**

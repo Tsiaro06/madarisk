@@ -146,6 +146,10 @@ export const priorityCommunesQuerySchema = z.object({
   eventId: z.string().uuid("Identifiant d'événement invalide").optional(),
   districtId: z.string().uuid('Identifiant de district invalide').optional(),
   riskLevel: riskLevelEnum.optional(),
+  // Déjà annoncé par la spécification OpenAPI et envoyé par la page Niveaux de
+  // risque, mais absent du validateur : Zod supprimait le paramètre en
+  // silence, si bien que le filtre « Phase » ne s'appliquait qu'à la carte.
+  phase: riskPhaseEnum.optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
 });

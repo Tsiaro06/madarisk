@@ -85,7 +85,12 @@ export const risksController = {
   priorityCommunes: async (req: Request, res: Response): Promise<void> => {
     const query = req.validatedQuery as PriorityCommunesQuery;
     const result = await risksService.priorityCommunes(query);
-    const meta = paginate(result.page, result.limit, result.total);
+    // `total` suit les filtres ; `coverageTotal` garde la couverture globale
+    // (tous événements/phases confondus) pour l'en-tête de la page.
+    const meta = {
+      ...paginate(result.page, result.limit, result.total),
+      coverageTotal: result.coverageTotal,
+    };
     res.status(200).json(successResponse(result.items, 'Communes prioritaires', meta));
   },
 

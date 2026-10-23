@@ -58,7 +58,7 @@ beforeEach(() => {
   api.listDistricts.mockResolvedValue({ data: [], meta: undefined });
   api.priorityDetailed.mockResolvedValue({
     data: [],
-    meta: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    meta: { page: 1, limit: 20, total: 0, totalPages: 0, coverageTotal: 0 },
   });
   api.mapLayer.mockResolvedValue({ type: 'FeatureCollection', features: [] });
   api.recalculate.mockResolvedValue({ phase: 'PENDANT', totalCommunes: 0 });
@@ -89,7 +89,7 @@ describe('RisquesPage — couverture et états vides', () => {
           assessedAt: '2026-10-20T10:00:00.000Z',
         },
       ],
-      meta: { page: 1, limit: 20, total: 1579, totalPages: 79 },
+      meta: { page: 1, limit: 20, total: 1579, totalPages: 79, coverageTotal: 1579 },
     });
     api.mapLayer.mockResolvedValue({
       type: 'FeatureCollection',
@@ -99,30 +99,83 @@ describe('RisquesPage — couverture et états vides', () => {
     renderPage();
 
     expect(await screen.findByRole('link', { name: 'Ambanizana' })).toBeInTheDocument();
-    // La couverture provient du meta.total, pas seulement des 20 lignes affichées.
+    // La couverture provient du meta (globale), pas seulement des 20 lignes affichées.
     expect(await screen.findByText(/1\s?579 commune\(s\) évaluée\(s\)/i)).toBeInTheDocument();
   });
 
-  it('distingue « aucun résultat pour ces filtres » d une absence de données', async () => {
-    api.priorityDetailed.mockResolvedValue({
+  it('distingue « aucune évaluation pour ces filtres » d une absence de données', async () => {
+    // Le backend compte désormais les communes filtrées dans `total` et laisse
+    // la couverture globale dans `coverageTotal`.
+    api.priorityDetailed.mockImplementation(async (params?: { riskLevel?: string }) => ({
       data: [],
-      meta: { page: 1, limit: 20, total: 1579, totalPages: 79 },
-    });
+      meta:
+        params?.riskLevel === 'EXTREME'
+          ? { page: 1, limit: 20, total: 0, totalPages: 0, coverageTotal: 1577 }
+          : { page: 1, limit: 20, total: 1577, totalPages: 79, coverageTotal: 1577 },
+    }));
 
     const user = userEvent.setup();
     renderPage();
 
     // Aucun filtre : pas de message « filtré ».
     await waitFor(() =>
-      expect(screen.queryByText(/Aucun résultat pour ces filtres/i)).not.toBeInTheDocument(),
+      expect(screen.queryByText(/Aucune évaluation pour ces filtres/i)).not.toBeInTheDocument(),
     );
 
     await user.selectOptions(screen.getByLabelText('Niveau'), 'EXTREME');
 
     expect(
-      await screen.findByText(/Aucun résultat pour ces filtres/i),
+      await screen.findByText(/Aucune évaluation pour ces filtres/i),
     ).toBeInTheDocument();
+    // La couverture globale reste annoncée, mais sans prétendre qu'elle est filtrée.
+    expect(
+      screen.getByText(/1\s?577 commune\(s\) sont évaluées pour d'autres événements ou phases/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/pourtant évaluées/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Aucune évaluation de risque enregistrée/i)).not.toBeInTheDocument();
+  });
+
+  it('explique qu un événement clôturé n a aucune évaluation', async () => {
+    api.listEvents.mockResolvedValue({
+      data: [
+        {
+          id: 'ev-closed',
+          eventCode: 'CY-2022',
+          name: 'Cyclone Batsirai — février 2022',
+          status: 'CLOTURE',
+        },
+      ],
+      meta: undefined,
+    });
+    api.priorityDetailed.mockImplementation(async (params?: { eventId?: string }) => ({
+      data: [],
+      meta: params?.eventId
+        ? { page: 1, limit: 20, total: 0, totalPages: 0, coverageTotal: 1577 }
+        : { page: 1, limit: 20, total: 1577, totalPages: 79, coverageTotal: 1577 },
+    }));
+
+    const user = userEvent.setup();
+    renderPage();
+
+    // Attendre que la liste d'événements soit chargée avant de sélectionner.
+    await screen.findByRole('option', { name: /Cyclone Batsirai/ });
+    await user.selectOptions(screen.getByLabelText('Événement'), 'ev-closed');
+
+    expect(await screen.findByText(/événement est clôturé/i)).toBeInTheDocument();
+    expect(screen.queryByText(/pourtant évaluées/i)).not.toBeInTheDocument();
+  });
+
+  it('transmet la phase au backend pour garder liste et carte alignées', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.selectOptions(screen.getByLabelText('Phase'), 'AVANT');
+
+    await waitFor(() =>
+      expect(api.priorityDetailed).toHaveBeenCalledWith(
+        expect.objectContaining({ phase: 'AVANT' }),
+      ),
+    );
   });
 });
 

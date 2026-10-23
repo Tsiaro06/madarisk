@@ -2894,7 +2894,17 @@ paths:
                   data:
                     type: array
                     items: { $ref: '#/components/schemas/CommuneRisk' }
-                  meta: { $ref: '#/components/schemas/PaginationMeta' }
+                  meta:
+                    allOf:
+                      - $ref: '#/components/schemas/PaginationMeta'
+                      - type: object
+                        properties:
+                          coverageTotal:
+                            type: integer
+                            description: >
+                              Communes évaluées tous filtres confondus (couverture globale), alors
+                              que `total` suit les filtres de la requête.
+                            example: 1577
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':

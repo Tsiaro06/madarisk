@@ -127,11 +127,18 @@ export function RisquesPage() {
       ? 'district sélectionné'
       : 'toutes les communes (global)';
 
-  const coverageTotal = priorityQ.data?.meta?.total ?? 0;
+  // `total` suit les filtres (il vaut 0 pour un événement sans évaluation) ;
+  // `coverageTotal` reste la couverture globale. Les confondre faisait écrire
+  // « 1 577 communes sont pourtant évaluées » alors que la liste filtrée était
+  // vide, en laissant croire à un simple problème d'affichage.
+  const filteredTotal = priorityQ.data?.meta?.total ?? 0;
+  const coverageTotal = priorityQ.data?.meta?.coverageTotal ?? filteredTotal;
   const mapCount = mapQ.data?.features.length ?? 0;
   const hasFilters = Boolean(filterEventId || filterPhase || filterLevel);
   const noAssessments = !priorityQ.isLoading && coverageTotal === 0 && !hasFilters;
-  const emptyBecauseFilters = !priorityQ.isLoading && mapCount === 0 && hasFilters;
+  const emptyBecauseFilters = !priorityQ.isLoading && filteredTotal === 0 && hasFilters;
+  const selectedEvent = (eventsQ.data?.data ?? []).find((ev) => ev.id === filterEventId);
+  const selectedEventClosed = selectedEvent?.status === 'CLOTURE';
 
   const clearFilters = () => {
     setFilterEventId('');
@@ -232,9 +239,15 @@ export function RisquesPage() {
       ) : null}
 
       {emptyBecauseFilters ? (
-        <AlertBanner tone="info" title="Aucun résultat pour ces filtres">
-          {formatNumber(coverageTotal)} commune(s) sont pourtant évaluées : élargissez ou
-          réinitialisez les filtres pour les faire réapparaître.{' '}
+        <AlertBanner tone="info" title="Aucune évaluation pour ces filtres">
+          {filterEventId
+            ? selectedEventClosed
+              ? "Cet événement est clôturé : aucune évaluation de risque n'a été enregistrée, et le calcul automatique ne couvre que les événements actifs."
+              : "Aucune évaluation de risque n'est encore enregistrée pour cet événement."
+            : 'Aucune évaluation de risque ne correspond à ces filtres.'}{' '}
+          {coverageTotal > 0
+            ? `${formatNumber(coverageTotal)} commune(s) sont évaluées pour d'autres événements ou phases : élargissez ou réinitialisez les filtres.`
+            : null}{' '}
           <button type="button" className="underline" onClick={clearFilters}>
             Réinitialiser
           </button>
@@ -281,10 +294,11 @@ export function RisquesPage() {
                   ))}
                 </tbody>
               </table>
-              {coverageTotal > PRIORITY_LIMIT ? (
+              {filteredTotal > PRIORITY_LIMIT ? (
                 <p className="mt-2 text-xs text-muted">
                   Les {PRIORITY_LIMIT} communes au score le plus élevé —{' '}
-                  {formatNumber(coverageTotal)} évaluées au total.
+                  {formatNumber(filteredTotal)} évaluée(s)
+                  {hasFilters ? ' pour ces filtres' : ' au total'}.
                 </p>
               ) : null}
             </div>
