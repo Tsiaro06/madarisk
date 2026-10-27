@@ -107,7 +107,8 @@ export function ImportEventBulletinModal({ open, onClose }: ImportEventBulletinM
       const res = await eventBulletinsImportApi.import(form) as any;
       const data = res?.data || res;
       toast("Bulletin importé avec succès", "success");
-      await qc.invalidateQueries({ queryKey: ["events"] });
+      await qc.invalidateQueries({ queryKey: ["events"], exact: false });
+      await qc.refetchQueries({ queryKey: ["events", "selector"], exact: true });
       if (data?.eventId) {
         setActiveEventId(data.eventId);
       }
