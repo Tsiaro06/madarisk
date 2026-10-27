@@ -4,6 +4,7 @@ import { DetectedBulletin, EventBulletinPreviewResult } from '../../types/event-
 import { isIbtracsLike, parseIbtracsFile } from './parsers/ibtracs';
 import { parseGenericCsv } from './parsers/generic-csv';
 import { parseGenericJson } from './parsers/generic-json';
+import { parsePdfBulletin } from './parsers/pdf-bulletin';
 
 export async function detectAndParseFiles(files: string[]): Promise<EventBulletinPreviewResult> {
   const warnings: string[] = [];
@@ -73,7 +74,29 @@ export async function detectAndParseFiles(files: string[]): Promise<EventBulleti
   }
 
   if (!best) {
-    warnings.push('Aucun fichier de trajectoire détecté automatiquement. Vérifie le format (CSV/JSON/GeoJSON ou archive IBTrACS).');
+    for (const filePath of files) {
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.pdf') {
+        try {
+          const points = await parsePdfBulletin(filePath);
+          if (points.length > 0) {
+            const cand: DetectedBulletin = {
+              parser: 'DGM',
+              confidence: 70,
+              filePath,
+              points,
+            };
+            if (!best || cand.points.length > best.points.length) best = cand;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+  }
+
+  if (!best) {
+    warnings.push('Aucun fichier de trajectoire détecté automatiquement. Vérifie le format (CSV/JSON/GeoJSON/PDF ou archive IBTrACS).');
     return {
       parser: 'UNKNOWN',
       confidence: 0,
