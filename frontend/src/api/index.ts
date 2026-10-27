@@ -249,6 +249,11 @@ export const eventsApi = {
     apiGet<FeatureCollection>(`/events/${id}/exposure-geojson`),
 };
 
+export const eventBulletinsImportApi = {
+  preview: (form: FormData) => apiPost("/events/bulletins/preview", form),
+  import: (form: FormData) => apiPost("/events/bulletins/import", form),
+};
+
 export const alertsApi = {
   list: (params?: Record<string, string | number | boolean | undefined>) =>
     apiGetPage<AlertListRow[]>("/alerts", { params }),
