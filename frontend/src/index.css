@@ -300,20 +300,9 @@ h3 {
 }
 
 /* ------------------------------------------------------------------
-   Marqueur cyclone (carte historique Batsirai) : pastille violette
-   ancrée sur le centre observé, spirale interne en rotation lente.
-   La position vient de la trajectoire importée (best track) ; seule
-   la rotation est décorative.
+   Marqueur cyclone : centre du cyclone vu de dessus, icône SVG vectorielle
+   à fond transparent, ancrée sur l'œil au centre de la position.
    ------------------------------------------------------------------ */
-@keyframes madarisk-cyclone-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 .madarisk-cyclone-icon {
   background: transparent;
   border: 0;
@@ -325,21 +314,13 @@ h3 {
   justify-content: center;
   width: 100%;
   height: 100%;
-  border-radius: 9999px;
-  background: radial-gradient(circle at 32% 26%, #a78bfa 0%, #7c3aed 58%, #6d28d9 100%);
-  border: 2px solid #5b21b6;
-  box-shadow:
-    0 0 0 6px rgba(124, 58, 237, 0.25),
-    0 6px 14px -4px rgba(49, 22, 96, 0.55);
+  background: transparent;
 }
 
-.madarisk-cyclone-marker__spin {
-  width: 68%;
-  height: 68%;
-  transform-origin: center;
-  transform-box: fill-box;
-  animation: madarisk-cyclone-spin 6s linear infinite;
-  will-change: transform;
+.madarisk-cyclone-marker svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 /* Conteneur du `divIcon` de l'étiquette : taille nulle, seul le texte compte. */

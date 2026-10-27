@@ -15,24 +15,31 @@ import {
 } from '@/lib/historical';
 import type { TrackStatePoint } from '@/types';
 
-const MIN_SIZE_PX = 34;
-const MAX_SIZE_PX = 48;
+const DEFAULT_SIZE_PX = 48;
 
-/**
- * Spirale purement décorative : aucune donnée n'y est encodée, seule la
- * rotation CSS anime le marqueur (coupée par `prefers-reduced-motion`).
- */
-const SPIRAL_SVG = `
-<svg class="madarisk-cyclone-marker__spin" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-  <path d="M16 3 A13 13 0 0 1 29 16 A11 11 0 0 1 16 27 A9 9 0 0 1 7 16 A7 7 0 0 1 16 9 A5 5 0 0 1 21 16 A3 3 0 0 1 16 19"
-    stroke="#ffffff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+const CYCLONE_CENTER_SVG = `
+<svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+  <defs>
+    <radialGradient id="madarisk-cyclone-inner" cx="50%" cy="46%" r="58%">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="65%" stop-color="#38bdf8"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </radialGradient>
+  </defs>
+  <g>
+    <path d="M 24 4 A 20 20 0 1 1 23.999 4 Z M 24 8.5 A 15.5 15.5 0 1 0 24.001 8.5 Z" fill="#bfdbfe"/>
+    <path d="M 24 6.8 A 17.2 17.2 0 1 1 23.999 6.8 Z M 24 11 A 13 13 0 1 0 24.001 11 Z" fill="#93c5fd"/>
+    <path d="M 24 9.8 A 14.2 14.2 0 1 1 23.999 9.8 Z M 24 13.2 A 10.8 10.8 0 1 0 24.001 13.2 Z" fill="#60a5fa"/>
+    <path d="M 24 12.8 A 11.2 11.2 0 1 1 23.999 12.8 Z M 24 16 A 8 8 0 1 0 24.001 16 Z" fill="#3b82f6"/>
+    <circle cx="24" cy="24" r="6.6" fill="url(#madarisk-cyclone-inner)"/>
+    <circle cx="24" cy="24" r="2.2" fill="#1e40af"/>
+  </g>
 </svg>`;
 
-function sizeForZoom(zoom: number): number {
-  return Math.round(Math.min(MAX_SIZE_PX, Math.max(MIN_SIZE_PX, 34 + (zoom - 4) * 3)));
+function sizeForZoom(_zoom: number): number {
+  return DEFAULT_SIZE_PX;
 }
 
-/** Échappe un texte injecté dans le HTML d'un `divIcon` (aucune balise autorisée). */
 function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -42,7 +49,6 @@ function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
-/** Taille du marqueur (34–48 px) suivant le zoom, sans recréer la carte. */
 function useZoomBasedSize(): number {
   const map = useMap();
   const readZoom = () => (typeof map?.getZoom === 'function' ? map.getZoom() : 6);
@@ -132,23 +138,14 @@ function TooltipContent({
 }
 
 interface CycloneMarkerProps {
-  /** Position [lat, lng] : exacte, ou interpolée entre deux points vérifiés. */
   position: [number, number];
-  /** Point observé de référence : toutes les valeurs viennent de lui. */
   point: TrackStatePoint;
-  /** Vrai lorsque la position est interpolée (donnée inchangée). */
   interpolated: boolean;
-  /** Nom de l'événement, ex. « Batsirai — février 2022 ». */
   eventName: string;
   sourceName?: string | null;
   sourceUrl?: string | null;
 }
 
-/**
- * Marqueur violet animé du centre observé. Les valeurs du tooltip/du popup
- * viennent du point importé ; la position peut être interpolée entre deux
- * points vérifiés pour la fluidité, sans jamais inventer de mesure.
- */
 export function CycloneMarker({
   position,
   point,
@@ -164,25 +161,13 @@ export function CycloneMarker({
     () =>
       L.divIcon({
         className: 'madarisk-cyclone-icon',
-        html: `<div class="madarisk-cyclone-marker">${SPIRAL_SVG}</div>`,
+        html: `<div class="madarisk-cyclone-marker">${CYCLONE_CENTER_SVG}</div>`,
         iconSize: [size, size],
         iconAnchor: [size / 2, size / 2],
       }),
     [size],
   );
 
-  /**
-   * Étiquette du rayon documenté, solidaire du centre affiché : elle voyage donc
-   * avec l'œil pendant la lecture animée. Son rôle est de rendre lisible le
-   * changement de taille de l'anneau — quand il grossit ou se contracte, c'est
-   * qu'une nouvelle mesure publiée vient d'être atteinte, et la date affichée le
-   * dit. Valeur et horodatage sont repris tels quels : aucune valeur n'est
-   * interpolée, l'étiquette n'existe que si un rayon est publié.
-   *
-   * Elle reste volontairement minimale (seuil, valeur, date) : la provenance
-   * complète — autorité, archive, version, identifiant de la tempête — reste
-   * dans l'infobulle de l'anneau et le popup du marqueur, pas sur la carte.
-   */
   const radiusLabelIcon = useMemo(() => {
     if (!radius) return null;
     const html = [
@@ -209,11 +194,6 @@ export function CycloneMarker({
 
   return (
     <>
-      {/*
-        Étiquette du rayon : non interactive (elle ne capte ni clic ni survol) et
-        solidaire du centre affiché, pour expliquer à l'écran le changement de
-        taille de l'anneau sans qu'il faille survoler quoi que ce soit.
-      */}
       {radiusLabelIcon ? (
         <Marker
           position={position}
@@ -224,30 +204,16 @@ export function CycloneMarker({
         />
       ) : null}
 
-      {/*
-        Zone d'influence du cyclone : le rayon de vent documenté (RSMC) est
-        dessiné en anneau rempli pour rester lisible comme sur les cartes de
-        vigilance, tout en gardant un contour pointillé qui la distingue des
-        zones administratives pleines. Aucune donnée inventée : le cercle
-        n'existe que lorsqu'une source publie le rayon.
-
-        L'anneau est centré sur la position AFFICHÉE (`position`, éventuellement
-        interpolée entre deux points vérifiés) et suit donc le déplacement de
-        l'œil au lieu de sauter d'un point observé au suivant. Son RAYON, lui,
-        reste celui publié pour le point observé de référence : il n'est jamais
-        interpolé, la taille ne change donc qu'à l'arrivée sur un point daté —
-        changement que l'étiquette ci-dessus nomme et date.
-      */}
       {radius ? (
         <Circle
           center={position}
           radius={radius.km * 1000}
           pathOptions={{
-            color: CYCLONE_VIOLET_DEEP,
+            color: '#2563eb',
             weight: 2,
             dashArray: '8 6',
-            fillColor: CYCLONE_VIOLET,
-            fillOpacity: 0.16,
+            fillColor: '#bfdbfe',
+            fillOpacity: 0.18,
           }}
         >
           <Tooltip>
