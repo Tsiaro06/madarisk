@@ -9,6 +9,9 @@ import {
   ZoomControl,
   useMap,
 } from 'react-leaflet';
+import MarkerClusterGroup from 'react-leaflet-cluster';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
+import 'leaflet.markercluster/dist/MarkerCluster.Default.css';
 import { Link } from 'react-router-dom';
 import type { Feature, FeatureCollection, Geometry } from 'geojson';
 import type { Layer, PathOptions } from 'leaflet';
@@ -937,31 +940,45 @@ export function CrisisMap({
       ) : null}
 
       {showWeather && weatherLayer ? (
-        <GeoJSON
-          data={weatherLayer}
-          pointToLayer={(_, latlng) =>
-            L.circleMarker(latlng, {
-              radius: 6,
-              color: '#8a7355',
-              weight: 1,
-              fillColor: '#c4b07a',
-              fillOpacity: 0.55,
-            })
-          }
-          onEachFeature={(feature, layer) => {
-            const p = (feature.properties ?? {}) as Record<string, unknown>;
-            layer.bindTooltip(
-              [
-                featureName(p),
-                p.temperatureC != null ? `Temp : ${String(p.temperatureC)} °C` : null,
-                p.precipitationMm != null ? `Pluie : ${String(p.precipitationMm)} mm` : null,
-                p.windSpeedKmh != null ? `Vent : ${String(p.windSpeedKmh)} km/h` : null,
-              ]
-                .filter(Boolean)
-                .join('<br/>'),
-            );
-          }}
-        />
+        <MarkerClusterGroup chunkedLoading>
+          <GeoJSON
+            data={weatherLayer}
+            pointToLayer={(_, latlng) =>
+              L.circleMarker(latlng, {
+                radius: 6,
+                color: '#8a7355',
+                weight: 1,
+                fillColor: '#c4b07a',
+                fillOpacity: 0.55,
+              })
+            }
+            onEachFeature={(feature, layer) => {
+              const p = (feature.properties ?? {}) as Record<string, unknown>;
+              layer.bindTooltip(
+                [
+                  featureName(p),
+                  p.temperatureC != null ? `Temp : ${String(p.temperatureC)} °C` : null,
+                  p.precipitationMm != null ? `Pluie : ${String(p.precipitationMm)} mm` : null,
+                  p.windSpeedKmh != null ? `Vent : ${String(p.windSpeedKmh)} km/h` : null,
+                ]
+                  .filter(Boolean)
+                  .join('<br/>'),
+              );
+              layer.bindPopup(
+                [
+                  `<strong>${featureName(p)}</strong>`,
+                  p.temperatureC != null ? `Température : ${String(p.temperatureC)} °C` : null,
+                  p.precipitationMm != null ? `Précipitations : ${String(p.precipitationMm)} mm` : null,
+                  p.windSpeedKmh != null ? `Vent : ${String(p.windSpeedKmh)} km/h` : null,
+                  p.humidityPercent != null ? `Humidité : ${String(p.humidityPercent)} %` : null,
+                  p.pressureHpa != null ? `Pression : ${String(p.pressureHpa)} hPa` : null,
+                ]
+                  .filter(Boolean)
+                  .join('<br/>'),
+              );
+            }}
+          />
+        </MarkerClusterGroup>
       ) : null}
 
       {showEvent && activeEvent ? (
