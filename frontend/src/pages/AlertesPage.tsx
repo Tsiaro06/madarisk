@@ -376,12 +376,38 @@ export function AlertesPage() {
                             <span className="inline-flex items-center gap-1">
                               <CalendarClock className="size-3" />
                               {(() => {
+                                const now = new Date();
+                                const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                                const validFromDate = a.validFrom ? new Date(a.validFrom) : null;
+                                const isPast =
+                                  validFromDate != null &&
+                                  validFromDate.getTime() < todayStart.getTime();
+                                const isPublished = a.status === 'PUBLIEE';
+
+                                if (isPast && isPublished) {
+                                  if (validFromDate) {
+                                    return `En vigueur depuis le ${validFromDate.toLocaleDateString(
+                                      'fr-FR',
+                                      { timeZone: 'Indian/Antananarivo' },
+                                    )}`;
+                                  }
+                                }
+
                                 const m =
                                   a.message.match(/prévue pour le (\d{2}\/\d{2}\/\d{4})/i) ||
                                   a.message.match(/prévue du (\d{2}\/\d{2}\/\d{4})/i);
-                                if (m?.[1]) return `Prévu pour le ${m[1]}`;
-                                if (a.validFrom) {
-                                  return `Prévu pour le ${new Date(a.validFrom).toLocaleDateString(
+                                if (m?.[1]) {
+                                  if (isPast && isPublished) return `En vigueur depuis le ${m[1]}`;
+                                  return `Prévu pour le ${m[1]}`;
+                                }
+                                if (validFromDate) {
+                                  if (isPast && isPublished) {
+                                    return `En vigueur depuis le ${validFromDate.toLocaleDateString(
+                                      'fr-FR',
+                                      { timeZone: 'Indian/Antananarivo' },
+                                    )}`;
+                                  }
+                                  return `Prévu pour le ${validFromDate.toLocaleDateString(
                                     'fr-FR',
                                     { timeZone: 'Indian/Antananarivo' },
                                   )}`;
