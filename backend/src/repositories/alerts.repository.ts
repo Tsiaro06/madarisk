@@ -562,11 +562,10 @@ export const alertsRepository = {
              e.status = 'CLOTURE'
              OR (a.event_id IS NULL AND a.is_automatic = true)
              OR (
-               a.basis = 'PREVISION'
-               AND a.status = 'PUBLIEE'
+               a.status = 'PUBLIEE'
                AND (
                  (a.expires_at IS NOT NULL AND a.expires_at < NOW())
-                 OR (a.expires_at IS NULL AND a.valid_from IS NOT NULL AND a.valid_from < NOW())
+                 OR (a.valid_from IS NOT NULL AND a.valid_from < NOW())
                )
              )
            )

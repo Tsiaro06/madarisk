@@ -379,29 +379,42 @@ export function AlertesPage() {
                                 const now = new Date();
                                 const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
                                 const validFromDate = a.validFrom ? new Date(a.validFrom) : null;
-                                const isPast =
+                                const isPastOrToday =
                                   validFromDate != null &&
-                                  validFromDate.getTime() < todayStart.getTime();
+                                  validFromDate.getTime() <= todayStart.getTime();
                                 const isPublished = a.status === 'PUBLIEE';
 
-                                if (isPast && isPublished) {
-                                  if (validFromDate) {
-                                    return `En vigueur depuis le ${validFromDate.toLocaleDateString(
-                                      'fr-FR',
-                                      { timeZone: 'Indian/Antananarivo' },
-                                    )}`;
-                                  }
-                                }
-
-                                const m =
+                                const forecastMatch =
                                   a.message.match(/prévue pour le (\d{2}\/\d{2}\/\d{4})/i) ||
                                   a.message.match(/prévue du (\d{2}\/\d{2}\/\d{4})/i);
-                                if (m?.[1]) {
-                                  if (isPast && isPublished) return `En vigueur depuis le ${m[1]}`;
-                                  return `Prévu pour le ${m[1]}`;
+                                const forecastStr =
+                                  forecastMatch?.[1] ||
+                                  (validFromDate
+                                    ? validFromDate.toLocaleDateString('fr-FR', {
+                                        timeZone: 'Indian/Antananarivo',
+                                      })
+                                    : null);
+
+                                if (forecastStr && isPublished && isPastOrToday && validFromDate) {
+                                  const effectiveStr = validFromDate.toLocaleDateString('fr-FR', {
+                                    timeZone: 'Indian/Antananarivo',
+                                  });
+                                  if (effectiveStr === forecastStr) {
+                                    return `En vigueur depuis le ${effectiveStr}`;
+                                  }
+                                  return `Prévu pour le ${forecastStr} · En vigueur depuis le ${effectiveStr}`;
                                 }
+
+                                if (forecastStr && isPublished && isPastOrToday) {
+                                  return `En vigueur depuis le ${forecastStr}`;
+                                }
+
+                                if (forecastStr) {
+                                  return `Prévu pour le ${forecastStr}`;
+                                }
+
                                 if (validFromDate) {
-                                  if (isPast && isPublished) {
+                                  if (isPublished && isPastOrToday) {
                                     return `En vigueur depuis le ${validFromDate.toLocaleDateString(
                                       'fr-FR',
                                       { timeZone: 'Indian/Antananarivo' },
