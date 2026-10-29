@@ -1,6 +1,10 @@
 ﻿import fs from 'fs';
 import path from 'path';
 import type { Feature, FeatureCollection, Geometry, Point } from 'geojson';
+// Polyfill pour shpjs en environnement Node
+if (typeof (global as any).self === 'undefined') {
+  (global as any).self = global;
+}
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const shp = require('shpjs') as (input: Buffer | ArrayBuffer | string) => Promise<FeatureCollection | FeatureCollection[]>;
 

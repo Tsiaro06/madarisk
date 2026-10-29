@@ -79,6 +79,9 @@ export async function detectAndParseFiles(files: string[]): Promise<EventBulleti
       }
       if (ext === '.shp') {
         try {
+          if (typeof (global as any).self === 'undefined') {
+            (global as any).self = global;
+          }
           const shp = require('shpjs') as (input: Buffer | string) => Promise<any>;
           const dir = path.dirname(filePath);
           const base = path.basename(filePath, '.shp');
