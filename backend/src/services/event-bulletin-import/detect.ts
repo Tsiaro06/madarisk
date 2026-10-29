@@ -5,6 +5,7 @@ import { isIbtracsLike, parseIbtracsFile } from './parsers/ibtracs';
 import { parseGenericCsv } from './parsers/generic-csv';
 import { parseGenericJson } from './parsers/generic-json';
 import { parsePdfBulletin } from './parsers/pdf-bulletin';
+import { parseShapefileFromZip } from './parsers/shapefile';
 
 export async function detectAndParseFiles(files: string[]): Promise<EventBulletinPreviewResult> {
   const warnings: string[] = [];
@@ -50,6 +51,28 @@ export async function detectAndParseFiles(files: string[]): Promise<EventBulleti
             points,
           };
           if (!best || cand.points.length > best.points.length) best = cand;
+        }
+      }
+    }
+  }
+
+  if (!best) {
+    for (const filePath of files) {
+      const ext = path.extname(filePath).toLowerCase();
+      if (ext === '.zip') {
+        try {
+          const points = await parseShapefileFromZip(filePath);
+          if (points.length > 0) {
+            const cand: DetectedBulletin = {
+              parser: 'SHAPEFILE',
+              confidence: 75,
+              filePath,
+              points,
+            };
+            if (!best || cand.points.length > best.points.length) best = cand;
+          }
+        } catch {
+          // ignore
         }
       }
     }

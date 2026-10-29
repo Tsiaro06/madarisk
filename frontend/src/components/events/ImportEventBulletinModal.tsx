@@ -134,11 +134,11 @@ export function ImportEventBulletinModal({ open, onClose }: ImportEventBulletinM
                 className="border-2 border-dashed border-line rounded-xl p-6 text-center cursor-pointer hover:bg-canvas"
                 onClick={() => fileRef.current?.click()}
               >
-                <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} accept=".zip,.tar,.gz,.tgz,.rar,.7z,.csv,.json,.geojson,.txt,.pdf" />
+                <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} accept=".zip,.tar,.gz,.tgz,.csv,.json,.geojson,.txt,.pdf,.shp,.shx,.dbf" />
                 <div className="flex flex-col items-center gap-2">
                   {file?.name.endsWith('.zip') || file?.name.endsWith('.tar') || file?.name.endsWith('.gz') ? <FileArchive className="size-8 text-brand" /> : <FileText className="size-8 text-brand" />}
                   <p className="text-sm font-medium text-ink">{file ? file.name : "Cliquer pour sélectionner un fichier ou une archive"}</p>
-                  <p className="text-xs text-muted">Taille max 50 Mo</p>
+                  <p className="text-xs text-muted">Taille max 50 Mo • CSV/JSON/GeoJSON/PDF/TXT/ZIP (Shapefile)/TAR/GZ</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

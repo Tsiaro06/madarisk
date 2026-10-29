@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv } from 'vite';
+﻿import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
@@ -27,6 +27,23 @@ export default defineConfig(({ mode }) => {
         '/health': {
           target: proxyTarget,
           changeOrigin: true,
+        },
+      },
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('leaflet') || id.includes('react-leaflet')) return 'leaflet';
+              if (id.includes('recharts')) return 'recharts';
+              if (id.includes('@turf')) return 'turf';
+              if (id.includes('@tanstack')) return 'tanstack';
+              if (id.includes('react-hook-form') || id.includes('@hookform') || id.includes('zod')) return 'forms';
+              return 'vendor';
+            }
+            return undefined;
+          },
         },
       },
     },

@@ -16,7 +16,7 @@ export interface CanonicalTrackPoint {
 }
 
 export interface DetectedBulletin {
-  parser: 'IBTRACS' | 'DGM' | 'GENERIC_CSV' | 'GENERIC_JSON' | 'UNKNOWN';
+  parser: 'IBTRACS' | 'DGM' | 'GENERIC_CSV' | 'GENERIC_JSON' | 'SHAPEFILE' | 'UNKNOWN';
   confidence: number;
   filePath: string;
   eventHint?: {
