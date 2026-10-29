@@ -24,14 +24,14 @@ export const SELECTED_BORDER = BRAND_DEEP;
 export const NO_RISK_FILL = '#94a3b8';
 /** Contours communes hors risque — gris neutre, pas de bleu saturé */
 export const NO_EVENT_COMMUNE_FILL = '#94a3b8';
-/** Zone de position probable du centre (prévision) — gris translucide, contour pointillé. */
-export const CONE_FILL = '#9ca3af';
-export const CONE_EDGE = '#6b7280';
-export const CONE_FILL_OPACITY = 0.22;
+/** Zone de position probable du centre (prévision) — violet translucide, contour pointillé. */
+export const CONE_FILL = '#8b7cf6';
+export const CONE_EDGE = '#6d5dfc';
+export const CONE_FILL_OPACITY = 0.25;
 /** Communes et districts traversés par la zone probable. */
-export const CONE_AREA_FILL = '#9ca3af';
-export const CONE_AREA_EDGE = '#6b7280';
-export const CONE_AREA_FILL_OPACITY = 0.4;
+export const CONE_AREA_FILL = '#f5b942';
+export const CONE_AREA_EDGE = '#b45309';
+export const CONE_AREA_FILL_OPACITY = 0.7;
 
 /**
  * Halo de la zone probable : un seul polygone continu. Le contour pointillé
