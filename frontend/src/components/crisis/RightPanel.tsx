@@ -363,28 +363,32 @@ export function RightPanel({
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
         {/* En-tête risque */}
         {hasEvent ? (
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-line bg-white p-4 shadow-sm">
-            <div className="flex items-center gap-2">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-gradient-to-r from-white to-gray-50 p-4 shadow-sm">
+            <div className="flex items-center gap-3">
               <span
-                className="size-3.5 rounded-full ring-2 ring-white/60"
+                className="size-4 rounded-full ring-4 ring-white shadow-sm"
                 style={{ background: riskLevel ? RISK_COLORS[riskLevel] : '#94a3b8' }}
               />
               <div>
-                <p className="text-xs text-muted">Risque actuel</p>
-                <p className="text-lg font-semibold text-ink" style={{ color: riskLevel ? RISK_COLORS[riskLevel] : undefined }}>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted">Niveau de risque</p>
+                <p className="text-xl font-semibold text-ink" style={{ color: riskLevel ? RISK_COLORS[riskLevel] : undefined }}>
                   {riskLevel ? RISK_LABELS[riskLevel] : 'Non évalué'}
                 </p>
               </div>
             </div>
             <div className="text-right">
-              <p className="text-xs text-muted">Score</p>
-              <p className="font-display text-xl text-ink">{formatNumber(risk?.riskScore ?? detail.risk?.riskScore)}</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-muted">Score</p>
+              <p className="font-display text-2xl text-ink">{formatNumber(risk?.riskScore ?? detail.risk?.riskScore)}</p>
             </div>
           </div>
         ) : null}
 
         {/* Résumé */}
         <Card className="!p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-sm font-semibold text-ink">Aperçu de la commune</p>
+            <p className="text-xs text-muted">{c.adminCode}</p>
+          </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
             <StatItem label="Population" value={formatNumber(c.population)} />
             <StatItem label="Événements liés" value={detail.events.length} />

@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
+  ArrowRight,
   ChevronDown,
   PanelLeftClose,
   Plus,
@@ -186,16 +187,20 @@ export function LeftPanel({
 
       {/* Événement sélectionné + détails */}
       <div className="space-y-2 border-b border-line px-3 py-3">
-        <p className="text-xs font-medium text-muted">Événement à suivre</p>
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Événement actif</p>
+          {activeEventId ? <span className="rounded-full bg-brand-soft px-2 py-0.5 text-[10px] font-medium text-brand-deep">Suivi</span> : null}
+        </div>
         <EventSelector className="w-full" />
         {activeEventId ? (
           <Link
             to={`/evenements/${activeEventId}`}
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-line bg-surface text-sm font-medium text-ink transition hover:bg-canvas"
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-brand/30 bg-brand-soft/40 text-sm font-semibold text-brand-deep transition hover:bg-brand-soft"
             title="Voir le détail de l’événement sélectionné"
           >
-            <Settings className="size-4 text-muted" />
+            <Settings className="size-4" />
             Détails de l’événement
+            <ArrowRight className="size-4" />
           </Link>
         ) : (
           <span
