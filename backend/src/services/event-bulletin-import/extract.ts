@@ -29,6 +29,12 @@ export async function extractBulletinArchive(file: Express.Multer.File): Promise
   const archivePath = file.path;
 
   try {
+    if (ext === '.shp' || ext === '.shx' || ext === '.dbf' || ext === '.prj' || ext === '.cpg') {
+      const targetPath = path.resolve(extractDir, file.originalname);
+      fs.copyFileSync(archivePath, targetPath);
+      return { extractDir, files: [targetPath] };
+    }
+
     if (ext === '.zip') {
       try {
         await extractZip(archivePath, { dir: extractDir });

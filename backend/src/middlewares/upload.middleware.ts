@@ -28,6 +28,11 @@ export const ALLOWED_EVENT_BULLETIN_EXTENSIONS = [
   '.csv',
   '.txt',
   '.pdf',
+  '.shp',
+  '.shx',
+  '.dbf',
+  '.prj',
+  '.cpg',
 ];
 export const ALLOWED_EVENT_BULLETIN_MIME_TYPES = [
   'application/json',
@@ -47,6 +52,10 @@ export const ALLOWED_EVENT_BULLETIN_MIME_TYPES = [
   'application/vnd.rar',
   'application/x-7z-compressed',
   'application/pdf',
+  'application/x-shapefile',
+  'application/vnd.shp',
+  'application/dbf',
+  'application/x-dbf',
 ];
 
 const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024;
