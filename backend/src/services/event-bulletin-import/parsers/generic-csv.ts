@@ -36,7 +36,7 @@ function toIso(v: unknown): string | null {
   const d = new Date(s);
   if (!Number.isNaN(d.getTime())) return d.toISOString();
   // try dd/mm/yyyy hh:mm
-  const m = s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  const m = s.match(/(\d{1,2})[/ -](\d{1,2})[/ -](\d{2,4})(?:[ T](\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
   if (m) {
     const day = Number(m[1]);
     const month = Number(m[2]) - 1;

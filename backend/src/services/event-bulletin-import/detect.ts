@@ -96,7 +96,7 @@ export async function detectAndParseFiles(files: string[]): Promise<EventBulleti
   }
 
   if (!best) {
-    warnings.push('Aucun fichier de trajectoire détecté automatiquement. Vérifie le format (CSV/JSON/GeoJSON/PDF ou archive IBTrACS).');
+    warnings.push("Aucun fichier de trajectoire détecté automatiquement. Vérifie le format (CSV/JSON/GeoJSON/PDF ou archive IBTRACS).");
     return {
       parser: 'UNKNOWN',
       confidence: 0,

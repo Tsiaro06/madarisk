@@ -76,7 +76,7 @@ export const eventBulletinImportController = {
         type: body.type,
         createIfMissing: body.createIfMissing ?? true,
         replaceTracks: body.replaceTracks ?? false,
-        actor: req.user as { id: string; role: any },
+        actor: req.user as { id: string; role: 'ADMIN' | 'SUPER_ADMIN' | 'ANALYSTE_SIG' },
         req,
       });
       res.status(201).json(successResponse(result, 'Bulletin importé avec succès'));

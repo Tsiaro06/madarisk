@@ -2,8 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Circle, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import {
-  CYCLONE_VIOLET,
-  CYCLONE_VIOLET_DEEP,
   deriveRiskFromWind,
   describeMovementDirection,
   documentedWindRadius,

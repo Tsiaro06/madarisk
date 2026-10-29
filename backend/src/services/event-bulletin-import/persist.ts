@@ -58,7 +58,7 @@ export async function persistBulletinImport(params: {
         eventId = ex.rows[0].id;
       } else if (params.createIfMissing) {
         const name = params.name || `Cyclone importé - ${eventCode}`;
-        const type = (params.type || 'CYCLONE') as string;
+        const type = params.type || 'CYCLONE';
         const ins = await client.query<{ id: string; event_code: string }>(
           `INSERT INTO hazard_events (event_code, name, type, status, severity, description, source_name)
            VALUES ($1, $2, $3, 'PREVISION', 'ELEVEE', $4, 'Import bulletin automatique')
@@ -78,7 +78,7 @@ export async function persistBulletinImport(params: {
       const d = String(now.getDate()).padStart(2, '0');
       eventCode = `CY-IMP-${y}${m}${d}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
       const name = params.name || `Cyclone importé ${eventCode}`;
-      const type = (params.type || 'CYCLONE') as string;
+      const type = params.type || 'CYCLONE';
       const ins = await client.query<{ id: string; event_code: string }>(
         `INSERT INTO hazard_events (event_code, name, type, status, severity, description, source_name)
          VALUES ($1, $2, $3, 'PREVISION', 'ELEVEE', $4, 'Import bulletin automatique')
@@ -133,20 +133,25 @@ export async function persistBulletinImport(params: {
 
     await client.query('COMMIT');
 
-    try {
-      await usersRepository.writeAudit({
-        userId: params.actor.id,
-        action: 'EVENT_BULLETIN_IMPORTED',
-        entityType: 'hazard_event',
-        entityId: eventId!,
-        newValue: { fileName: params.fileName, parser: params.parser, pointsCount: params.points.length, tracksInserted },
-        ipAddress: getIp(params.req),
-      });
-    } catch {
-      // ignore audit failure
+    if (eventId) {
+      try {
+        await usersRepository.writeAudit({
+          userId: params.actor.id,
+          action: 'EVENT_BULLETIN_IMPORTED',
+          entityType: 'hazard_event',
+          entityId: eventId,
+          newValue: { fileName: params.fileName, parser: params.parser, pointsCount: params.points.length, tracksInserted },
+          ipAddress: getIp(params.req),
+        });
+      } catch {
+        // ignore audit failure
+      }
     }
 
-    return { eventId: eventId!, eventCode: eventCode!, tracksInserted, created };
+    if (!eventId || !eventCode) {
+      throw AppError.internal("Échec de l'import du bulletin d'événement");
+    }
+    return { eventId, eventCode, tracksInserted, created };
   } catch (err) {
     await client.query('ROLLBACK');
     if (err instanceof AppError) throw err;

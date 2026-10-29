@@ -1,11 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-const pdfParse = require('pdf-parse');
 import { CanonicalTrackPoint } from '../../../types/event-bulletin-import.types';
 
 function parseDateTime(text: string, yearHint?: number): Date | null {
   // DD/MM/YYYY HH:MM or DD-MM-YYYY HHhMM
-  let m = text.match(/(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})\s+(\d{1,2})[h:\s](\d{2})(?:[:\s](\d{2}))?/i);
+  let m = text.match(/(\d{1,2})[/.\\-](\d{1,2})[/.\\-](\d{2,4})\s+(\d{1,2})[h:\s](\d{2})(?:[:\s](\d{2}))?/i);
   if (m) {
     let year = Number(m[3]);
     if (year < 100) year += 2000;
@@ -22,15 +21,16 @@ function parseDateTime(text: string, yearHint?: number): Date | null {
     const months: Record<string, number> = {
       janvier: 0, fevrier: 1, février: 1, mars: 2, avril: 3, mai: 4, juin: 5, juillet: 6, aout: 7, août: 7, septembre: 8, octobre: 9, novembre: 10, decembre: 11, décembre: 11,
     };
+    const monthKey = m[2].toLowerCase().replace('é', 'e');
+    const month = months[monthKey] ?? 0;
     const day = Number(m[1]);
-    const month = months[m[2].toLowerCase().replace('é','e')] ?? 0;
     const year = Number(m[3]);
     const hour = Number(m[4]);
     const min = Number(m[5]);
     return new Date(Date.UTC(year, month, day, hour, min, 0));
   }
   if (yearHint) {
-    m = text.match(/(\d{1,2})[\/\-\.](\d{1,2})\s+(\d{1,2})[h:\s](\d{2})/);
+    m = text.match(/(\d{1,2})[/.\\-](\d{1,2})\s+(\d{1,2})[h:\s](\d{2})/);
     if (m) {
       const day = Number(m[1]);
       const month = Number(m[2]) - 1;
@@ -47,7 +47,7 @@ function parsePosition(text: string): { lat: number; lon: number } | null {
   let m = text.match(/(-?\d+(?:\.\d+)?)\s*[°d]?\s*(S|sud)\s+(-?\d+(?:\.\d+)?)\s*[°d]?\s*(E|est)/i);
   if (m) {
     let lat = Number(m[1]);
-    let lon = Number(m[3]);
+    const lon = Number(m[3]);
     if (m[2].toLowerCase().startsWith('s')) lat = -Math.abs(lat);
     return { lat, lon };
   }
@@ -104,8 +104,10 @@ function parsePressure(text: string): number | null {
 export async function parsePdfBulletin(filePath: string): Promise<CanonicalTrackPoint[]> {
   try {
     const buffer = fs.readFileSync(filePath);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const pdfParse = require('pdf-parse') as (buf: Buffer) => Promise<{ text?: string }>;
     const data = await pdfParse(buffer);
-    const text = data.text || '';
+    const text = typeof data.text === 'string' ? data.text : '';
     if (!text.trim()) return [];
 
     const yearMatch = text.match(/(20\d{2})/);
