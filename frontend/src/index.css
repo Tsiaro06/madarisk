@@ -13,6 +13,19 @@
   --font-menu: "Outfit", "Figtree", ui-sans-serif, system-ui, sans-serif;
   --font-condensed: "Oswald", "Figtree", ui-sans-serif, system-ui, sans-serif;
 
+  /* Espacements & rayons */
+  --radius-xs: 0.5rem;
+  --radius-sm: 0.75rem;
+  --radius-md: 1rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+
+  /* Ombres */
+  --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04), 0 10px 30px -12px rgba(15, 23, 42, 0.16);
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.05), 0 20px 40px -18px rgba(15, 23, 42, 0.22);
+  --shadow-elevated: 0 1px 2px rgba(15, 23, 42, 0.06), 0 30px 60px -24px rgba(15, 23, 42, 0.28);
+
   /* Bleu météo désaturé — plus calme à l’œil */
   --color-brand: #3d7a9a;
   --color-brand-deep: #2f5f78;
@@ -30,6 +43,7 @@
   /* Fond de page blanc : les cartes se détachent uniquement par leur ombre
      portée, plus par un fond de page tinted. */
   --color-canvas: #ffffff;
+  --color-surface-subtle: #f8fafc;
   --color-line: #e2e8f0;
 
   --color-risk-faible: #7a9e7e;
@@ -73,9 +87,10 @@
   --color-brand-soft: rgba(61, 122, 154, 0.2);
   --color-accent: #d9b75f;
   --color-ink: #f4f4f6;
-  --color-muted: #8f93a3;
+  --color-muted: #9aa0b4;
   --color-surface: #111113;
   --color-canvas: #0a0a0b;
+  --color-surface-subtle: #161618;
   --color-line: rgba(255, 255, 255, 0.1);
   --color-risk-faible: #8fb393;
   --color-risk-modere: #d3bd78;
@@ -110,6 +125,7 @@ h3 {
 :focus-visible {
   outline: 2px solid var(--color-brand);
   outline-offset: 2px;
+  border-radius: 6px;
 }
 
 .leaflet-container {
