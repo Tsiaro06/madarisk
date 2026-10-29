@@ -62,7 +62,7 @@ function Row({ item, variant, alertCount, onNavigate }: RowProps) {
         title={item.label}
         className={({ isActive }) =>
           cn(
-            'group relative grid size-10 shrink-0 place-items-center rounded-full transition-colors duration-200',
+            'group relative grid size-10 shrink-0 place-items-center rounded-full transition-colors duration-200 sidebar-rail-item',
             isActive
               ? 'bg-(--sb-accent) text-white'
               : 'text-(--sb-muted) hover:bg-(--sb-hover) hover:text-(--sb-text)',
@@ -171,7 +171,7 @@ function RailAccordion({
         aria-label={item.label}
         title={item.label}
         className={cn(
-          'grid size-10 place-items-center rounded-full transition-colors duration-200',
+          'grid size-10 place-items-center rounded-full transition-colors duration-200 sidebar-rail-item',
           active || open
             ? 'bg-(--sb-accent) text-white'
             : 'text-(--sb-muted) hover:bg-(--sb-hover) hover:text-(--sb-text)',
@@ -302,7 +302,7 @@ function ToggleButton({ collapsed, onClick }: { collapsed: boolean; onClick: () 
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="grid size-9 shrink-0 place-items-center rounded-xl border border-(--sb-line) bg-(--sb-chip) text-(--sb-text-soft) transition-colors duration-200 hover:text-(--sb-accent)"
+      className="grid size-9 shrink-0 place-items-center rounded-xl border border-(--sb-line) bg-(--sb-chip) text-(--sb-text-soft) transition-colors duration-200 hover:text-(--sb-accent) sidebar-rail-item"
     >
       {collapsed ? (
         <PanelLeftOpen className="size-[17px]" aria-hidden />

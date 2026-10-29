@@ -128,57 +128,66 @@ h3 {
   border-radius: 6px;
 }
 
-/* Amélioration des tooltips natifs */
+/* Tooltips personnalisés */
 [title] {
   position: relative;
 }
 
 @media (hover: hover) {
-  [title]:hover::after {
+  /* Afficher tooltip uniquement dans le rail sidebar */
+  .sidebar-rail-item[title]:hover::after {
     content: attr(title);
     position: absolute;
-    left: 50%;
-    bottom: calc(100% + 8px);
-    transform: translateX(-50%);
-    z-index: 100;
+    left: calc(100% + 12px);
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 9999;
     white-space: nowrap;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
     padding: 0.375rem 0.625rem;
-    border-radius: 0.5rem;
-    background: rgba(15, 23, 42, 0.95);
+    border-radius: 0.625rem;
+    background: rgba(15, 23, 42, 0.98);
     color: #fff;
     font-size: 11.5px;
     font-weight: 500;
-    line-height: 1;
-    box-shadow: 0 10px 40px -12px rgba(15, 23, 42, 0.9);
+    line-height: 1.2;
+    box-shadow: 0 12px 40px -10px rgba(15, 23, 42, 0.95);
     pointer-events: none;
     opacity: 0;
-    animation: tooltip-fade-in 150ms ease-out forwards;
+    animation: tooltip-fade-in-side 150ms ease-out forwards;
   }
 
-  [title]:hover::before {
+  .sidebar-rail-item[title]:hover::before {
     content: '';
     position: absolute;
-    left: 50%;
-    bottom: calc(100% + 3px);
-    transform: translateX(-50%);
-    border-width: 5px 5px 0 5px;
+    left: calc(100% + 7px);
+    top: 50%;
+    transform: translateY(-50%);
+    border-width: 5px 5px 5px 0;
     border-style: solid;
-    border-color: rgba(15, 23, 42, 0.95) transparent transparent transparent;
-    z-index: 100;
+    border-color: transparent rgba(15, 23, 42, 0.98) transparent transparent;
+    z-index: 9999;
     pointer-events: none;
     opacity: 0;
-    animation: tooltip-fade-in 150ms ease-out forwards;
+    animation: tooltip-fade-in-side 150ms ease-out forwards;
+  }
+
+  /* Désactiver tooltip natif dans le rail pour utiliser le custom */
+  .sidebar-rail-item[title]:hover {
+    position: relative;
   }
 }
 
-@keyframes tooltip-fade-in {
+@keyframes tooltip-fade-in-side {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(4px);
+    transform: translateY(-50%) translateX(-4px);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
+    transform: translateY(-50%) translateX(0);
   }
 }
 
