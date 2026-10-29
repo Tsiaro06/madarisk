@@ -516,14 +516,20 @@ function LayerControls({
               parcours clavier tant qu'il est replié. */}
           <div
             inert={!open}
-            className="mb-1.5 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur"
+            className="mb-1.5 rounded-xl border border-slate-200/80 bg-white/95 px-3 py-2.5 text-xs shadow-lg backdrop-blur"
           >
-            <p className="mb-1.5 font-semibold text-ink">Couches</p>
-            <div className="space-y-1.5">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-semibold text-ink">Couches</p>
+              <span className="text-[10px] text-muted">Affichage carte</span>
+            </div>
+            <div className="space-y-1">
               {items.map((item) => (
                 <label
                   key={item.key}
-                  className={cn('flex items-center gap-2', item.disabled && 'opacity-40')}
+                  className={cn(
+                    'flex cursor-pointer items-center gap-2 rounded-lg px-1.5 py-1 transition hover:bg-canvas',
+                    item.disabled && 'cursor-not-allowed opacity-40',
+                  )}
                 >
                   <input
                     type="checkbox"
@@ -532,7 +538,7 @@ function LayerControls({
                     onChange={(e) => onChange(item.key, e.target.checked)}
                     className="size-3.5 accent-brand"
                   />
-                  {item.label}
+                  <span className="text-ink">{item.label}</span>
                 </label>
               ))}
             </div>
@@ -1014,7 +1020,7 @@ export function CrisisMap({
             <button
               type="button"
               onClick={resetView}
-              className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/90 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
+              className="pointer-events-auto flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/95 px-2.5 py-1.5 text-xs font-medium text-ink shadow-sm backdrop-blur transition hover:bg-white"
               title="Recentrer sur Madagascar"
             >
               <LocateFixed className="size-3.5 text-muted" /> Recentrer
@@ -1037,8 +1043,8 @@ export function CrisisMap({
             onChange={handleToggle}
           />
           {activeEvent ? (
-            <div className="pointer-events-auto mt-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur">
-              <p className="mb-1.5 font-semibold text-ink">Phase affichée</p>
+            <div className="pointer-events-auto mt-2 rounded-xl border border-slate-200/80 bg-white/95 px-3 py-2.5 text-xs shadow-sm backdrop-blur">
+              <p className="mb-1.5 text-sm font-semibold text-ink">Phase affichée</p>
               <select
                 value={mapPhase}
                 onChange={(e) => onMapPhaseChange(e.target.value)}
