@@ -59,17 +59,17 @@ const components: Components = {
     /language-/.test(className ?? '') ? (
       <code className={className}>{children}</code>
     ) : (
-      <code className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
+      <code className="rounded bg-ink/[0.07] px-1 py-0.5 font-mono text-[0.85em]">{children}</code>
     ),
   pre: ({ children }) => (
-    <pre className="my-1.5 overflow-x-auto rounded-lg bg-gray-100 p-2 text-xs">{children}</pre>
+    <pre className="my-1.5 overflow-x-auto rounded-lg bg-ink/[0.07] p-2 text-xs">{children}</pre>
   ),
   table: ({ children }) => (
     <div className="my-1.5 overflow-x-auto">
       <table className="w-full border-collapse text-xs">{children}</table>
     </div>
   ),
-  thead: ({ children }) => <thead className="bg-gray-50">{children}</thead>,
+  thead: ({ children }) => <thead className="bg-ink/[0.05]">{children}</thead>,
   th: ({ children }) => (
     <th className="border border-line px-2 py-1 text-left font-semibold">{children}</th>
   ),

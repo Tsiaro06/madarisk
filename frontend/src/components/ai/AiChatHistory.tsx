@@ -82,10 +82,10 @@ export function AiChatHistory({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex items-center justify-between gap-2 border-b border-brand/10 bg-brand-soft/40 px-3 py-2">
+      <div className="flex items-center justify-between gap-2 border-b border-line bg-surface px-3 py-2.5">
         <button
           type="button"
-          className="rounded-lg p-1.5 text-brand-deep hover:bg-white/60"
+          className="grid size-7 place-items-center rounded-lg text-brand-deep transition hover:bg-brand-soft"
           aria-label="Revenir à la conversation"
           onClick={onBack}
         >
@@ -94,7 +94,7 @@ export function AiChatHistory({
         <p className="text-xs font-semibold text-brand-deep">Historique des conversations</p>
         <button
           type="button"
-          className="rounded-lg p-1.5 text-brand-deep hover:bg-white/60"
+          className="grid size-7 place-items-center rounded-lg text-brand-deep transition hover:bg-brand-soft"
           aria-label="Nouvelle conversation"
           onClick={onNew}
         >
@@ -102,7 +102,7 @@ export function AiChatHistory({
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto bg-gray-50 p-3">
+      <div className="ai-scroll flex-1 overflow-y-auto bg-surface-subtle p-3.5">
         {listQ.isError ? (
           <AlertBanner tone="danger" title="Échec du chargement">
             Impossible de charger l’historique. Réessayez plus tard.
@@ -131,8 +131,8 @@ export function AiChatHistory({
               return (
                 <li key={conversation.id}>
                   {confirmId === conversation.id ? (
-                    <div className="rounded-xl border border-red-200 bg-red-50 p-2.5">
-                      <p className="text-xs text-red-900">
+                    <div className="rounded-xl border border-risk-extreme/30 bg-risk-extreme/10 p-2.5">
+                      <p className="text-xs text-risk-extreme">
                         Supprimer « {title} » ? Cette action est définitive.
                       </p>
                       <div className="mt-2 flex justify-end gap-2">
@@ -154,8 +154,8 @@ export function AiChatHistory({
                       className={cn(
                         'flex items-start gap-2 rounded-xl border bg-surface p-2.5 transition',
                         activeId === conversation.id
-                          ? 'border-brand/40 ring-1 ring-brand/20'
-                          : 'border-line hover:border-brand/30',
+                          ? 'border-brand/50 bg-brand-soft/30 ring-1 ring-brand/20'
+                          : 'border-line hover:-translate-y-px hover:border-brand/40 hover:shadow-soft',
                       )}
                     >
                       <button
@@ -172,7 +172,7 @@ export function AiChatHistory({
                       </button>
                       <button
                         type="button"
-                        className="rounded-lg p-1.5 text-muted transition hover:bg-red-50 hover:text-red-600"
+                        className="grid size-7 shrink-0 place-items-center rounded-lg text-muted transition hover:bg-risk-extreme/10 hover:text-risk-extreme"
                         aria-label={`Supprimer la conversation « ${title} »`}
                         onClick={() => setConfirmId(conversation.id)}
                       >

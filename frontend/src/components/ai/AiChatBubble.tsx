@@ -1,12 +1,26 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bot, MessagesSquare, Send, Square, User, X, MessageCircle } from 'lucide-react';
+import {
+  Activity,
+  ArrowUpRight,
+  Bot,
+  CloudSun,
+  MapPin,
+  MessageCircle,
+  MessagesSquare,
+  Plus,
+  Send,
+  Square,
+  TriangleAlert,
+  User,
+  X,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import { aiApi } from '@/api';
 import { ApiClientError } from '@/api/client';
 import type { AiStreamMeta } from '@/api/ai-stream';
 import type { AiMessage } from '@/types';
 import { useAuthStore } from '@/stores/authStore';
-import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { AiAnswerMeta } from '@/components/ai/AiAnswerMeta';
 import { AiChatHistory } from '@/components/ai/AiChatHistory';
@@ -20,11 +34,17 @@ interface ChatMessage {
   meta?: AiStreamMeta;
 }
 
-const WELCOME: ChatMessage = {
-  role: 'assistant',
-  content:
-    'Bonjour. Je suis l’assistant MadaRisk. Posez une question sur les risques, alertes ou territoires.',
-};
+/**
+ * Questions proposées au premier écran. Volontairement choisies parmi celles
+ * que le socle d'outils déterministes sait servir sans paramètre : la première
+ * question de l'utilisateur donne une réponse utile, pas une démonstration.
+ */
+const SUGGESTIONS: { icon: LucideIcon; question: string }[] = [
+  { icon: TriangleAlert, question: 'Quelles sont les alertes en cours ?' },
+  { icon: MapPin, question: 'Quelles communes sont prioritaires ?' },
+  { icon: Activity, question: 'Quels événements sont en cours ?' },
+  { icon: CloudSun, question: 'Quelle est la météo à Mananjary ?' },
+];
 
 /** Un message relu est affichable s'il fait partie de l'échange visible. */
 function isVisibleMessage(message: AiMessage): boolean {
@@ -70,6 +90,31 @@ function toChatMessage(message: AiMessage): ChatMessage {
   };
 }
 
+/** Pastille de l'assistant, partagée par le fil, l'attente et l'écran d'accueil. */
+function AssistantAvatar({ className }: { className?: string }) {
+  return (
+    <span
+      className={cn(
+        'grid size-7 shrink-0 place-items-center rounded-full bg-gradient-to-br from-[#12405f] to-[#062a47] text-white shadow-sm ring-1 ring-white/25',
+        className,
+      )}
+    >
+      <Bot className="size-3.5" />
+    </span>
+  );
+}
+
+/** Trois points animés : la réponse n'a pas encore commencé à s'écrire. */
+function ThinkingDots() {
+  return (
+    <span aria-hidden className="flex items-end gap-1">
+      <span className="ai-dot size-1.5 rounded-full bg-brand" />
+      <span className="ai-dot size-1.5 rounded-full bg-brand [animation-delay:150ms]" />
+      <span className="ai-dot size-1.5 rounded-full bg-brand [animation-delay:300ms]" />
+    </span>
+  );
+}
+
 export function AiChatBubble() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -78,7 +123,7 @@ export function AiChatBubble() {
   const [input, setInput] = useState('');
   const [unavailable, setUnavailable] = useState(false);
   const [retryAfter, setRetryAfter] = useState(0);
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   /** Vue affichée : le fil de discussion, ou la liste des conversations passées. */
   const [view, setView] = useState<'chat' | 'history'>('chat');
   // Réponse en cours de génération : affichée aussitôt, puis remplacée par le
@@ -104,6 +149,17 @@ export function AiChatBubble() {
     const t = window.setInterval(() => setRetryAfter((s) => Math.max(0, s - 1)), 1000);
     return () => window.clearInterval(t);
   }, [retryAfter]);
+
+  // Échap referme le panneau : c'est un dialogue flottant, il ne doit pas
+  // capturer le clavier plus longtemps que nécessaire.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [open]);
 
   // Une requête en vol est interrompue si le composant disparaît : inutile de
   // continuer à lire un flux dont plus personne n'affichera le résultat.
@@ -175,13 +231,18 @@ export function AiChatBubble() {
     },
   });
 
+  /** Envoie une question dans le fil courant (formulaire ou suggestion). */
+  const send = (text: string) => {
+    const question = text.trim();
+    if (!question || chatM.isPending || unavailable || retryAfter > 0) return;
+    setMessages((prev) => [...prev, { role: 'user', content: question }]);
+    setInput('');
+    chatM.mutate(question);
+  };
+
   const onSubmit = (e: FormEvent) => {
     e.preventDefault();
-    const text = input.trim();
-    if (!text || chatM.isPending || unavailable || retryAfter > 0) return;
-    setMessages((prev) => [...prev, { role: 'user', content: text }]);
-    setInput('');
-    chatM.mutate(text);
+    send(input);
   };
 
   /** Coupe la génération en cours : le flux est abandonné côté client. */
@@ -199,7 +260,7 @@ export function AiChatBubble() {
     onSuccess: (conversation) => {
       const turns = conversation.messages.filter(isVisibleMessage).map(toChatMessage);
       setConversationId(conversation.id);
-      setMessages(turns.length > 0 ? turns : [WELCOME]);
+      setMessages(turns);
       setRetryAfter(0);
       setUnavailable(false);
       setView('chat');
@@ -210,8 +271,11 @@ export function AiChatBubble() {
   });
 
   const startNewConversation = () => {
+    // Un fil neuf n'a pas à recevoir la réponse du fil précédent : la génération
+    // en cours est coupée avant de vider l'écran.
+    abortRef.current?.abort();
     setConversationId(undefined);
-    setMessages([WELCOME]);
+    setMessages([]);
     setInput('');
     setRetryAfter(0);
     setUnavailable(false);
@@ -225,45 +289,83 @@ export function AiChatBubble() {
     if (conversationId === id) startNewConversation();
   };
 
+  // Écran d'accueil : aucune question posée, aucune conversation rouverte.
+  const showWelcome = view === 'chat' && messages.length === 0 && !streamedAnswer;
+  const thinking = chatM.isPending && !streamedAnswer;
+  const locked = retryAfter > 0 || chatM.isPending;
+
   return (
     <div className="pointer-events-none fixed bottom-5 right-5 z-[60] flex flex-col items-end gap-3 sm:bottom-6 sm:right-6">
       {open ? (
         <section
-          className="pointer-events-auto flex h-[min(520px,70vh)] w-[min(380px,calc(100vw-2rem))] flex-col overflow-hidden rounded-2xl border border-brand/15 bg-white shadow-2xl"
+          className="ai-panel pointer-events-auto flex h-[min(600px,calc(100dvh-7.5rem))] w-[min(410px,calc(100vw-2rem))] flex-col overflow-hidden rounded-[26px] border border-line bg-surface shadow-[0_30px_70px_-25px_rgba(6,42,71,0.55),0_2px_8px_rgba(15,23,42,0.06)]"
           role="dialog"
           aria-label="Assistant IA MadaRisk"
         >
-          <header className="flex items-center justify-between gap-2 bg-brand px-4 py-3 text-white">
-            <div className="flex items-center gap-2">
-              <span className="flex size-8 items-center justify-center rounded-full bg-white/15">
-                <Bot className="size-4" />
-              </span>
-              <div>
-                <p className="text-sm font-semibold leading-tight">Assistant IA</p>
-                <p className="text-[11px] text-emerald-100">Aide salle de crise</p>
+          <header className="relative overflow-hidden bg-gradient-to-br from-[#062a47] via-[#0e3d5f] to-[#1b5c80] px-4 py-3 text-white">
+            {/* Halos décoratifs : profondeur du bandeau, sans image. */}
+            <span
+              aria-hidden
+              className="pointer-events-none absolute -right-10 -top-12 size-32 rounded-full bg-white/10 blur-2xl"
+            />
+            <span
+              aria-hidden
+              className="pointer-events-none absolute -bottom-14 left-8 size-28 rounded-full bg-turquoise/25 blur-2xl"
+            />
+
+            <div className="relative flex items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="relative grid size-9 shrink-0 place-items-center rounded-2xl bg-white/15 ring-1 ring-inset ring-white/25 backdrop-blur-sm">
+                  <Bot className="size-[18px]" />
+                  <span
+                    aria-hidden
+                    className="absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-[#0e3d5f] bg-emerald-400"
+                  />
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate font-display text-[15px] font-semibold leading-tight tracking-tight">
+                    Assistant IA
+                  </p>
+                  <p className="truncate text-[11px] text-white/70">
+                    Données MadaRisk · salle de crise
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                className={cn(
-                  'rounded-lg p-1.5',
-                  view === 'history' ? 'bg-white/25' : 'hover:bg-white/15',
-                )}
-                aria-label="Historique des conversations"
-                aria-pressed={view === 'history'}
-                onClick={() => setView((current) => (current === 'history' ? 'chat' : 'history'))}
-              >
-                <MessagesSquare className="size-4" />
-              </button>
-              <button
-                type="button"
-                className="rounded-lg p-1.5 hover:bg-white/15"
-                aria-label="Fermer l’assistant"
-                onClick={() => setOpen(false)}
-              >
-                <X className="size-4" />
-              </button>
+
+              <div className="flex items-center gap-1">
+                {view === 'chat' && (messages.length > 0 || conversationId) ? (
+                  <button
+                    type="button"
+                    className="grid size-7 place-items-center rounded-lg text-white/80 transition hover:bg-white/15 hover:text-white"
+                    aria-label="Nouvelle conversation"
+                    onClick={startNewConversation}
+                  >
+                    <Plus className="size-4" />
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  className={cn(
+                    'grid size-7 place-items-center rounded-lg transition',
+                    view === 'history'
+                      ? 'bg-white/25 text-white'
+                      : 'text-white/80 hover:bg-white/15 hover:text-white',
+                  )}
+                  aria-label="Historique des conversations"
+                  aria-pressed={view === 'history'}
+                  onClick={() => setView((current) => (current === 'history' ? 'chat' : 'history'))}
+                >
+                  <MessagesSquare className="size-4" />
+                </button>
+                <button
+                  type="button"
+                  className="grid size-7 place-items-center rounded-lg text-white/80 transition hover:bg-white/15 hover:text-white"
+                  aria-label="Fermer l’assistant"
+                  onClick={() => setOpen(false)}
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
             </div>
           </header>
 
@@ -277,23 +379,58 @@ export function AiChatBubble() {
             />
           ) : (
             <>
-              <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto bg-gray-50 p-3">
+              <div
+                ref={listRef}
+                className="ai-scroll flex-1 space-y-3 overflow-y-auto bg-surface-subtle p-3.5"
+              >
+                {showWelcome ? (
+                  <div className="ai-bubble flex flex-col items-center px-1 pb-1 pt-4 text-center">
+                    <span className="grid size-14 place-items-center rounded-[20px] bg-gradient-to-br from-[#12405f] to-[#062a47] text-white shadow-lg shadow-[#062a47]/25 ring-1 ring-white/25">
+                      <Bot className="size-7" />
+                    </span>
+                    <p className="mt-3 font-display text-base font-semibold tracking-tight text-ink">
+                      Comment puis-je vous aider ?
+                    </p>
+                    <p className="mt-1 max-w-[17rem] text-xs leading-relaxed text-muted">
+                      Interrogez les alertes, les événements et les territoires suivis par la
+                      plateforme.
+                    </p>
+
+                    <div className="mt-4 grid w-full gap-2">
+                      {SUGGESTIONS.map((suggestion) => (
+                        <button
+                          key={suggestion.question}
+                          type="button"
+                          onClick={() => send(suggestion.question)}
+                          disabled={locked}
+                          className="group flex items-center gap-2.5 rounded-xl border border-line bg-surface px-2.5 py-2 text-left text-xs font-medium text-ink transition hover:-translate-y-px hover:border-brand/40 hover:shadow-soft focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 disabled:pointer-events-none disabled:opacity-50"
+                        >
+                          <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-brand-soft text-brand-deep transition group-hover:bg-brand group-hover:text-white">
+                            <suggestion.icon className="size-3.5" />
+                          </span>
+                          <span className="min-w-0 flex-1 truncate">{suggestion.question}</span>
+                          <ArrowUpRight className="size-3.5 shrink-0 text-muted transition group-hover:text-brand-deep" />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {messages.map((m, i) => (
                   <div
                     key={`${m.role}-${i}`}
-                    className={cn('flex gap-2', m.role === 'user' ? 'justify-end' : 'justify-start')}
+                    className={cn(
+                      'ai-bubble flex gap-2',
+                      m.role === 'user' ? 'justify-end' : 'justify-start',
+                    )}
                   >
-                    {m.role === 'assistant' ? (
-                      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-brand text-white">
-                        <Bot className="size-3.5" />
-                      </span>
-                    ) : null}
+                    {m.role === 'assistant' ? <AssistantAvatar className="mt-0.5" /> : null}
                     <div
                       className={cn(
-                        'max-w-[82%] rounded-2xl px-3 py-2 text-sm leading-relaxed',
+                        'max-w-[84%] px-3.5 py-2.5 text-sm leading-relaxed shadow-soft',
                         m.role === 'user'
-                          ? 'bg-brand text-white'
-                          : 'border border-line bg-surface text-ink shadow-sm',
+                          ? 'rounded-2xl rounded-br-md bg-gradient-to-br from-[#356b87] to-[#1f4a60] text-white'
+                          : 'rounded-2xl rounded-bl-md border border-line bg-surface text-ink',
                       )}
                     >
                       {m.role === 'assistant' ? (
@@ -304,22 +441,32 @@ export function AiChatBubble() {
                       {m.meta ? <AiAnswerMeta meta={m.meta} /> : null}
                     </div>
                     {m.role === 'user' ? (
-                      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-ink text-white">
+                      <span className="mt-0.5 grid size-7 shrink-0 place-items-center rounded-full bg-ink text-surface">
                         <User className="size-3.5" />
                       </span>
                     ) : null}
                   </div>
                 ))}
 
-                {streamedAnswer !== null ? (
-                  <div className="flex gap-2 justify-start">
-                    <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-brand text-white">
-                      <Bot className="size-3.5" />
-                    </span>
-                    <div className="max-w-[82%] rounded-2xl border border-line bg-surface px-3 py-2 text-sm leading-relaxed text-ink shadow-sm">
+                {thinking ? (
+                  <div className="ai-bubble flex justify-start gap-2">
+                    <AssistantAvatar className="mt-0.5" />
+                    <div className="flex items-center gap-2.5 rounded-2xl rounded-bl-md border border-line bg-surface px-3.5 py-2.5 shadow-soft">
+                      <ThinkingDots />
+                      <span className="text-[11.5px] font-medium text-muted">
+                        Consultation des données…
+                      </span>
+                    </div>
+                  </div>
+                ) : null}
+
+                {streamedAnswer ? (
+                  <div className="ai-bubble flex justify-start gap-2">
+                    <AssistantAvatar className="mt-0.5" />
+                    <div className="max-w-[84%] rounded-2xl rounded-bl-md border border-line bg-surface px-3.5 py-2.5 text-sm leading-relaxed text-ink shadow-soft">
                       <AiMarkdown>{streamedAnswer}</AiMarkdown>
                       <span
-                        className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-sm bg-brand align-middle"
+                        className="ml-0.5 inline-block h-3.5 w-[3px] animate-pulse rounded-full bg-brand align-middle"
                         aria-hidden="true"
                       />
                       <span className="sr-only">Réponse en cours de génération…</span>
@@ -330,50 +477,60 @@ export function AiChatBubble() {
               </div>
 
               {unavailable ? (
-                <div className="border-t border-brand/10 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  Assistant non disponible pour le moment.
+                <div className="flex items-start gap-2 border-t border-amber-200/60 bg-amber-50 px-3.5 py-2.5 text-[11.5px] leading-relaxed text-amber-900 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-200">
+                  <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                  <p>Assistant non disponible pour le moment.</p>
                 </div>
               ) : retryAfter > 0 ? (
-                <div className="border-t border-brand/10 bg-orange-50 px-3 py-2 text-xs text-orange-900">
-                  Trop de requêtes — réessayez dans {formatRetryDelay(retryAfter)}.
+                <div className="flex items-start gap-2 border-t border-orange-200/60 bg-orange-50 px-3.5 py-2.5 text-[11.5px] leading-relaxed text-orange-900 dark:border-orange-400/20 dark:bg-orange-400/10 dark:text-orange-200">
+                  <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+                  <p>Trop de requêtes — réessayez dans {formatRetryDelay(retryAfter)}.</p>
                 </div>
               ) : null}
 
               {!unavailable ? (
-                <form onSubmit={onSubmit} className="flex gap-2 border-t border-line bg-surface p-3">
-                  <input
-                    className="h-10 flex-1 rounded-xl border border-line bg-surface px-3 text-sm outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/15"
-                    placeholder={
-                      retryAfter > 0 ? `Attendre ${formatRetryDelay(retryAfter)}…` : 'Votre question…'
-                    }
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    disabled={retryAfter > 0 || chatM.isPending}
-                    maxLength={5000}
-                    aria-label="Message à l’assistant"
-                  />
-                  {chatM.isPending ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="danger"
-                      onClick={stopGeneration}
-                      aria-label="Arrêter la génération"
-                      className="!h-10 !px-3"
-                    >
-                      <Square className="size-3.5 fill-current" />
-                    </Button>
-                  ) : (
-                    <Button
-                      type="submit"
-                      size="sm"
-                      disabled={retryAfter > 0}
-                      aria-label="Envoyer"
-                      className="!h-10 !px-3"
-                    >
-                      <Send className="size-4" />
-                    </Button>
-                  )}
+                <form
+                  onSubmit={onSubmit}
+                  className="border-t border-line bg-surface px-3 pb-2.5 pt-3"
+                >
+                  <div className="flex items-center gap-1.5 rounded-2xl border border-line bg-surface-subtle px-2 py-1.5 transition focus-within:border-brand/50 focus-within:bg-surface focus-within:ring-4 focus-within:ring-brand/10">
+                    <input
+                      className="h-8 min-w-0 flex-1 bg-transparent px-1.5 text-sm text-ink outline-none placeholder:text-muted/80 disabled:cursor-not-allowed"
+                      placeholder={
+                        retryAfter > 0
+                          ? `Attendre ${formatRetryDelay(retryAfter)}…`
+                          : 'Votre question…'
+                      }
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      disabled={locked}
+                      maxLength={5000}
+                      aria-label="Message à l’assistant"
+                    />
+                    {chatM.isPending ? (
+                      <button
+                        type="button"
+                        onClick={stopGeneration}
+                        aria-label="Arrêter la génération"
+                        className="grid size-8 shrink-0 place-items-center rounded-xl bg-risk-extreme/10 text-risk-extreme transition hover:bg-risk-extreme hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-risk-extreme/40"
+                      >
+                        <Square className="size-3 fill-current" />
+                      </button>
+                    ) : (
+                      <button
+                        type="submit"
+                        disabled={!input.trim() || retryAfter > 0}
+                        aria-label="Envoyer"
+                        className="grid size-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#12405f] to-[#062a47] text-white shadow-sm transition hover:shadow-md active:scale-95 disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/50"
+                      >
+                        <Send className="size-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <p className="mt-1.5 px-1 text-[10px] leading-snug text-muted">
+                    Réponses construites à partir des données de la plateforme — à vérifier avant
+                    décision.
+                  </p>
                 </form>
               ) : null}
             </>
@@ -385,14 +542,23 @@ export function AiChatBubble() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className={cn(
-          'pointer-events-auto flex size-14 items-center justify-center rounded-full shadow-xl transition',
-          'bg-brand text-white hover:bg-brand-deep focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand',
-          open && 'ring-4 ring-brand/25',
+          'pointer-events-auto relative grid size-14 place-items-center rounded-full',
+          'bg-gradient-to-br from-[#12405f] via-[#0e3d5f] to-[#062a47] text-white',
+          'shadow-[0_18px_38px_-12px_rgba(6,42,71,0.7)] ring-1 ring-white/20 transition',
+          'hover:scale-[1.04] hover:shadow-[0_22px_44px_-12px_rgba(6,42,71,0.8)] active:scale-95',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand/60 focus-visible:ring-offset-2 focus-visible:ring-offset-canvas',
+          open && 'scale-95',
         )}
         aria-label={open ? 'Fermer l’assistant IA' : 'Ouvrir l’assistant IA'}
         aria-expanded={open}
       >
         {open ? <X className="size-6" /> : <MessageCircle className="size-6" />}
+        {!open ? (
+          <span
+            aria-hidden
+            className="absolute -right-0.5 -top-0.5 size-3 rounded-full border-2 border-canvas bg-turquoise"
+          />
+        ) : null}
       </button>
     </div>
   );

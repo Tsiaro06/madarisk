@@ -816,7 +816,7 @@ export function CrisisMap({
       minZoom={4}
       scrollWheelZoom
       zoomControl={false}
-      className="h-full w-full"
+      className="crisis-map h-full w-full"
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
