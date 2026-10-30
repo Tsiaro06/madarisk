@@ -712,4 +712,66 @@ describe("Alertes - auto-archivage à la clôture de l'événement", () => {
     // serait pas reprise par le afterAll global — on la supprime explicitement.
     await db.query(`DELETE FROM alerts WHERE id IN ($1, $2)`, [orphan.id, standalone.id]);
   });
+
+  it("job d'auto-archivage : conserve les alertes publiées dont la validité n'est pas terminée", async () => {
+    const eventId = await createEvent(admin.token);
+    const now = Date.now();
+    // Cas réel des alertes automatiques : `valid_from` = début de l'événement
+    // (donc toujours dans le passé) et aucune date de fin connue. Elles
+    // doivent rester visibles dans « Alertes actives ».
+    const withoutEnd = await alertsRepository.create({
+      eventId,
+      districtId,
+      type: 'VAGUE_DE_CHALEUR',
+      severity: 'MODEREE',
+      status: 'PUBLIEE',
+      basis: 'PREVISION',
+      title: `Alerte sans fin de validité ${now}`,
+      message: 'Prévision toujours en cours.',
+      createdBy: admin.id,
+      validFrom: new Date(now - 48 * 3600_000).toISOString(),
+      publishedAt: new Date(now - 48 * 3600_000).toISOString(),
+    });
+    const stillValid = await alertsRepository.create({
+      eventId,
+      districtId,
+      type: 'VAGUE_DE_CHALEUR',
+      severity: 'MODEREE',
+      status: 'PUBLIEE',
+      basis: 'PREVISION',
+      title: `Alerte encore valide ${now}`,
+      message: 'Prévision toujours en cours avec échéance future.',
+      createdBy: admin.id,
+      validFrom: new Date(now - 48 * 3600_000).toISOString(),
+      expiresAt: new Date(now + 24 * 3600_000).toISOString(),
+      publishedAt: new Date(now - 48 * 3600_000).toISOString(),
+    });
+    const expired = await alertsRepository.create({
+      eventId,
+      districtId,
+      type: 'VAGUE_DE_CHALEUR',
+      severity: 'MODEREE',
+      status: 'PUBLIEE',
+      basis: 'PREVISION',
+      title: `Alerte expirée ${now}`,
+      message: 'Prévision terminée.',
+      createdBy: admin.id,
+      validFrom: new Date(now - 48 * 3600_000).toISOString(),
+      expiresAt: new Date(now - 3600_000).toISOString(),
+      publishedAt: new Date(now - 48 * 3600_000).toISOString(),
+    });
+
+    await alertsService.archiveStaleAlerts();
+
+    expect((await alertsRepository.findById(withoutEnd.id))?.status).toBe('PUBLIEE');
+    expect((await alertsRepository.findById(stillValid.id))?.status).toBe('PUBLIEE');
+    // Seule une validité réellement terminée (`expires_at`) est archivée.
+    expect((await alertsRepository.findById(expired.id))?.status).toBe('ARCHIVEE');
+
+    await db.query(`DELETE FROM alerts WHERE id IN ($1, $2, $3)`, [
+      withoutEnd.id,
+      stillValid.id,
+      expired.id,
+    ]);
+  });
 });

@@ -539,13 +539,21 @@ export const alertsRepository = {
   /**
    * Archivage en masse des alertes devenues sans objet.
    *
-   * Deux cas sont couverts :
+   * Trois cas sont couverts :
    * - l'événement rattaché est `CLOTURE` : l'alerte n'a plus de pertinence
    *   opérationnelle et doit sortir de la vue « Alertes actives » ;
    * - l'événement a été supprimé (`event_id` passe à NULL via ON DELETE SET
    *   NULL) : seules les alertes **automatiques** (`is_automatic`), toujours
    *   générées dans le cadre d'un événement, sont visées — une alerte manuelle
-   *   sans événement est légitime et reste épargnée.
+   *   sans événement est légitime et reste épargnée ;
+   * - la validité de l'alerte est terminée (`expires_at` dépassé) : elle est
+   *   déjà masquée par le filtre « Alertes actives » (`expires_at > now()`),
+   *   l'archivage ne fait qu'aligner son statut.
+   *
+   * `valid_from` est le **début** de validité, jamais une échéance : une alerte
+   * publiée dont la validité a commencé dans le passé est le cas normal (et
+   * une alerte de prévision arrivée à échéance devient « en vigueur depuis »).
+   * L'archiver reviendrait à supprimer toutes les alertes actives.
    *
    * Les alertes d'historique importées (`is_historique`) ne sont jamais
    * touchées. Renvoie les alertes archivées avec leur statut précédent.
@@ -563,10 +571,8 @@ export const alertsRepository = {
              OR (a.event_id IS NULL AND a.is_automatic = true)
              OR (
                a.status = 'PUBLIEE'
-               AND (
-                 (a.expires_at IS NOT NULL AND a.expires_at < NOW())
-                 OR (a.valid_from IS NOT NULL AND a.valid_from < NOW())
-               )
+               AND a.expires_at IS NOT NULL
+               AND a.expires_at < NOW()
              )
            )
        )

@@ -9,8 +9,9 @@ let running = false;
 /**
  * Auto-archivage des alertes devenues sans objet.
  *
- * Une alerte rattachée à un événement `CLOTURE`, ou une alerte automatique
- * orpheline (événement supprimé, `event_id` NULL), n'est plus pertinente
+ * Une alerte rattachée à un événement `CLOTURE`, une alerte automatique
+ * orpheline (événement supprimé, `event_id` NULL) ou une alerte publiée dont
+ * la validité est terminée (`expires_at` dépassé) n'est plus pertinente
  * opérationnellement : ce job la passe régulièrement en `ARCHIVEE` pour
  * qu'elle sorte de la vue « Alertes actives ». Idempotent et sans verrou
  * distribué — un garde anti-chevauchement évite les cycles simultanés dans un

@@ -299,7 +299,8 @@ export const alertsService = {
    *
    * Appelé par le job planifié d'auto-archivage. Idempotent : seules les
    * alertes encore actives (brouillon/publiée) rattachées à un événement
-   * `CLOTURE`, ou les alertes automatiques orphelines (événement supprimé),
+   * `CLOTURE`, les alertes automatiques orphelines (événement supprimé) ou les
+   * alertes publiées dont la validité est terminée (`expires_at` dépassé),
    * sont passées en `ARCHIVEE`. Publie un événement temps réel pour que les
    * salles de crise connectées rafraîchissent leur fil d'alertes.
    */
