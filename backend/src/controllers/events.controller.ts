@@ -36,8 +36,11 @@ export const eventsController = {
   },
 
   getById: async (req: Request, res: Response): Promise<void> => {
+    if (!req.user) throw AppError.unauthorized();
     const { id } = req.validatedParams as EventIdParams;
-    const event = await eventsService.getById(id);
+    // Un CLIENT ne doit voir que les alertes publiées et encore valides dans
+    // le détail d'événement (les brouillons sont internes).
+    const event = await eventsService.getById(id, { publishedOnly: req.user.role === 'CLIENT' });
     res.status(200).json(successResponse(event, "Détail de l'événement"));
   },
 

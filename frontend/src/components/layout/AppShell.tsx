@@ -118,11 +118,13 @@ export function AppShell() {
 
   const urgentQuery = useQuery({
     queryKey: ['alerts', 'urgent-banner'],
-    queryFn: () => alertsApi.list({ activeOnly: true, limit: 5, page: 1 }),
+    queryFn: () => alertsApi.list({ activeOnly: true, limit: 1, page: 1 }),
     refetchInterval: 60_000,
   });
 
-  const urgent = urgentQuery.data?.data ?? [];
+  // Le badge du menu compte toutes les alertes actives (`meta.total`), pas les
+  // 5 premières lignes chargées pour l'aperçu.
+  const urgentTotal = urgentQuery.data?.meta?.total ?? 0;
   const meta = pageMeta(location.pathname);
 
   const onLogout = async () => {
@@ -160,7 +162,7 @@ export function AppShell() {
         onOpenChange={setOpen}
         collapsed={collapsed}
         onCollapsedChange={setCollapsed}
-        alertCount={urgent.length}
+        alertCount={urgentTotal}
         role={user.role}
       />
 

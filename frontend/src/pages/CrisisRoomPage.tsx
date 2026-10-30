@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useIsFetching, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  alertsApi,
   eventsApi,
   risksApi,
   territoriesApi,
@@ -228,6 +227,8 @@ function CrisisRoomView() {
     },
     enabled: Boolean(activeEventId && alertAt),
     placeholderData: (prev) => prev,
+    staleTime: 30_000,
+    refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const alertSummary =
@@ -247,6 +248,8 @@ function CrisisRoomView() {
     },
     enabled: Boolean(activeEventId && alertAt && alertMode),
     placeholderData: (prev) => prev,
+    staleTime: 30_000,
+    refetchInterval: REFRESH_INTERVAL_MS,
   });
 
   const alertMap = useMemo(() => {
@@ -276,14 +279,6 @@ function CrisisRoomView() {
     queryFn: () => weatherApi.monitoring(),
     refetchInterval: REFRESH_INTERVAL_MS,
   });
-
-  const urgentQ = useQuery({
-    queryKey: ["alerts", "urgent-banner"],
-    queryFn: () => alertsApi.list({ activeOnly: true, limit: 5, page: 1 }),
-    staleTime: 30_000,
-    refetchInterval: REFRESH_INTERVAL_MS,
-  });
-  void urgentQ;
 
   const observationSync = monitoringQ.data?.sync?.observations;
 

@@ -201,9 +201,9 @@ const AI_TOOLS: AITool[] = [
   {
     name: 'getEventSummary',
     description: "Synthèse d'un événement (statistiques, répartition des risques, alertes liées).",
-    execute: async (parameters, _user) => {
+    execute: async (parameters, user) => {
       const { eventId } = eventParamsSchema.parse(parameters);
-      return eventsService.getById(eventId);
+      return eventsService.getById(eventId, { publishedOnly: user.role === 'CLIENT' });
     },
   },
   {
@@ -232,11 +232,9 @@ const AI_TOOLS: AITool[] = [
     description: 'Alertes publiées et encore actives.',
     execute: async (parameters, _user) => {
       const filters = alertFiltersSchema.parse(parameters);
-      // `activeOnly` borne aux alertes publiées et non expirées. `clientOnly`
-      // est volontairement écarté : ce parcours ne s'applique qu'aux alertes
-      // publiées et court-circuite eventId/districtId/communeId — les filtres
-      // validés ci-dessus n'auraient alors aucun effet et le modèle aurait
-      // pu présenter toutes les alertes comme propres à une commune demandée.
+      // `activeOnly` borne aux alertes publiées et non expirées. Les filtres
+      // territoriaux sont désormais appliqués en plus de la visibilité
+      // (`clientOnly` n'écrase plus les conditions demandées).
       const result = await alertsRepository.list({
         page: 1,
         limit: 50,

@@ -2,8 +2,16 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, Eye, Plus, Radio } from 'lucide-react';
-import { alertsApi } from '@/api';
-import type { AlertListRow, AlertStatus, AlertType, SeverityLevel } from '@/types';
+import { alertsApi, eventsApi, territoriesApi } from '@/api';
+import type {
+  AlertListRow,
+  AlertStatus,
+  AlertType,
+  CommuneListItem,
+  DistrictListItem,
+  EventListItem,
+  SeverityLevel,
+} from '@/types';
 import { ApiClientError } from '@/api/client';
 import { useCrisisStore } from '@/stores/crisisStore';
 import { Card } from '@/components/ui/Card';
@@ -42,7 +50,10 @@ const ALERT_TYPES: AlertType[] = [
   'URGENCE',
 ];
 const SEVERITIES: SeverityLevel[] = ['FAIBLE', 'MODEREE', 'ELEVEE', 'EXTREME'];
-const STATUSES: AlertStatus[] = ['BROUILLON', 'PUBLIEE', 'ARCHIVEE', 'EXPIREE'];
+// `EXPIREE` n'est jamais attribué par le backend (l'expiration passe l'alerte
+// en ARCHIVEE) : l'exposer dans le filtre ne produirait que des listes vides.
+const STATUSES: AlertStatus[] = ['BROUILLON', 'PUBLIEE', 'ARCHIVEE'];
+const OPTION_LIMIT = 100;
 
 const EMPTY_ALERT_FORM = {
   title: '',
@@ -52,6 +63,7 @@ const EMPTY_ALERT_FORM = {
   eventId: '',
   districtId: '',
   communeId: '',
+  expiresAt: '',
 };
 
 function statusTone(s: AlertStatus) {
@@ -67,6 +79,8 @@ export function AlertesPage() {
   const navigate = useNavigate();
   const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
   const [page, setPage] = useState(1);
+  // « Alertes actives » = publiées et non expirées, cohérentes avec la
+  // sidebar et la salle de crise (`activeOnly`).
   const [status, setStatus] = useState('PUBLIEE');
   const [type, setType] = useState('');
   const [origine, setOrigine] = useState('');
@@ -85,6 +99,25 @@ export function AlertesPage() {
   const closeConfirm = () => setConfirmState((s) => ({ ...s, open: false }));
   const [form, setForm] = useState(EMPTY_ALERT_FORM);
 
+  const eventsQ = useQuery({
+    queryKey: ['events', 'options'],
+    queryFn: () => eventsApi.list({ limit: OPTION_LIMIT }),
+    staleTime: 60_000,
+  });
+
+  const districtsQ = useQuery({
+    queryKey: ['territories', 'districts', 'options'],
+    queryFn: () => territoriesApi.districts({ limit: OPTION_LIMIT }),
+    staleTime: 5 * 60_000,
+  });
+
+  const communesQ = useQuery({
+    queryKey: ['territories', 'communes', 'options', form.districtId],
+    queryFn: () => territoriesApi.communes({ limit: OPTION_LIMIT, districtId: form.districtId || undefined }),
+    enabled: Boolean(form.districtId),
+    staleTime: 5 * 60_000,
+  });
+
   const listQ = useQuery({
     queryKey: ['alerts', page, status, type, origine, historique],
     queryFn: () =>
@@ -96,6 +129,9 @@ export function AlertesPage() {
         automatic: origine || undefined,
         historique: historique || undefined,
         group: 'event',
+        // Pour le filtre « Alertes actives », on s'appuie sur la règle
+        // serveur (publiées et non expirées) plutôt que sur le seul statut.
+        activeOnly: status === 'PUBLIEE' ? true : undefined,
       }),
   });
 
@@ -107,7 +143,7 @@ export function AlertesPage() {
 
   const createM = useMutation({
     mutationFn: () => {
-      const body = {
+      const body: Record<string, unknown> = {
         title: form.title,
         message: form.message,
         type: form.type,
@@ -116,6 +152,9 @@ export function AlertesPage() {
         districtId: form.districtId || undefined,
         communeId: form.communeId || undefined,
       };
+      if (form.expiresAt) {
+        body.expiresAt = new Date(form.expiresAt).toISOString();
+      }
       const targets = [body.eventId, body.districtId, body.communeId].filter(Boolean);
       if (targets.length === 0) {
         throw new ApiClientError('Précisez au moins une cible (événement, district ou commune)', 422);
@@ -139,30 +178,51 @@ export function AlertesPage() {
   });
 
   const publishM = useMutation({
-    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => alertsApi.publish(id))),
-    onSuccess: () => {
-      toast('Alerte publiée', 'success');
+    mutationFn: (ids: string[]) => Promise.allSettled(ids.map((id) => alertsApi.publish(id))),
+    onSuccess: (results, ids) => {
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed === 0) {
+        toast(ids.length === 1 ? 'Alerte publiée' : `${succeeded} alerte(s) publiée(s)`, 'success');
+      } else if (succeeded === 0) {
+        const first = results[0] as PromiseRejectedResult;
+        const msg = first.reason instanceof ApiClientError ? first.reason.message : 'Erreur publication';
+        toast(msg, 'error');
+      } else {
+        toast(
+          `${succeeded} alerte(s) publiée(s), ${failed} échec(s). Vérifiez le statut des autres.`,
+          'info',
+        );
+      }
       void qc.invalidateQueries({ queryKey: ['alerts'] });
       closeConfirm();
     },
     onError: (err) => {
       const msg = err instanceof ApiClientError ? err.message : 'Erreur publication';
       toast(msg, 'error');
-      alert(msg);
     },
   });
 
   const archiveM = useMutation({
-    mutationFn: (ids: string[]) => Promise.all(ids.map((id) => alertsApi.archive(id))),
-    onSuccess: () => {
-      toast('Alerte archivée', 'success');
+    mutationFn: (ids: string[]) => Promise.allSettled(ids.map((id) => alertsApi.archive(id))),
+    onSuccess: (results, ids) => {
+      const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results.filter((r) => r.status === 'rejected').length;
+      if (failed === 0) {
+        toast(ids.length === 1 ? 'Alerte archivée' : `${succeeded} alerte(s) archivée(s)`, 'success');
+      } else if (succeeded === 0) {
+        const first = results[0] as PromiseRejectedResult;
+        const msg = first.reason instanceof ApiClientError ? first.reason.message : "Erreur d'archivage";
+        toast(msg, 'error');
+      } else {
+        toast(`${succeeded} alerte(s) archivée(s), ${failed} échec(s).`, 'info');
+      }
       void qc.invalidateQueries({ queryKey: ['alerts'] });
       closeConfirm();
     },
     onError: (err) => {
-      const msg = err instanceof ApiClientError ? err.message : 'Erreur archivage';
+      const msg = err instanceof ApiClientError ? err.message : "Erreur d'archivage";
       toast(msg, 'error');
-      alert(msg);
     },
   });
 
@@ -218,11 +278,11 @@ export function AlertesPage() {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-display text-3xl text-ink">
-            Alertes générées automatiquement
+            Alertes
           </h1>
           <p className="text-sm text-muted">
-            Consultez les vigilances, alertes actives et alertes archivées produites par la
-            surveillance automatique.
+            Consultez les alertes générées automatiquement et les alertes exceptionnelles
+            créées manuellement par les administrateurs.
           </p>
           <p className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted">
             <Radio className="size-3.5 shrink-0 text-emerald-600" />
@@ -328,127 +388,111 @@ export function AlertesPage() {
               {listQ.data?.data.map((a) => (
                 <li
                   key={a.id}
-                  className="relative rounded-xl border border-brand/10 bg-gray-50 p-4"
+                  className="rounded-xl border border-brand/10 bg-gray-50 p-4"
                 >
-                  {a.status === 'PUBLIEE' ? (
-                    <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500/60" />
-                      <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-red-500" />
-                    </span>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-medium text-ink">{a.title}</h3>
+              <Badge tone={statusTone(a.status)}>
+                {ALERT_STATUS_LABELS[a.status] ?? a.status}
+              </Badge>
+              <Badge tone="warning">{SEVERITY_LABELS[a.severity] ?? a.severity}</Badge>
+              <Badge tone="brand">{ALERT_TYPE_LABELS[a.type] ?? a.type}</Badge>
+              {a.isHistorique ? (
+                <Badge tone="neutral">
+                  Historique · bulletin du{' '}
+                  {formatDate(a.publishedAt || a.createdAt)}
+                </Badge>
+              ) : a.isAutomatic ? (
+                <Badge tone="info">
+                  Automatique
+                  {a.basis === 'PREVISION'
+                    ? ' · Prévision'
+                    : a.basis === 'OBSERVATION'
+                      ? ' · Observation'
+                      : ''}
+                </Badge>
+              ) : (
+                <Badge tone="neutral">Manuelle</Badge>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap items-start justify-between gap-2">
+              <div>
+                <p className="text-sm text-muted">{a.message}</p>
+                <p className="mt-2 text-xs text-muted">
+                  {a.communeCount != null && a.communeCount > 1
+                    ? `${a.communeCount} communes touchées`
+                    : a.communeName || a.districtName || 'Territoire non précisé'}{' '}
+                  · {formatDate(a.publishedAt || a.createdAt)}
+                  {a.basis === 'PREVISION' ? (
+                    <>
+                      {' '}
+                      ·{' '}
+                      <span className="inline-flex items-center gap-1">
+                        <CalendarClock className="size-3" />
+                        {(() => {
+                          const now = new Date();
+                          const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                          const validFromDate = a.validFrom ? new Date(a.validFrom) : null;
+                          const isPastOrToday =
+                            validFromDate != null && validFromDate.getTime() <= todayStart.getTime();
+                          const isPublished = a.status === 'PUBLIEE';
+                          const forecastMatch =
+                            a.message.match(/prévue pour le (\d{2}\/\d{2}\/\d{4})/i) ||
+                            a.message.match(/prévue du (\d{2}\/\d{2}\/\d{4})/i);
+                          const forecastStr =
+                            forecastMatch?.[1] ||
+                            (validFromDate
+                              ? validFromDate.toLocaleDateString('fr-FR', { timeZone: 'Indian/Antananarivo' })
+                              : null);
+                          if (forecastStr && isPublished && isPastOrToday && validFromDate) {
+                            const effectiveStr = validFromDate.toLocaleDateString('fr-FR', {
+                              timeZone: 'Indian/Antananarivo',
+                            });
+                            if (effectiveStr === forecastStr) {
+                              return `En vigueur depuis le ${effectiveStr}`;
+                            }
+                            return `Prévu pour le ${forecastStr} · En vigueur depuis le ${effectiveStr}`;
+                          }
+                          if (forecastStr && isPublished && isPastOrToday) {
+                            return `En vigueur depuis le ${forecastStr}`;
+                          }
+                          if (forecastStr) {
+                            return `Prévu pour le ${forecastStr}`;
+                          }
+                          if (validFromDate) {
+                            if (isPublished && isPastOrToday) {
+                              return `En vigueur depuis le ${validFromDate.toLocaleDateString('fr-FR', {
+                                timeZone: 'Indian/Antananarivo',
+                              })}`;
+                            }
+                            return `Prévu pour le ${validFromDate.toLocaleDateString('fr-FR', {
+                              timeZone: 'Indian/Antananarivo',
+                            })}`;
+                          }
+                          return 'Prévision';
+                        })()}
+                        {a.expiresAt && !a.message.match(/prévue du|prévue jusqu'au/i)
+                          ? ` jusqu'au ${new Date(a.expiresAt).toLocaleDateString('fr-FR', {
+                              timeZone: 'Indian/Antananarivo',
+                            })}`
+                          : ''}
+                      </span>
+                    </>
                   ) : null}
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-medium text-ink">{a.title}</h3>
-                        <Badge tone={statusTone(a.status)}>
-                          {ALERT_STATUS_LABELS[a.status] ?? a.status}
-                        </Badge>
-                        <Badge tone="warning">{SEVERITY_LABELS[a.severity] ?? a.severity}</Badge>
-                        <Badge tone="brand">{ALERT_TYPE_LABELS[a.type] ?? a.type}</Badge>
-                        {a.isHistorique ? (
-                          <Badge tone="neutral">
-                            Historique · bulletin du{' '}
-                            {formatDate(a.publishedAt || a.createdAt)}
-                          </Badge>
-                        ) : a.isAutomatic ? (
-                          <Badge tone="info">
-                            Automatique
-                            {a.basis === 'PREVISION'
-                              ? ' · Prévision'
-                              : a.basis === 'OBSERVATION'
-                                ? ' · Observation'
-                                : ''}
-                          </Badge>
-                        ) : (
-                          <Badge tone="neutral">Manuelle</Badge>
-                        )}
-                      </div>
-                      <p className="mt-1 text-sm text-muted">{a.message}</p>
-                      <p className="mt-2 text-xs text-muted">
-                        {a.communeCount != null && a.communeCount > 1
-                          ? `${a.communeCount} communes touchées`
-                          : a.communeName || a.districtName || 'Territoire non précisé'}{' '}
-                        · {formatDate(a.publishedAt || a.createdAt)}
-                        {a.basis === 'PREVISION' ? (
-                          <>
-                            {' '}
-                            ·{' '}
-                            <span className="inline-flex items-center gap-1">
-                              <CalendarClock className="size-3" />
-                              {(() => {
-                                const now = new Date();
-                                const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-                                const validFromDate = a.validFrom ? new Date(a.validFrom) : null;
-                                const isPastOrToday =
-                                  validFromDate != null &&
-                                  validFromDate.getTime() <= todayStart.getTime();
-                                const isPublished = a.status === 'PUBLIEE';
-
-                                const forecastMatch =
-                                  a.message.match(/prévue pour le (\d{2}\/\d{2}\/\d{4})/i) ||
-                                  a.message.match(/prévue du (\d{2}\/\d{2}\/\d{4})/i);
-                                const forecastStr =
-                                  forecastMatch?.[1] ||
-                                  (validFromDate
-                                    ? validFromDate.toLocaleDateString('fr-FR', {
-                                        timeZone: 'Indian/Antananarivo',
-                                      })
-                                    : null);
-
-                                if (forecastStr && isPublished && isPastOrToday && validFromDate) {
-                                  const effectiveStr = validFromDate.toLocaleDateString('fr-FR', {
-                                    timeZone: 'Indian/Antananarivo',
-                                  });
-                                  if (effectiveStr === forecastStr) {
-                                    return `En vigueur depuis le ${effectiveStr}`;
-                                  }
-                                  return `Prévu pour le ${forecastStr} · En vigueur depuis le ${effectiveStr}`;
-                                }
-
-                                if (forecastStr && isPublished && isPastOrToday) {
-                                  return `En vigueur depuis le ${forecastStr}`;
-                                }
-
-                                if (forecastStr) {
-                                  return `Prévu pour le ${forecastStr}`;
-                                }
-
-                                if (validFromDate) {
-                                  if (isPublished && isPastOrToday) {
-                                    return `En vigueur depuis le ${validFromDate.toLocaleDateString(
-                                      'fr-FR',
-                                      { timeZone: 'Indian/Antananarivo' },
-                                    )}`;
-                                  }
-                                  return `Prévu pour le ${validFromDate.toLocaleDateString(
-                                    'fr-FR',
-                                    { timeZone: 'Indian/Antananarivo' },
-                                  )}`;
-                                }
-                                return 'Prévision';
-                              })()}
-                              {a.expiresAt && !a.message.match(/prévue du|prévue jusqu'au/i)
-                                ? ` jusqu'au ${new Date(a.expiresAt).toLocaleDateString('fr-FR', {
-                                    timeZone: 'Indian/Antananarivo',
-                                  })}`
-                                : ''}
-                            </span>
-                          </>
-                        ) : null}
-                      </p>
-                    </div>
-                    {a.eventId ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => openInCrisisRoom(a)}
-                        title="Voir l'état de l'événement en salle de crise"
-                      >
-                        <Eye className="size-4" /> Voir
-                      </Button>
-                    ) : null}
-                  </div>
-                  <AdministrativeInterventionPanel compact className="mt-2">
+                </p>
+              </div>
+              {a.eventId ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => openInCrisisRoom(a)}
+                  title="Voir l'état de l'événement en salle de crise"
+                >
+                  <Eye className="size-4" /> Voir
+                </Button>
+              ) : null}
+            </div>
+            <AdministrativeInterventionPanel compact className="mt-2">
                     <div className="flex gap-2">
                       {a.status === 'BROUILLON' ? (
                         <Button
@@ -514,39 +558,69 @@ export function AlertesPage() {
               onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
               required
             />
-            <Select
-              label="Type"
-              value={form.type}
-              onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as AlertType }))}
-              options={ALERT_TYPES.map((t) => ({ value: t, label: ALERT_TYPE_LABELS[t] ?? t }))}
-            />
-            <Select
-              label="Sévérité"
-              value={form.severity}
-              onChange={(e) => setForm((f) => ({ ...f, severity: e.target.value as SeverityLevel }))}
-              options={SEVERITIES.map((t) => ({ value: t, label: SEVERITY_LABELS[t] ?? t }))}
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Select
+                label="Type"
+                value={form.type}
+                onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as AlertType }))}
+                options={ALERT_TYPES.map((t) => ({ value: t, label: ALERT_TYPE_LABELS[t] ?? t }))}
+              />
+              <Select
+                label="Sévérité"
+                value={form.severity}
+                onChange={(e) => setForm((f) => ({ ...f, severity: e.target.value as SeverityLevel }))}
+                options={SEVERITIES.map((t) => ({ value: t, label: SEVERITY_LABELS[t] ?? t }))}
+              />
+            </div>
+            <Input
+              label="Fin de validité (facultative)"
+              type="date"
+              value={form.expiresAt}
+              onChange={(e) => setForm((f) => ({ ...f, expiresAt: e.target.value }))}
             />
             <p className="text-xs text-muted">
-              Cible : renseignez un événement et/ou un territoire (district OU commune).
+              Cible : sélectionnez un événement et/ou un territoire (district OU commune).
             </p>
-            <Input
-              label="eventId (UUID)"
+            <Select
+              label="Événement (facultatif)"
               value={form.eventId}
               onChange={(e) => setForm((f) => ({ ...f, eventId: e.target.value }))}
-              placeholder="optionnel"
+              placeholder="Aucun"
+              options={[
+                { value: '', label: 'Aucun' },
+                ...(eventsQ.data?.data ?? []).map((ev: EventListItem) => ({
+                  value: ev.id,
+                  label: `${ev.eventCode} · ${ev.name}`,
+                })),
+              ]}
             />
-            <Input
-              label="districtId (UUID)"
-              value={form.districtId}
-              onChange={(e) => setForm((f) => ({ ...f, districtId: e.target.value }))}
-              placeholder="optionnel"
-            />
-            <Input
-              label="communeId (UUID)"
-              value={form.communeId}
-              onChange={(e) => setForm((f) => ({ ...f, communeId: e.target.value }))}
-              placeholder="optionnel"
-            />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Select
+                label="District (facultatif)"
+                value={form.districtId}
+                onChange={(e) => setForm((f) => ({ ...f, districtId: e.target.value, communeId: '' }))}
+                placeholder="Aucun"
+                options={[
+                  { value: '', label: 'Aucun' },
+                  ...(districtsQ.data?.data ?? []).map((d: DistrictListItem) => ({
+                    value: d.id,
+                    label: d.name,
+                  })),
+                ]}
+              />
+              <Select
+                label="Commune (facultatif)"
+                value={form.communeId}
+                onChange={(e) => setForm((f) => ({ ...f, communeId: e.target.value }))}
+                placeholder="Aucune"
+                options={[
+                  { value: '', label: 'Aucune' },
+                  ...((communesQ.data?.data ?? []) as CommuneListItem[])
+                    .filter((c) => !form.districtId || c.districtId === form.districtId)
+                    .map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
+            </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="ghost" onClick={() => setOpen(false)}>
                 Annuler

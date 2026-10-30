@@ -123,7 +123,7 @@ export const eventsService = {
     });
   },
 
-  async getById(id: string): Promise<EventDetail> {
+  async getById(id: string, options: { publishedOnly?: boolean } = {}): Promise<EventDetail> {
     const event = await eventsRepository.findById(id);
     if (!event) {
       throw AppError.notFound('Événement introuvable');
@@ -132,7 +132,7 @@ export const eventsService = {
     const [stats, riskDistribution, alerts] = await Promise.all([
       eventsRepository.getStats(id),
       eventsRepository.getRiskDistribution(id),
-      eventsRepository.getAlerts(id),
+      eventsRepository.getAlerts(id, options),
     ]);
 
     return {

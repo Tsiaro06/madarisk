@@ -410,6 +410,18 @@ export const automaticAlertService = {
           updated += 1;
         }
       } else {
+        // Archivage manuel par un ADMIN : décision durable, on ne recrée pas
+        // d'alerte pour cette cible tant que l'événement reste ouvert.
+        const suppressed = await alertsRepository.findManuallySuppressedTarget(opts.eventId, {
+          communeId: target.communeId,
+          districtId: target.districtId,
+          regionId: target.regionId,
+        });
+        if (suppressed) {
+          unchanged += 1;
+          continue;
+        }
+
         const newAlert = await alertsRepository.create({
           eventId: opts.eventId,
           districtId: target.districtId ?? null,

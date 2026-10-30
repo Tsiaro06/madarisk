@@ -42,10 +42,11 @@ describe('parseSseFrames', () => {
 });
 
 describe('invalidationKeysForEvent', () => {
-  it('invalide le fil d’alertes pour tout événement alert.*', () => {
-    expect(invalidationKeysForEvent('alert.created')).toEqual([['alerts']]);
-    expect(invalidationKeysForEvent('alert.updated')).toEqual([['alerts']]);
-    expect(invalidationKeysForEvent('alert.archived')).toEqual([['alerts']]);
+  it('invalide alertes, tableau de bord et événements pour tout événement alert.*', () => {
+    const expected = [['alerts'], ['dashboard'], ['event'], ['events']];
+    expect(invalidationKeysForEvent('alert.created')).toEqual(expected);
+    expect(invalidationKeysForEvent('alert.updated')).toEqual(expected);
+    expect(invalidationKeysForEvent('alert.archived')).toEqual(expected);
   });
 
   it('invalide événements et tableau de bord pour une détection', () => {

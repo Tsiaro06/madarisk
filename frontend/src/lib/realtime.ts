@@ -18,7 +18,8 @@ function retryDelayMs(attempt: number): number {
 /**
  * Queries TanStack à invalider pour un type d'événement temps réel. Fonction
  * pure (table de correspondance testable sans réseau ni DOM) :
- * - `alert.*` : le fil d'alertes ;
+ * - `alert.*` : fil d'alertes, tableau de bord (KPI « alertes actives »),
+ *   détail d'événement et ses alertes communales, liste des événements ;
  * - `detection.run` : la détection crée des événements et bouge le tableau de bord ;
  * - `cyclone.sync` : un cycle cyclone a persisté trajectoire, coloration et
  *   alertes — on rafraîchit événements, détail/trajectoire/coloration (`event`),
@@ -27,7 +28,9 @@ function retryDelayMs(attempt: number): number {
 export function invalidationKeysForEvent(
   event: string,
 ): readonly (readonly string[])[] {
-  if (event.startsWith('alert.')) return [['alerts']];
+  if (event.startsWith('alert.')) {
+    return [['alerts'], ['dashboard'], ['event'], ['events']];
+  }
   if (event === 'detection.run') return [['events'], ['dashboard']];
   if (event === 'cyclone.sync') {
     return [['events'], ['event'], ['dashboard'], ['alerts'], ['active-event']];

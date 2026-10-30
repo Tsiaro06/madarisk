@@ -264,50 +264,53 @@ export const alertsRepository = {
     const values: unknown[] = [];
     let idx = 1;
 
+    // Visibilité CLIENT : uniquement les alertes publiées et non expirées.
+    // Ces deux conditions s'ajoutent aux filtres demandés — elles ne les
+    // remplacent pas, sinon `?eventId=` / `?type=` / `?automatic=` étaient
+    // silencieusement ignorés pour ce rôle.
     if (query.clientOnly) {
       conditions.push(`a.status = 'PUBLIEE'`);
       conditions.push(`(a.expires_at IS NULL OR a.expires_at > now())`);
-    } else {
-      if (query.status) {
-        conditions.push(`a.status = $${idx++}`);
-        values.push(query.status);
-      }
-      if (query.type) {
-        conditions.push(`a.type = $${idx++}`);
-        values.push(query.type);
-      }
-      if (query.severity) {
-        conditions.push(`a.severity = $${idx++}`);
-        values.push(query.severity);
-      }
-      if (query.eventId) {
-        conditions.push(`a.event_id = $${idx++}`);
-        values.push(query.eventId);
-      }
-      if (query.districtId) {
-        conditions.push(`a.district_id = $${idx++}`);
-        values.push(query.districtId);
-      }
-      if (query.communeId) {
-        conditions.push(`a.commune_id = $${idx++}`);
-        values.push(query.communeId);
-      }
-      if (query.activeOnly) {
-        conditions.push(`a.status = 'PUBLIEE'`);
-        conditions.push(`(a.expires_at IS NULL OR a.expires_at > now())`);
-      }
-      if (query.automatic !== undefined) {
-        conditions.push(`a.is_automatic = $${idx++}`);
-        values.push(query.automatic);
-      }
-      if (query.historique !== undefined) {
-        conditions.push(`a.is_historique = $${idx++}`);
-        values.push(query.historique);
-      }
-      if (query.basis) {
-        conditions.push(`a.basis = $${idx++}`);
-        values.push(query.basis);
-      }
+    }
+    if (query.status) {
+      conditions.push(`a.status = $${idx++}`);
+      values.push(query.status);
+    }
+    if (query.type) {
+      conditions.push(`a.type = $${idx++}`);
+      values.push(query.type);
+    }
+    if (query.severity) {
+      conditions.push(`a.severity = $${idx++}`);
+      values.push(query.severity);
+    }
+    if (query.eventId) {
+      conditions.push(`a.event_id = $${idx++}`);
+      values.push(query.eventId);
+    }
+    if (query.districtId) {
+      conditions.push(`a.district_id = $${idx++}`);
+      values.push(query.districtId);
+    }
+    if (query.communeId) {
+      conditions.push(`a.commune_id = $${idx++}`);
+      values.push(query.communeId);
+    }
+    if (query.activeOnly) {
+      conditions.push(`a.status = 'PUBLIEE'`);
+      conditions.push(`(a.expires_at IS NULL OR a.expires_at > now())`);
+    }
+    if (query.automatic !== undefined) {
+      conditions.push(`a.is_automatic = $${idx++}`);
+      values.push(query.automatic);
+    }
+    if (query.historique !== undefined) {
+      conditions.push(`a.is_historique = $${idx++}`);
+      values.push(query.historique);
+    }
+    if (query.basis) {
+      conditions.push(`a.basis = $${idx++}`);
+      values.push(query.basis);
     }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -517,7 +520,8 @@ export const alertsRepository = {
   async publish(id: string): Promise<Alert | null> {
     const result = await db.query<AlertRow>(
       `UPDATE alerts
-       SET status = 'PUBLIEE', published_at = now()
+       SET status = 'PUBLIEE', published_at = now(), updated_at = now(),
+           archived_manually_at = NULL
        WHERE id = $1
        RETURNING ${ALERT_COLUMNS_RETURNING}`,
       [id],
@@ -525,13 +529,22 @@ export const alertsRepository = {
     return result.rows[0] ? mapAlert(result.rows[0]) : null;
   },
 
-  async archive(id: string): Promise<Alert | null> {
+  /**
+   * Archive une alerte.
+   *
+   * `manual` distingue l'archivage décidé par un ADMIN de l'archivage
+   * automatique (retrait de détection, clôture, expiration) : seul le premier
+   * pose `archived_manually_at`, qui empêche la génération automatique de
+   * recréer une alerte pour la même cible.
+   */
+  async archive(id: string, options: { manual?: boolean } = {}): Promise<Alert | null> {
     const result = await db.query<AlertRow>(
       `UPDATE alerts
-       SET status = 'ARCHIVEE'
+       SET status = 'ARCHIVEE', updated_at = now(),
+           archived_manually_at = CASE WHEN $2::boolean THEN now() ELSE NULL END
        WHERE id = $1
        RETURNING ${ALERT_COLUMNS_RETURNING}`,
-      [id],
+      [id, options.manual ?? false],
     );
     return result.rows[0] ? mapAlert(result.rows[0]) : null;
   },
@@ -650,6 +663,47 @@ export const alertsRepository = {
       ],
     );
     return result.rows[0] ? mapAlert(result.rows[0]) : null;
+  },
+
+  /**
+   * Une alerte automatique de cette cible a-t-elle été archivée **à la main**
+   * par un ADMIN ? Si oui, la génération ne doit pas en recréer une : sans ce
+   * garde-fou, l'archivage manuel était annulé au cycle suivant (l'alerte
+   * archivée n'était plus retrouvée, une nouvelle ligne était insérée).
+   *
+   * Les archivages automatiques (retrait de détection, clôture, expiration)
+   * ne posent pas `archived_manually_at` : la détection peut donc recréer
+   * l'alerte si la situation redevient dangereuse.
+   */
+  async findManuallySuppressedTarget(
+    eventId: string,
+    territory: { communeId?: string; districtId?: string; regionId?: string },
+  ): Promise<boolean> {
+    const isGlobal =
+      territory.communeId === undefined &&
+      territory.districtId === undefined &&
+      territory.regionId === undefined;
+
+    const result = await db.query<{ id: string }>(
+      `SELECT a.id
+       FROM alerts a
+       WHERE a.event_id = $1
+         AND a.is_automatic = true
+         AND a.status = 'ARCHIVEE'
+         AND a.archived_manually_at IS NOT NULL
+         AND a.commune_id IS NOT DISTINCT FROM $2
+         AND a.district_id IS NOT DISTINCT FROM $3
+         AND a.region_id IS NOT DISTINCT FROM $4
+       ORDER BY a.archived_manually_at DESC
+       LIMIT 1`,
+      [
+        eventId,
+        isGlobal ? null : (territory.communeId ?? null),
+        isGlobal ? null : (territory.districtId ?? null),
+        isGlobal ? null : (territory.regionId ?? null),
+      ],
+    );
+    return result.rows.length > 0;
   },
 
   async getCommuneName(communeId: string): Promise<string | null> {

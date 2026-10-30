@@ -86,7 +86,11 @@ export const alertsService = {
     });
 
     if (!alert.isHistorique) {
-      realtimeService.publish('alert.created', { alertId: alert.id, status: alert.status });
+      realtimeService.publish('alert.created', {
+        alertId: alert.id,
+        alertIds: [alert.id],
+        status: alert.status,
+      });
     }
 
     return alert;
@@ -242,6 +246,15 @@ export const alertsService = {
       throw AppError.badRequest('Seule une alerte en BROUILLON peut être publiée');
     }
 
+    // Une alerte déjà expirée serait publiée puis immédiatement masquée par
+    // « Alertes actives » et archivée par le job : l'admin croirait avoir
+    // publié une alerte active. On l'oblige à corriger l'échéance d'abord.
+    if (existing.expiresAt && new Date(existing.expiresAt).getTime() <= Date.now()) {
+      throw AppError.badRequest(
+        "Cette alerte est déjà expirée : modifiez sa date de fin de validité avant de la publier",
+      );
+    }
+
     const published = await alertsRepository.publish(id);
 
     await usersRepository.writeAudit({
@@ -254,7 +267,7 @@ export const alertsService = {
       ipAddress: getIp(req),
     });
 
-    realtimeService.publish('alert.updated', { alertId: id, status: 'PUBLIEE' });
+    realtimeService.publish('alert.updated', { alertId: id, alertIds: [id], status: 'PUBLIEE' });
 
     return published!;
   },
@@ -277,7 +290,13 @@ export const alertsService = {
       return existing;
     }
 
-    const archived = await alertsRepository.archive(id);
+    if (existing.isHistorique) {
+      throw AppError.badRequest("Une alerte historique ne peut pas être archivée manuellement");
+    }
+
+    // `manual: true` : l'archivage est une décision de l'ADMIN, la génération
+    // automatique ne doit pas recréer une alerte pour la même cible.
+    const archived = await alertsRepository.archive(id, { manual: true });
 
     await usersRepository.writeAudit({
       userId: actor.id,
@@ -289,7 +308,11 @@ export const alertsService = {
       ipAddress: getIp(req),
     });
 
-    realtimeService.publish('alert.archived', { alertId: id, status: 'ARCHIVEE' });
+    realtimeService.publish('alert.archived', {
+      alertId: id,
+      alertIds: [id],
+      status: 'ARCHIVEE',
+    });
 
     return archived!;
   },
@@ -313,7 +336,10 @@ export const alertsService = {
       'Auto-archivage : alertes sans objet (evenement cloture/supprime/date depassee) archivees',
     );
 
-    realtimeService.publish('alert.archived', { count: archived.length });
+    realtimeService.publish('alert.archived', {
+      alertIds: archived.map((a) => a.id),
+      count: archived.length,
+    });
 
     return archived.length;
   },
@@ -332,7 +358,11 @@ export const alertsService = {
       'Auto-archivage : alertes archivees a la cloture de l evenement',
     );
 
-    realtimeService.publish('alert.archived', { count: archived.length, eventId });
+    realtimeService.publish('alert.archived', {
+      alertIds: archived.map((a) => a.id),
+      count: archived.length,
+      eventId,
+    });
 
     return archived.length;
   },

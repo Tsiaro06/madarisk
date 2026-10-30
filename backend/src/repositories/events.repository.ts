@@ -395,7 +395,10 @@ export const eventsRepository = {
     return distribution;
   },
 
-  async getAlerts(eventId: string): Promise<EventAlert[]> {
+  async getAlerts(
+    eventId: string,
+    options: { publishedOnly?: boolean } = {},
+  ): Promise<EventAlert[]> {
     const result = await db.query<{
       id: string;
       title: string;
@@ -413,8 +416,12 @@ export const eventsRepository = {
          a.published_at AS "published_at"
        FROM alerts a
        WHERE a.event_id = $1
+         AND (
+           $2::boolean = false
+           OR (a.status = 'PUBLIEE' AND (a.expires_at IS NULL OR a.expires_at > now()))
+         )
        ORDER BY a.published_at DESC NULLS LAST, a.created_at DESC`,
-      [eventId],
+      [eventId, options.publishedOnly ?? false],
     );
     return result.rows.map((r) => ({
       id: r.id,

@@ -60,8 +60,8 @@ export const dashboardRepository = {
          (SELECT COUNT(*)::integer FROM hazard_events
            WHERE ${evClause} status = 'PREVISION') AS "forecastEvents",
          (SELECT COUNT(*)::integer FROM alerts
-           WHERE (status = 'BROUILLON'
-              OR (status = 'PUBLIEE' AND (expires_at IS NULL OR expires_at > now())))${alertClause}) AS "activeAlerts",
+           WHERE status = 'PUBLIEE'
+             AND (expires_at IS NULL OR expires_at > now())${alertClause}) AS "activeAlerts",
          (SELECT COUNT(*)::integer FROM districts) AS "totalDistricts",
          (SELECT COUNT(*)::integer FROM communes) AS "totalCommunes",
          (SELECT COUNT(*)::integer FROM (
