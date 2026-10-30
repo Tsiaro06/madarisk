@@ -309,7 +309,7 @@ export const alertsService = {
 
     logger.info(
       { count: archived.length, alertIds: archived.map((a) => a.id) },
-      'Auto-archivage : alertes sans objet (evenement cloture ou supprime) archivees',
+      'Auto-archivage : alertes sans objet (evenement cloture/supprime/date depassee) archivees',
     );
 
     realtimeService.publish('alert.archived', { count: archived.length });
