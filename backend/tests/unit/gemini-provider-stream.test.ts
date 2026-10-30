@@ -96,6 +96,9 @@ beforeEach(() => {
   sdk.generateContent.mockReset();
   sdk.generateContentStream.mockReset();
   sdk.modelParams.length = 0;
+  // La quarantaine des modèles est mémoire du fournisseur : sans remise à zéro,
+  // un test qui épuise un modèle laisserait les suivants devant un 503 immédiat.
+  provider.resetModelHealth();
 });
 
 afterEach(() => {
@@ -242,6 +245,10 @@ describe('GeminiAIProvider - repli entre modèles', () => {
     'gemini-dernier',
   ]);
 
+  beforeEach(() => {
+    fallbackProvider.resetModelHealth();
+  });
+
   /** Modèles réellement demandés au SDK, dans l'ordre des tentatives. */
   function requestedModels(): unknown[] {
     return sdk.modelParams.map((params) => params.model);
@@ -308,6 +315,70 @@ describe('GeminiAIProvider - repli entre modèles', () => {
   it('replie sur le chemin en flux tant que rien n’a été émis', async () => {
     sdk.generateContentStream
       .mockRejectedValueOnce(new Error(QUOTA_MESSAGE))
+      .mockResolvedValueOnce({ stream: streamOf(['Réponse ', 'du repli.']) });
+
+    const answer = await collect(fallbackProvider.generateAnswerStream(request));
+
+    expect(answer).toBe('Réponse du repli.');
+    expect(requestedModels()).toEqual(['gemini-principal', 'gemini-repli']);
+  });
+
+  it('ne rejoue pas une surcharge sur le même modèle avant de replier', async () => {
+    // Surcharge observée en direct : ~30 s avant le 503. La rejouer sur le même
+    // modèle triplait l'attente pour rien, avant même d'essayer un repli.
+    sdk.generateContent
+      .mockRejectedValueOnce(
+        new Error('[503 Service Unavailable] This model is currently experiencing high demand.'),
+      )
+      .mockResolvedValueOnce({ response: { text: () => 'Réponse du repli' } });
+
+    const result = await fallbackProvider.generateAnswer(request);
+
+    expect(result.answer).toBe('Réponse du repli');
+    expect(requestedModels()).toEqual(['gemini-principal', 'gemini-repli']);
+  });
+
+  it('saute un modèle en quarantaine au tour suivant', async () => {
+    sdk.generateContent
+      .mockRejectedValueOnce(
+        new Error('[503 Service Unavailable] This model is currently experiencing high demand.'),
+      )
+      .mockResolvedValue({ response: { text: () => 'Réponse du repli' } });
+
+    await fallbackProvider.generateAnswer(request);
+    sdk.generateContent.mockClear();
+    sdk.modelParams.length = 0;
+
+    await fallbackProvider.generateAnswer(request);
+
+    // Le principal reste saturé : inutile de repayer son attente à chaque question.
+    expect(requestedModels()).toEqual(['gemini-repli']);
+  });
+
+  it('échoue vite quand tous les modèles sont en quarantaine', async () => {
+    sdk.generateContent.mockRejectedValue(
+      new Error('[503 Service Unavailable] This model is currently experiencing high demand.'),
+    );
+    await expect(fallbackProvider.generateAnswer(request)).rejects.toMatchObject({
+      statusCode: 502,
+    });
+
+    sdk.generateContent.mockClear();
+    sdk.modelParams.length = 0;
+
+    // Tous écartés : une erreur immédiate et datée vaut mieux qu'une attente
+    // de plusieurs minutes qui finirait par la même erreur.
+    await expect(fallbackProvider.generateAnswer(request)).rejects.toMatchObject({
+      statusCode: 503,
+      retryAfterSeconds: expect.any(Number),
+    });
+    expect(sdk.generateContent).not.toHaveBeenCalled();
+  });
+
+  it('borne l’ouverture du flux et bascule sur un repli', async () => {
+    env.GEMINI_TIMEOUT_MS = 50;
+    sdk.generateContentStream
+      .mockImplementationOnce(() => new Promise(() => undefined))
       .mockResolvedValueOnce({ stream: streamOf(['Réponse ', 'du repli.']) });
 
     const answer = await collect(fallbackProvider.generateAnswerStream(request));

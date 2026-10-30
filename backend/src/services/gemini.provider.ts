@@ -21,6 +21,20 @@ import {
 
 const MAX_TOOL_RESULTS_CHARS = 30000;
 
+/**
+ * Quarantaines appliquées à un modèle en échec (cf. `GeminiAIProvider.quarantine`).
+ *
+ * La première quarantaine dure deux minutes, puis double à chaque échec
+ * consécutif du même modèle (plafond : vingt minutes). Sonde coûteuse : un
+ * modèle saturé met une trentaine de secondes à répondre 503, la retenter à
+ * chaque question reviendrait à faire payer cette attente à l'utilisateur.
+ * Un identifiant retiré est écarté bien plus longtemps, un quota annoncé est
+ * respecté jusqu'à vingt minutes.
+ */
+const QUARANTINE_BASE_MS = 2 * 60_000;
+const QUARANTINE_MAX_MS = 20 * 60_000;
+const QUARANTINE_RETIRED_MS = 30 * 60_000;
+
 export function serializeToolResults(toolResults: AIToolResult[]): string {
   const raw = JSON.stringify(toolResults);
   if (raw.length <= MAX_TOOL_RESULTS_CHARS) return raw;
@@ -128,7 +142,7 @@ function isRetryable(err: unknown): boolean {
  * modèle ; aucune raison d'ajouter des appels ailleurs.
  */
 function isModelUnavailable(err: unknown): boolean {
-  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+  const msg = errorMessage(err);
   return (
     msg.includes('429') ||
     msg.includes('resource exhausted') ||
@@ -141,9 +155,38 @@ function isModelUnavailable(err: unknown): boolean {
   );
 }
 
+/** Une reprise sur le MÊME modèle n'a de sens que pour une panne de service. */
+function isWorthRetrying(err: unknown): boolean {
+  return isRetryable(err) && !isModelScoped(err);
+}
+
+function errorMessage(err: unknown): string {
+  return (err instanceof Error ? err.message : String(err)).toLowerCase();
+}
+
+/** Un délai dépassé : le modèle n'a pas répondu dans le budget imparti. */
+function isTimeout(err: unknown): boolean {
+  const msg = errorMessage(err);
+  return msg.includes('timeout') || msg.includes('abort') || msg.includes('deadline');
+}
+
+/**
+ * Échec imputable au **modèle** et non au service : quota épuisé, identifiant
+ * retiré, surcharge annoncée, ou absence de réponse dans le délai imparti.
+ *
+ * Ces échecs ne se réparent pas en rejouant le même modèle — au contraire : le
+ * fournisseur met une trentaine de secondes à annoncer une surcharge, et
+ * réessayer trois fois avant de basculer faisait attendre plusieurs minutes
+ * pour un modèle de toute façon indisponible. Ils passent donc immédiatement
+ * au repli suivant, sans reprise.
+ */
+function isModelScoped(err: unknown): boolean {
+  return isModelUnavailable(err) || isTimeout(err);
+}
+
 function toAppError(err: unknown): AppError {
-  const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
-  if (msg.includes('timeout') || msg.includes('abort') || msg.includes('deadline')) {
+  const msg = errorMessage(err);
+  if (isTimeout(err)) {
     return new AppError('Délai dépassé pour la génération IA', 504);
   }
   // Modèle retiré ou inconnu : l'éditeur a retiré l'identifiant (ex. 2.0-flash,
@@ -305,6 +348,17 @@ export class GeminiAIProvider implements AIProvider {
    */
   private readonly models: string[];
 
+  /**
+   * Modèles mis en quarantaine après un échec qui leur est propre, avec
+   * l'instant de fin. Un modèle surchargé le reste plusieurs minutes : sans ce
+   * délai, chaque question repayait les ~30 s d'attente du modèle saturé avant
+   * de basculer sur un repli, alors qu'un repli répond en quelques secondes.
+   */
+  private readonly quarantinedUntil = new Map<string, number>();
+
+  /** Échecs consécutifs par modèle : sert à allonger la quarantaine suivante. */
+  private readonly consecutiveFailures = new Map<string, number>();
+
   constructor(apiKey: string, model: string, fallbackModels: string[] = []) {
     this.client = new GoogleGenerativeAI(apiKey);
     this.models = [model, ...fallbackModels].map((name) => name.trim()).filter(Boolean);
@@ -314,12 +368,23 @@ export class GeminiAIProvider implements AIProvider {
     return true;
   }
 
+  /**
+   * Oublie les quarantaines en cours. Réservé aux tests et à un éventuel
+   * rechargement de configuration : en exploitation, la quarantaine expire
+   * d'elle-même.
+   */
+  resetModelHealth(): void {
+    this.quarantinedUntil.clear();
+    this.consecutiveFailures.clear();
+  }
+
   async generateAnswer(input: AIRequest): Promise<AIResponse> {
     const contents = buildContents(input);
+    const models = this.usableModels();
     let lastError: unknown;
 
-    for (let index = 0; index < this.models.length; index++) {
-      const model = this.buildModel(this.models[index], input, false);
+    for (let index = 0; index < models.length; index++) {
+      const model = this.buildModel(models[index], input, false);
       const maxRetries = env.GEMINI_MAX_RETRIES;
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -334,6 +399,7 @@ export class GeminiAIProvider implements AIProvider {
           );
 
           const answer = result.response.text();
+          this.clearFailures(models[index]);
           return {
             answer,
             internalSources: [],
@@ -342,33 +408,107 @@ export class GeminiAIProvider implements AIProvider {
           };
         } catch (err) {
           lastError = err;
-          if (!isRetryable(err) || attempt === maxRetries) break;
+          if (!isWorthRetrying(err) || attempt === maxRetries) break;
           logger.warn({ attempt, err }, 'Fournisseur IA : tentative échouée, nouvelle tentative…');
           await sleep(500 * 2 ** attempt);
         }
       }
 
-      if (!this.switchToFallback(index, lastError)) break;
+      if (!this.switchToFallback(models, index, lastError)) break;
     }
 
     throw toAppError(lastError);
   }
 
   /**
-   * Passe au modèle suivant quand l'échec est propre au modèle (quota épuisé,
-   * identifiant retiré) et qu'un repli reste disponible. La bascule est
-   * journalisée : invisible pour l'utilisateur, elle doit rester visible pour
-   * l'exploitant.
+   * Modèles à essayer maintenant : ceux dont la quarantaine est terminée.
+   *
+   * Quand tous sont en quarantaine (panne générale du fournisseur), on échoue
+   * tout de suite avec un délai de retour plutôt que de repayer l'attente de
+   * chaque modèle : l'utilisateur reçoit une réponse claire en une seconde au
+   * lieu d'une roue qui tourne pendant des minutes pour finir en erreur.
+   */
+  private usableModels(): string[] {
+    const now = Date.now();
+    const usable = this.models.filter((name) => {
+      const until = this.quarantinedUntil.get(name);
+      if (until === undefined) return true;
+      if (until > now) return false;
+      this.quarantinedUntil.delete(name);
+      return true;
+    });
+
+    if (usable.length > 0) return usable;
+
+    const retryAfterSeconds = Math.max(
+      1,
+      Math.ceil(
+        (Math.min(...this.models.map((name) => this.quarantinedUntil.get(name) ?? 0)) - now) / 1000,
+      ),
+    );
+    throw new AppError(
+      'Service IA momentanément indisponible (modèles saturés) ; réessayez dans un instant',
+      503,
+      true,
+      undefined,
+      retryAfterSeconds,
+    );
+  }
+
+  /**
+   * Met le modèle en quarantaine après un échec qui lui est propre, puis dit si
+   * un repli reste à essayer. La bascule est journalisée : invisible pour
+   * l'utilisateur, elle doit rester visible pour l'exploitant.
    *
    * Vrai = un repli reste à essayer ; faux = c'était le dernier modèle.
    */
-  private switchToFallback(index: number, err: unknown): boolean {
-    if (index >= this.models.length - 1 || !isModelUnavailable(err)) return false;
+  private switchToFallback(models: string[], index: number, err: unknown): boolean {
+    this.quarantine(models[index], err);
+    if (index >= models.length - 1 || !isModelScoped(err)) return false;
     logger.warn(
-      { from: this.models[index], to: this.models[index + 1] },
+      { from: models[index], to: models[index + 1] },
       'Fournisseur IA : modèle indisponible, repli sur le suivant',
     );
     return true;
+  }
+
+  /**
+   * Durée pendant laquelle un modèle en échec est écarté :
+   * - quota épuisé : le délai annoncé par le fournisseur, borné à vingt minutes ;
+   * - modèle retiré : identifiant mort, il reste écarté longtemps ;
+   * - surcharge ou délai dépassé : deux minutes, doublées à chaque échec
+   *   consécutif du même modèle (une sonde coûte une trentaine de secondes).
+   */
+  private quarantine(model: string, err: unknown): void {
+    if (!isModelScoped(err)) return;
+
+    const failures = (this.consecutiveFailures.get(model) ?? 0) + 1;
+    this.consecutiveFailures.set(model, failures);
+    const backoff = Math.min(QUARANTINE_BASE_MS * 2 ** (failures - 1), QUARANTINE_MAX_MS);
+
+    const announced = parseProviderRetryAfter(err);
+    const msg = errorMessage(err);
+    let ms = backoff;
+    if (announced !== null) {
+      ms = Math.min(Math.max(announced * 1000, QUARANTINE_BASE_MS), QUARANTINE_MAX_MS);
+    } else if (
+      msg.includes('404') ||
+      msg.includes('not found') ||
+      msg.includes('no longer available')
+    ) {
+      ms = QUARANTINE_RETIRED_MS;
+    }
+
+    this.quarantinedUntil.set(model, Date.now() + ms);
+    logger.warn(
+      { model, ms, failures },
+      'Fournisseur IA : modèle mis en quarantaine après un échec',
+    );
+  }
+
+  /** Le modèle a répondu : sa série d'échecs est terminée. */
+  private clearFailures(model: string): void {
+    this.consecutiveFailures.delete(model);
   }
 
   /** Modèle utilisé pour un appel, avec ou sans déclarations d'outils. */
@@ -412,20 +552,27 @@ export class GeminiAIProvider implements AIProvider {
     withTools: boolean,
   ): AsyncGenerator<AIAnswerStep, void, unknown> {
     const contents = buildContents(input);
+    const models = this.usableModels();
     let lastError: unknown;
     let emitted = false;
 
-    for (let index = 0; index < this.models.length; index++) {
-      const model = this.buildModel(this.models[index], input, withTools);
+    for (let index = 0; index < models.length; index++) {
+      const model = this.buildModel(models[index], input, withTools);
       const maxRetries = env.GEMINI_MAX_RETRIES;
 
       for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-          const streamResult = await model.generateContentStream({
-            contents,
-            systemInstruction: input.systemPrompt,
-            safetySettings: SAFETY_SETTINGS,
-          });
+          // L'ouverture du flux est bornée comme chaque lecture : une connexion
+          // qui ne rend jamais la main doit échouer (et laisser essayer un
+          // autre modèle) au lieu de bloquer la requête indéfiniment.
+          const streamResult = await withTimeout(
+            model.generateContentStream({
+              contents,
+              systemInstruction: input.systemPrompt,
+              safetySettings: SAFETY_SETTINGS,
+            }),
+            env.GEMINI_TIMEOUT_MS,
+          );
 
           const iterator = streamResult.stream[Symbol.asyncIterator]();
           try {
@@ -435,6 +582,7 @@ export class GeminiAIProvider implements AIProvider {
 
               const calls = chunkToolCalls(next.value);
               if (calls.length > 0 && !emitted) {
+                this.clearFailures(models[index]);
                 emitted = true;
                 yield { type: 'toolCalls', calls };
                 return;
@@ -442,6 +590,7 @@ export class GeminiAIProvider implements AIProvider {
 
               const text = chunkText(next.value);
               if (text) {
+                this.clearFailures(models[index]);
                 emitted = true;
                 yield { type: 'text', text };
               }
@@ -461,7 +610,7 @@ export class GeminiAIProvider implements AIProvider {
           return;
         } catch (err) {
           lastError = err;
-          if (emitted || !isRetryable(err) || attempt === maxRetries) break;
+          if (emitted || !isWorthRetrying(err) || attempt === maxRetries) break;
           logger.warn(
             { attempt, err },
             'Fournisseur IA (flux) : tentative échouée, nouvelle tentative…',
@@ -472,7 +621,7 @@ export class GeminiAIProvider implements AIProvider {
 
       // Modèle suivant possible tant que rien n'a été émis : après le premier
       // morceau, changer de modèle produirait un texte dupliqué.
-      if (emitted || !this.switchToFallback(index, lastError)) break;
+      if (emitted || !this.switchToFallback(models, index, lastError)) break;
     }
 
     throw toAppError(lastError);

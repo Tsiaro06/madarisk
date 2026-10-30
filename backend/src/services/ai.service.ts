@@ -1010,19 +1010,22 @@ async function persistToolResults(
   conversationId: string,
   entries: AIToolResult[],
 ): Promise<string[]> {
-  const ids: string[] = [];
-  for (const entry of entries) {
-    const content = serializeToolResults([entry]).slice(0, 500);
-    const message = await aiRepository.addMessage({
-      conversationId,
-      role: 'OUTIL',
-      content,
-      tokenCount: estimateTokens(content),
-      metadata: { tool: entry.tool },
-    });
-    ids.push(message.id);
-  }
-  return ids;
+  // Insertions indépendantes : les mener de front évite d'empiler une
+  // vingtaine d'allers-retours base avant même de solliciter le modèle.
+  // `Promise.all` conserve l'ordre des entrées, donc celui des identifiants.
+  const messages = await Promise.all(
+    entries.map((entry) => {
+      const content = serializeToolResults([entry]).slice(0, 500);
+      return aiRepository.addMessage({
+        conversationId,
+        role: 'OUTIL',
+        content,
+        tokenCount: estimateTokens(content),
+        metadata: { tool: entry.tool },
+      });
+    }),
+  );
+  return messages.map((message) => message.id);
 }
 
 /** Nombre maximal d'outils qu'un même tour exécute sur demande du modèle. */
@@ -1172,6 +1175,40 @@ async function* resolveAnswer(
 }
 
 /**
+ * Outils sans dépendance : ils ne lisent que la question (ou rien du tout),
+ * jamais un identifiant découvert par un autre outil. Ils peuvent donc être
+ * exécutés de front, avant ceux qui ont besoin de leurs résultats.
+ */
+const INDEPENDENT_TOOLS: ReadonlySet<ToolName> = new Set<ToolName>([
+  'searchTerritories',
+  'getActiveEvents',
+  'getDashboardSummary',
+  'getHistoricalEvents',
+]);
+
+/**
+ * Exécute une liste d'outils en deux vagues : d'abord ceux qui ne dépendent
+ * d'aucun autre (en parallèle), puis ceux qui lisent les identifiants résolus
+ * par les premiers (en parallèle également).
+ *
+ * L'ordre d'exécution reste celui de `EXECUTION_ORDER` à l'intérieur de chaque
+ * vague, et les résultats sont réordonnés à la fin : le prompt envoyé au modèle
+ * ne dépend donc pas de l'ordre d'arrivée des requêtes.
+ */
+async function runTools(names: ToolName[], context: ToolRunContext): Promise<void> {
+  const first = names.filter((name) => INDEPENDENT_TOOLS.has(name));
+  const second = names.filter((name) => !INDEPENDENT_TOOLS.has(name));
+
+  await Promise.all(first.map((name) => runTool(name, context)));
+  await Promise.all(second.map((name) => runTool(name, context)));
+
+  context.toolResults.sort(
+    (a, b) =>
+      EXECUTION_ORDER.indexOf(a.tool as ToolName) - EXECUTION_ORDER.indexOf(b.tool as ToolName),
+  );
+}
+
+/**
  * Prépare un tour de conversation : lit l'historique, enregistre la question,
  * exécute les outils sélectionnés, persiste leurs résultats et date les données.
  *
@@ -1211,9 +1248,7 @@ async function prepareTurn(
   // d'office. Le modèle pourra en demander d'autres s'il manque une donnée
   // (voir `resolveAnswer`).
   const context: ToolRunContext = { user, message, collected, toolResults, limitations };
-  for (const name of selected) {
-    await runTool(name, context);
-  }
+  await runTools(selected, context);
 
   // Repli : les mots-clés peuvent désigner un outil impossible à paramétrer
   // (« météo » sans aucune commune citée, « district » sans nom exploitable).
@@ -1223,9 +1258,7 @@ async function prepareTurn(
   // déjà été tenté.
   if (toolResults.length === 0) {
     const fallback = GENERIC_TOOLS.filter((name) => !selected.includes(name));
-    for (const name of fallback) {
-      await runTool(name, context);
-    }
+    await runTools(fallback, context);
     if (fallback.length > 0 && toolResults.length > 0) {
       limitations.push(
         'Aucune donnée propre à la demande : la situation globale de la plateforme est fournie à titre indicatif.',
