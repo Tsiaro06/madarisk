@@ -20,6 +20,9 @@ const api = vi.hoisted(() => ({
   create: vi.fn(),
   publish: vi.fn(),
   archive: vi.fn(),
+  events: vi.fn(),
+  districts: vi.fn(),
+  communes: vi.fn(),
 }));
 
 vi.mock('@/api', () => ({
@@ -29,6 +32,8 @@ vi.mock('@/api', () => ({
     publish: api.publish,
     archive: api.archive,
   },
+  eventsApi: { list: api.events },
+  territoriesApi: { districts: api.districts, communes: api.communes },
 }));
 
 function renderPage() {
@@ -54,8 +59,10 @@ async function fillAndSubmitCreateForm(user: ReturnType<typeof userEvent.setup>)
   await user.click(screen.getByRole('button', { name: /Créer une alerte exceptionnelle/ }));
   await user.type(screen.getByLabelText('Titre'), 'Alerte exceptionnelle');
   await user.type(screen.getByLabelText('Message'), 'Message de test');
-  await user.type(
-    screen.getByLabelText('eventId (UUID)'),
+  // La cible est obligatoire côté serveur : on choisit l'événement proposé par
+  // le sélecteur (alimenté par `eventsApi.list`).
+  await user.selectOptions(
+    screen.getByLabelText('Événement (facultatif)'),
     '11111111-1111-1111-1111-111111111111',
   );
   await user.click(screen.getByRole('button', { name: 'Créer' }));
@@ -74,6 +81,24 @@ beforeEach(() => {
   api.create.mockResolvedValue({ id: 'alert-new' });
   api.publish.mockResolvedValue(undefined);
   api.archive.mockResolvedValue(undefined);
+  api.events.mockResolvedValue({
+    data: [
+      {
+        id: '11111111-1111-1111-1111-111111111111',
+        eventCode: 'EV-TEST',
+        name: 'Événement test',
+      },
+    ],
+    meta: { page: 1, limit: 100, total: 1, totalPages: 1 },
+  });
+  api.districts.mockResolvedValue({
+    data: [],
+    meta: { page: 1, limit: 100, total: 0, totalPages: 1 },
+  });
+  api.communes.mockResolvedValue({
+    data: [],
+    meta: { page: 1, limit: 100, total: 0, totalPages: 1 },
+  });
 });
 
 describe('AlertesPage — métadonnées automatiques', () => {

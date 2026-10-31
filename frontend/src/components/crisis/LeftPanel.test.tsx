@@ -104,7 +104,7 @@ describe('LeftPanel', () => {
 
   it('affiche le sélecteur pleine largeur et le bouton détails en dessous', async () => {
     render(<LeftPanel districtId="" onDistrictChange={vi.fn()} {...defaultProps} />, { wrapper });
-    expect(await screen.findByText('Événement à suivre')).toBeInTheDocument();
+    expect(await screen.findByText('Choisissez celui à suivre sur la carte')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /Détails de l’événement/i })).toHaveAttribute(
       'href',
       '/evenements/evt-1',
