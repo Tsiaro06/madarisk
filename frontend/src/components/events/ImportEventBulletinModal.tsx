@@ -135,7 +135,7 @@ export function ImportEventBulletinModal({ open, onClose }: ImportEventBulletinM
       <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl overflow-hidden">
         <header className="border-b border-line px-6 py-4">
           <h2 className="text-lg font-semibold text-ink">Importer un bulletin d'événement</h2>
-          <p className="text-sm text-muted">Accepte .zip, .tar, .gz, .csv, .json, .geojson, .txt. Le système détecte automatiquement la trajectoire.</p>
+          <p className="text-sm text-muted">Accepte .zip, .rar, .tar, .gz, .csv, .json, .geojson, .txt. Le système détecte automatiquement la trajectoire.</p>
         </header>
         <div className="px-6 py-5 space-y-4 max-h-[70vh] overflow-auto">
           {step === 1 && (
@@ -144,11 +144,11 @@ export function ImportEventBulletinModal({ open, onClose }: ImportEventBulletinM
                 className="border-2 border-dashed border-line rounded-xl p-6 text-center cursor-pointer hover:bg-canvas"
                 onClick={() => fileRef.current?.click()}
               >
-                <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} accept=".zip,.tar,.gz,.tgz,.csv,.json,.geojson,.txt,.pdf,.shp,.shx,.dbf,.prj,.cpg" multiple />
+                <input ref={fileRef} type="file" className="hidden" onChange={(e) => setFile(e.target.files?.[0] || null)} accept=".zip,.rar,.tar,.gz,.tgz,.csv,.json,.geojson,.txt,.pdf,.shp,.shx,.dbf,.prj,.cpg" multiple />
                 <div className="flex flex-col items-center gap-2">
-                  {file?.name.endsWith('.zip') || file?.name.endsWith('.tar') || file?.name.endsWith('.gz') ? <FileArchive className="size-8 text-brand" /> : <FileText className="size-8 text-brand" />}
+                  {file?.name.endsWith('.zip') || file?.name.endsWith('.rar') || file?.name.endsWith('.tar') || file?.name.endsWith('.gz') ? <FileArchive className="size-8 text-brand" /> : <FileText className="size-8 text-brand" />}
                   <p className="text-sm font-medium text-ink">{file ? file.name : "Cliquer pour sélectionner un fichier ou une archive"}</p>
-                  <p className="text-xs text-muted">Taille max 50 Mo • CSV/JSON/GeoJSON/PDF/TXT/ZIP (Shapefile)/TAR/GZ • Ou plusieurs fichiers .shp/.shx/.dbf</p>
+                  <p className="text-xs text-muted">Taille max 50 Mo • CSV/JSON/GeoJSON/PDF/TXT/ZIP (Shapefile)/RAR/TAR/GZ • Ou plusieurs fichiers .shp/.shx/.dbf</p>
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
