@@ -6,7 +6,7 @@ import { Select } from "@/components/ui/Select";
 import { useToast } from "@/components/ui/Toast";
 import { eventBulletinsImportApi } from "@/api";
 import { useQueryClient } from "@tanstack/react-query";
-import { useActiveEvent } from "@/stores/activeEvent";
+import { useCrisisStore } from "@/stores/crisisStore";
 
 interface ImportEventBulletinModalProps {
   open: boolean;
@@ -40,7 +40,7 @@ const EVENT_TYPES = [
 export function ImportEventBulletinModal({ open, onClose }: ImportEventBulletinModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const setActiveEventId = useActiveEvent().setActiveEventId;
+  const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
   const fileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [step, setStep] = useState<1 | 2>(1);

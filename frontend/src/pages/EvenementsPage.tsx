@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { Polygon } from 'geojson';
-import { Plus, Radio } from 'lucide-react';
+import { Plus, Radio, Upload } from 'lucide-react';
 import { eventsApi } from '@/api';
 import type { EventListItem, EventStatus, EventType, RiskLevel, RiskPhase, SeverityLevel } from '@/types';
 import { ApiClientError } from '@/api/client';
@@ -22,8 +22,11 @@ import { PolygonDrawMap } from '@/components/maps/PolygonDrawMap';
 import { RefreshDataButton } from '@/components/ui/RefreshDataButton';
 import { AdministrativeInterventionPanel } from '@/components/admin/AdministrativeInterventionPanel';
 import { AdministrativeActionConfirmDialog } from '@/components/ui/AdministrativeActionConfirmDialog';
+import { ImportEventBulletinModal } from '@/components/events/ImportEventBulletinModal';
 import { useToast } from '@/components/ui/Toast';
 import { formatDate } from '@/lib/utils';
+import { hasRole } from '@/lib/roles';
+import { useAuthStore } from '@/stores/authStore';
 import { useCrisisStore } from '@/stores/crisisStore';
 import type { z } from 'zod';
 
@@ -57,9 +60,13 @@ export function EvenementsPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const setActiveEventId = useCrisisStore((s) => s.setActiveEventId);
+  const role = useAuthStore((s) => s.user?.role);
+  // Mêmes rôles que la route backend POST /events/bulletins/import.
+  const canImport = hasRole(role, ['ANALYSTE_SIG', 'ADMIN', 'SUPER_ADMIN']);
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState('');
   const [open, setOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [trackPoints, setTrackPoints] = useState<[number, number][]>([]);
   const [trackType, setTrackType] = useState('PREVUE');
   const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
@@ -191,10 +198,17 @@ export function EvenementsPage() {
             )}
           </p>
         </div>
-        <RefreshDataButton
-          queryKey={['events']}
-          onRefresh={() => void qc.refetchQueries({ queryKey: ['events'] })}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {canImport ? (
+            <Button variant="outline" onClick={() => setImportOpen(true)}>
+              <Upload className="size-4" /> Importer un bulletin
+            </Button>
+          ) : null}
+          <RefreshDataButton
+            queryKey={['events']}
+            onRefresh={() => void qc.refetchQueries({ queryKey: ['events'] })}
+          />
+        </div>
       </div>
 
       <div className="max-w-xs">
@@ -426,6 +440,8 @@ export function EvenementsPage() {
           </form>
         </div>
       ) : null}
+
+      <ImportEventBulletinModal open={importOpen} onClose={() => setImportOpen(false)} />
 
       <AdministrativeActionConfirmDialog
         open={confirmState.open}

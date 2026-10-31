@@ -73,6 +73,36 @@ beforeEach(() => {
   api.createPolygonArea.mockResolvedValue(undefined);
 });
 
+describe('EvenementsPage — import d’un bulletin d’événement', () => {
+  it('rend l’action invisible pour CLIENT', () => {
+    roleState.role = 'CLIENT';
+    renderPage();
+    expect(
+      screen.queryByRole('button', { name: /Importer un bulletin/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each(['ANALYSTE_SIG', 'ADMIN', 'SUPER_ADMIN'] as const)(
+    'affiche l’action autorisée pour %s',
+    (role) => {
+      roleState.role = role;
+      renderPage();
+      expect(
+        screen.getByRole('button', { name: /Importer un bulletin/ }),
+      ).toBeInTheDocument();
+    },
+  );
+
+  it('ouvre la modale d’import depuis la page Événements', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await user.click(screen.getByRole('button', { name: /Importer un bulletin/ }));
+    expect(
+      await screen.findByRole('heading', { name: /Importer un bulletin/ }),
+    ).toBeInTheDocument();
+  });
+});
+
 describe('EvenementsPage — création d’un événement exceptionnel', () => {
   it.each(['CLIENT', 'ANALYSTE_SIG'] as const)(
     'rend l’action invisible pour %s',

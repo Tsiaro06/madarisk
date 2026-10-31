@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { ChevronsUpDown, Radio, X, Zap, Upload, Plus } from 'lucide-react';
+import { ChevronsUpDown, Radio, X, Zap, Plus } from 'lucide-react';
 import { eventsApi } from '@/api';
 import type { EventListItem } from '@/types';
 import { useActiveEvent } from '@/stores/activeEvent';
@@ -10,14 +10,12 @@ import { EVENT_STATUS_TONE, EVENT_TYPE_LABELS } from '@/lib/eventMeta';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { CreateEventModal } from '@/components/crisis/CreateEventModal';
-import { ImportEventBulletinModal } from '@/components/events/ImportEventBulletinModal';
 
 export function EventSelector({ className }: { className?: string }) {
   const { activeEventId, setActiveEventId, activeEvent, activeEventLoading } = useActiveEvent();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [showImport, setShowImport] = useState(false);
   // Marque l'événement affiché comme « en direct » quand il correspond au
   // cyclone ACTIF le plus récent (même requête partagée que la salle de crise).
   const liveCyclone = useLiveCyclone();
@@ -160,16 +158,6 @@ export function EventSelector({ className }: { className?: string }) {
               className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-ink hover:bg-canvas"
               onClick={() => {
                 setOpen(false);
-                setShowImport(true);
-              }}
-            >
-              <Upload className="size-3.5" /> Importer bulletin
-            </button>
-            <button
-              type="button"
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-ink hover:bg-canvas"
-              onClick={() => {
-                setOpen(false);
                 setShowCreate(true);
               }}
             >
@@ -186,7 +174,6 @@ export function EventSelector({ className }: { className?: string }) {
         </div>
       ) : null}
       <CreateEventModal open={showCreate} onClose={() => setShowCreate(false)} />
-      <ImportEventBulletinModal open={showImport} onClose={() => setShowImport(false)} />
     </div>
   );
 }
