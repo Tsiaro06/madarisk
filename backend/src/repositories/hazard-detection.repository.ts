@@ -64,6 +64,8 @@ export interface MonitoringRow {
   consecutiveNormalCycles: number;
   monitoringSince: string | null;
   lastDetectedAt: string | null;
+  /** Échéance de la prévision (`hazard_events.expected_end_at`), si connue. */
+  expectedEndAt: string | null;
 }
 
 interface RunRow {
@@ -333,12 +335,18 @@ export const hazardDetectionRepository = {
     description: string | null;
     sourceName: string | null;
     startupTime: string;
+    /**
+     * Échéance de l'événement. Renseignée pour les prévisions (fin de la
+     * journée visée) : sans elle, les alertes qui en découlent n'ont aucune
+     * date d'expiration et restent « actives » indéfiniment.
+     */
+    expectedEndAt?: string | null;
   }): Promise<{ id: string; status: string; severity: string }> {
     const result = await db.query<{ id: string; status: string; severity: string }>(
       `INSERT INTO hazard_events
          (event_code, name, type, status, severity, description,
-          source_name, started_at, created_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL)
+          source_name, started_at, expected_end_at, created_by)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NULL)
        RETURNING id, status, severity`,
       [
         data.eventCode,
@@ -349,6 +357,7 @@ export const hazardDetectionRepository = {
         data.description,
         data.sourceName,
         data.startupTime,
+        data.expectedEndAt ?? null,
       ],
     );
     return result.rows[0];
@@ -416,14 +425,16 @@ export const hazardDetectionRepository = {
       consecutive_normal_cycles: string;
       monitoring_since: string | null;
       last_detected_at: string | null;
+      expected_end_at: string | null;
     }>(
       `SELECT m.event_id, m.detection_key, e.status, e.type::text AS type,
               m.consecutive_normal_cycles::text AS consecutive_normal_cycles,
               m.monitoring_since::text AS monitoring_since,
-              m.last_detected_at::text AS last_detected_at
+              m.last_detected_at::text AS last_detected_at,
+              e.expected_end_at::text AS expected_end_at
        FROM event_monitoring m
        JOIN hazard_events e ON e.id = m.event_id
-       WHERE e.status IN ('ACTIF', 'SUIVI')`,
+       WHERE e.status IN ('PREVISION', 'ACTIF', 'SUIVI')`,
     );
     return result.rows.map((r) => ({
       eventId: r.event_id,
@@ -433,6 +444,7 @@ export const hazardDetectionRepository = {
       consecutiveNormalCycles: parseInt(r.consecutive_normal_cycles, 10),
       monitoringSince: r.monitoring_since,
       lastDetectedAt: r.last_detected_at,
+      expectedEndAt: r.expected_end_at,
     }));
   },
 

@@ -42,7 +42,30 @@ interface RunningLock {
 
 const HISTORY_SOURCE = 'HAZARD_DETECTION';
 
+/**
+ * Madagascar vit à UTC+3 toute l'année (pas d'heure d'été). La journée visée
+ * par une prévision est donc bornée dans ce fuseau, pas en UTC : une échéance
+ * exprimée en UTC ferait basculer la date affichée au lendemain soir.
+ */
+const MADAGASCAR_UTC_OFFSET = '+03:00';
+
 let activeRun: RunningLock | null = null;
+
+/**
+ * Fin de la journée visée par une prévision (`YYYY-MM-DD`), exprimée en heure
+ * de Madagascar puis normalisée en ISO/UTC.
+ *
+ * C'est cette valeur qui est stockée dans `hazard_events.expected_end_at` :
+ * elle rend l'alerte expirante (filtre « Alertes actives », archivage
+ * automatique) au lieu de la laisser active indéfiniment. Un horizon nul
+ * (prévision déduite d'une observation, ex. vent seul) vise la journée en
+ * cours.
+ */
+function forecastEndOfDay(now: Date, horizonHours: number): string {
+  const hours = Number.isFinite(horizonHours) && horizonHours > 0 ? horizonHours : 0;
+  const targetDay = new Date(now.getTime() + hours * 3600_000).toISOString().slice(0, 10);
+  return new Date(`${targetDay}T23:59:59.999${MADAGASCAR_UTC_OFFSET}`).toISOString();
+}
 
 function riskLevelSummary(dist: EventRiskDistribution | null): Record<string, unknown> {
   return Object.fromEntries(Object.entries(dist ?? {}));
@@ -213,6 +236,9 @@ async function evaluateRules(
     string,
     { hazardType: string; dataKind: 'OBSERVE' | 'PREVU'; signals: DetectionSignal[] }
   >();
+  // Horizon de prévision par règle : il fixe la journée visée par un événement
+  // PREVISION, donc l'échéance de ses alertes.
+  const horizonByRuleId = new Map(rules.map((rule) => [rule.id, rule.forecastHorizonHours]));
   let rulesEvaluated = 0;
   let rulesTriggered = 0;
   let ruleErrors = 0;
@@ -269,6 +295,15 @@ async function evaluateRules(
     const severity = groupSeverity(group.signals);
     const description = groupDescription(group, best);
 
+    // La journée visée est celle de l'horizon le plus lointain du groupe. Toute
+    // prévision reçoit une échéance : sans `expected_end_at`, ses alertes
+    // resteraient « actives » pour toujours (pas de filtre, pas d'archivage).
+    const horizonHours = group.signals.reduce(
+      (max, signal) => Math.max(max, horizonByRuleId.get(signal.ruleId) ?? 0),
+      0,
+    );
+    const expectedEndAt = decision === 'PREVISION' ? forecastEndOfDay(ctx.now, horizonHours) : null;
+
     const existing = await hazardDetectionRepository.findOpenEventByKey(key, dedupeSince);
 
     if (existing) {
@@ -295,9 +330,20 @@ async function evaluateRules(
         });
       }
 
+      // Une prévision garde son échéance à jour (la journée visée avance d'un
+      // run à l'autre) ; la promotion en ACTIF l'efface : une alerte
+      // d'observation ne doit pas expirer à la fin de la journée prévue.
+      const expectedEndAtUpdate =
+        nextStatus === 'ACTIF'
+          ? null
+          : existing.status === 'PREVISION' && decision === 'PREVISION'
+            ? expectedEndAt
+            : undefined;
+
       await eventsRepository.update(eventId, {
         severity,
         description,
+        expectedEndAt: expectedEndAtUpdate,
       });
       await hazardDetectionRepository.attachDetectionKey(eventId, key);
       await hazardDetectionRepository.insertMonitoring(eventId, key, nowIso);
@@ -322,6 +368,7 @@ async function evaluateRules(
         description,
         sourceName: 'DETECTION_AUTOMATIQUE',
         startupTime: nowIso,
+        expectedEndAt,
       });
       const eventId = event.id;
       await hazardDetectionRepository.writeStatusHistory({
@@ -617,6 +664,42 @@ async function applyDecrease(
           metricValues: {},
           details: { source: HISTORY_SOURCE, reason: 'Danger en baisse' },
         });
+        transitions += 1;
+        eventIds.push(row.eventId);
+      }
+    } else if (row.status === 'PREVISION') {
+      // Une prévision jamais confirmée par une observation doit sortir du
+      // circuit. Sans ce cas elle restait PREVISION pour toujours (aucune
+      // règle de décroissance ne la visait) et ses alertes restaient
+      // « actives » alors que la date visée était largement passée.
+      const expiryMs = row.expectedEndAt
+        ? new Date(row.expectedEndAt).getTime()
+        : row.lastDetectedAt
+          ? new Date(row.lastDetectedAt).getTime() + ctx.monitoringHours * 3600_000
+          : null;
+
+      if (expiryMs !== null && ctx.now.getTime() >= expiryMs) {
+        await eventsRepository.updateStatus(row.eventId, 'CLOTURE');
+        await hazardDetectionRepository.writeStatusHistory({
+          eventId: row.eventId,
+          fromStatus: 'PREVISION',
+          toStatus: 'CLOTURE',
+          reason: 'Prévision échue sans confirmation observée',
+          source: HISTORY_SOURCE,
+        });
+        await hazardDetectionRepository.writeSnapshot({
+          eventId: row.eventId,
+          trigger: snapshotTrigger(ctx.trigger),
+          status: 'CLOTURE',
+          severity: 'FAIBLE',
+          exposedCommuneCount: await hazardDetectionRepository.countExposedCommunes(row.eventId),
+          riskLevelSummary: riskLevelSummary(
+            await eventsRepository.getRiskDistribution(row.eventId),
+          ),
+          metricValues: {},
+          details: { source: HISTORY_SOURCE, reason: 'Prévision échue' },
+        });
+        await hazardDetectionRepository.deleteMonitoring(row.eventId);
         transitions += 1;
         eventIds.push(row.eventId);
       }

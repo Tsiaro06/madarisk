@@ -774,4 +774,88 @@ describe("Alertes - auto-archivage à la clôture de l'événement", () => {
       expired.id,
     ]);
   });
+
+  it("job d'auto-archivage : archive les alertes automatiques d'une prévision échue", async () => {
+    const now = Date.now();
+    const day = 24 * 3600_000;
+    const iso = (offsetMs: number) => new Date(now + offsetMs).toISOString();
+
+    // Prévision dont la journée visée est passée mais que la détection n'a pas
+    // encore clôturée : sans ce cas, l'alerte restait « active » sans fin.
+    const expiredEventId = await createEvent(admin.token);
+    await db.query(
+      `UPDATE hazard_events
+          SET status = 'PREVISION', started_at = $2, expected_end_at = $3
+        WHERE id = $1`,
+      [expiredEventId, iso(-4 * day), iso(-2 * day)],
+    );
+    const expired = await alertsRepository.create({
+      eventId: expiredEventId,
+      districtId,
+      type: 'FORTE_PLUIE',
+      severity: 'MODEREE',
+      status: 'PUBLIEE',
+      basis: 'PREVISION',
+      isAutomatic: true,
+      title: `Prévision échue ${now}`,
+      message: 'Journée visée passée, événement pas encore clôturé.',
+      createdBy: null,
+      validFrom: iso(-4 * day),
+      publishedAt: iso(-4 * day),
+    });
+
+    // Prévision encore valide : l'échéance est devant nous, elle doit rester
+    // visible dans « Alertes actives ».
+    const validEventId = await createEvent(admin.token);
+    await db.query(
+      `UPDATE hazard_events
+          SET status = 'PREVISION', started_at = $2, expected_end_at = $3
+        WHERE id = $1`,
+      [validEventId, iso(-day), iso(day)],
+    );
+    const stillValid = await alertsRepository.create({
+      eventId: validEventId,
+      districtId,
+      type: 'FORTE_PLUIE',
+      severity: 'MODEREE',
+      status: 'PUBLIEE',
+      basis: 'PREVISION',
+      isAutomatic: true,
+      title: `Prévision encore valide ${now}`,
+      message: 'La journée visée est encore devant nous.',
+      createdBy: null,
+      validFrom: iso(-day),
+      publishedAt: iso(-day),
+    });
+
+    // Ligne héritée : aucune échéance n'avait été enregistrée, la prévision
+    // date de plus de 72 h (horizon maximal 48 h + marge) — elle est périmée.
+    const legacyEventId = await createEvent(admin.token);
+    await db.query(
+      `UPDATE hazard_events
+          SET status = 'PREVISION', started_at = $2, expected_end_at = NULL
+        WHERE id = $1`,
+      [legacyEventId, iso(-5 * day)],
+    );
+    const legacy = await alertsRepository.create({
+      eventId: legacyEventId,
+      districtId,
+      type: 'FORTE_PLUIE',
+      severity: 'MODEREE',
+      status: 'PUBLIEE',
+      basis: 'PREVISION',
+      isAutomatic: true,
+      title: `Prévision héritée sans échéance ${now}`,
+      message: 'Créée avant que la détection ne renseigne expected_end_at.',
+      createdBy: null,
+      validFrom: iso(-5 * day),
+      publishedAt: iso(-5 * day),
+    });
+
+    await alertsService.archiveStaleAlerts();
+
+    expect((await alertsRepository.findById(expired.id))?.status).toBe('ARCHIVEE');
+    expect((await alertsRepository.findById(legacy.id))?.status).toBe('ARCHIVEE');
+    expect((await alertsRepository.findById(stillValid.id))?.status).toBe('PUBLIEE');
+  });
 });

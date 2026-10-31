@@ -110,10 +110,17 @@ function formatPeriod(
   };
 
   if (basis === 'PREVISION') {
-    if (startedAt && expectedEndAt)
-      return `prévue du ${fmtDate(startedAt)} au ${fmtDate(expectedEndAt)}`;
+    // `expected_end_at` borne la journée visée par la prévision : c'est la
+    // date utile à afficher. `started_at`, lui, peut être la date de détection
+    // (alerte automatique) ou le début d'une fenêtre officielle (bulletin) —
+    // d'où le repli dessus quand aucune échéance n'est connue.
+    if (startedAt && expectedEndAt) {
+      const from = fmtDate(startedAt);
+      const to = fmtDate(expectedEndAt);
+      return from === to ? `prévue pour le ${to}` : `prévue du ${from} au ${to}`;
+    }
+    if (expectedEndAt) return `prévue pour le ${fmtDate(expectedEndAt)}`;
     if (startedAt) return `prévue pour le ${fmtDate(startedAt)}`;
-    if (expectedEndAt) return `prévue jusqu'au ${fmtDate(expectedEndAt)}`;
     return '';
   }
 

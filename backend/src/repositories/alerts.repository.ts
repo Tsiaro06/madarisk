@@ -552,16 +552,20 @@ export const alertsRepository = {
   /**
    * Archivage en masse des alertes devenues sans objet.
    *
-   * Trois cas sont couverts :
+   * Quatre cas sont couverts :
    * - l'événement rattaché est `CLOTURE` : l'alerte n'a plus de pertinence
    *   opérationnelle et doit sortir de la vue « Alertes actives » ;
    * - l'événement a été supprimé (`event_id` passe à NULL via ON DELETE SET
    *   NULL) : seules les alertes **automatiques** (`is_automatic`), toujours
    *   générées dans le cadre d'un événement, sont visées — une alerte manuelle
    *   sans événement est légitime et reste épargnée ;
-   * - la validité de l'alerte est terminée (`expires_at` dépassé) : elle est
-   *   déjà masquée par le filtre « Alertes actives » (`expires_at > now()`),
-   *   l'archivage ne fait qu'aligner son statut.
+   * - la validité de l'alerte est terminée (`expires_at` dépassé), brouillon
+   *   comme alerte publiée ;
+   * - l'événement est une `PREVISION` dont la journée visée est passée : même
+   *   si le job de détection n'a pas encore clôturé l'événement, l'alerte ne
+   *   doit plus être présentée comme active. Le repli `started_at + 72 h`
+   *   couvre les événements créés avant que `expected_end_at` ne soit
+   *   renseigné (horizon de prévision maximal : 48 h, plus 24 h de marge).
    *
    * `valid_from` est le **début** de validité, jamais une échéance : une alerte
    * publiée dont la validité a commencé dans le passé est le cas normal (et
@@ -582,10 +586,11 @@ export const alertsRepository = {
            AND (
              e.status = 'CLOTURE'
              OR (a.event_id IS NULL AND a.is_automatic = true)
+             OR (a.expires_at IS NOT NULL AND a.expires_at < NOW())
              OR (
-               a.status = 'PUBLIEE'
-               AND a.expires_at IS NOT NULL
-               AND a.expires_at < NOW()
+               a.is_automatic = true
+               AND e.status = 'PREVISION'
+               AND COALESCE(e.expected_end_at, e.started_at + INTERVAL '72 hours') < NOW()
              )
            )
        )

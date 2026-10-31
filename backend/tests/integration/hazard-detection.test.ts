@@ -200,9 +200,11 @@ async function destroyWeather(communeIds: string[]): Promise<void> {
   await db.query('DELETE FROM weather_forecasts WHERE commune_id = ANY($1::uuid[])', [communeIds]);
 }
 
-async function findEventByKey(key: string): Promise<{ id: string; status: string } | null> {
-  const result = await db.query<{ id: string; status: string }>(
-    `SELECT e.id, e.status
+async function findEventByKey(
+  key: string,
+): Promise<{ id: string; status: string; expected_end_at: Date | null } | null> {
+  const result = await db.query<{ id: string; status: string; expected_end_at: Date | null }>(
+    `SELECT e.id, e.status, e.expected_end_at
      FROM event_detection_keys k
      JOIN hazard_events e ON e.id = k.event_id
      WHERE k.detection_key = $1
@@ -384,6 +386,11 @@ describe('Détection automatique - prévision > seuil crée un événement PREVI
     const event = await findEventByKey(`FORTE_PLUIE:${cf.id}`);
     expect(event).not.toBeNull();
     expect(event!.status).toBe('PREVISION');
+    // La prévision porte une échéance (fin de la journée visée, heure de
+    // Madagascar) : sans elle, l'alerte générée resterait active sans fin.
+    expect(event!.expected_end_at?.toISOString()).toBe(
+      new Date(`${dayFromNow(now, 24)}T23:59:59.999+03:00`).toISOString(),
+    );
     eventIds.push(event!.id);
 
     const history = await eventStatusHistory(event!.id);
@@ -397,6 +404,55 @@ describe('Détection automatique - prévision > seuil crée un événement PREVI
 
     await destroyEvents();
     await destroyWeather([cf.id]);
+  });
+});
+
+describe("Détection automatique - clôture d'une prévision échue sans confirmation", () => {
+  it('passe le PREVISION en CLOTURE quand la journée visée est dépassée', async () => {
+    const cf = communes[0];
+    await cleanScenario([cf.id]);
+    await insertRule({
+      hazard: 'FORTE_PLUIE',
+      metric: 'precipitation',
+      operator: 'GE',
+      threshold: 15,
+      horizonHours: 24,
+      communeId: cf.id,
+    });
+    const detectedAt = new Date();
+    await insertForecast(cf, { forecastDay: dayFromNow(detectedAt, 24), precipitationSumMm: 60 });
+
+    await hazardDetectionService.run({ trigger: 'MANUAL', scope: 'FORECASTS', now: detectedAt });
+    const event = await findEventByKey(`FORTE_PLUIE:${cf.id}`);
+    expect(event?.status).toBe('PREVISION');
+    eventIds.push(event!.id);
+
+    // La prévision n'est jamais confirmée : plus aucune donnée ne correspond et
+    // la journée visée est largement dépassée (3 jours après la détection).
+    await destroyWeather([cf.id]);
+    const afterExpiry = new Date(detectedAt.getTime() + 3 * 24 * 3600_000);
+    const result = await hazardDetectionService.run({
+      trigger: 'MANUAL',
+      scope: 'FORECASTS',
+      now: afterExpiry,
+    });
+    expect(result.status).toBe('SUCCESS');
+
+    const closed = await db.query<{ status: string }>(`SELECT status FROM hazard_events WHERE id = $1`, [
+      event!.id,
+    ]);
+    expect(closed.rows[0].status).toBe('CLOTURE');
+    expect(await eventStatusHistory(event!.id)).toContainEqual({
+      from_status: 'PREVISION',
+      to_status: 'CLOTURE',
+    });
+    const monitoring = await db.query<{ count: string }>(
+      `SELECT count(*)::text AS count FROM event_monitoring WHERE event_id = $1`,
+      [event!.id],
+    );
+    expect(monitoring.rows[0].count).toBe('0');
+
+    await destroyEvents();
   });
 });
 
