@@ -3,8 +3,14 @@ import fs from 'fs';
 import { AppError } from '../utils/app-error';
 import { successResponse } from '../utils/api-response';
 import { isEventBulletinUploadAllowed } from '../middlewares/upload.middleware';
-import { EventBulletinImportInput, EventBulletinPreviewInput } from '../validators/event-bulletin-import.validator';
-import { extractBulletinArchive, cleanupExtracted } from '../services/event-bulletin-import/extract';
+import {
+  EventBulletinImportInput,
+  EventBulletinPreviewInput,
+} from '../validators/event-bulletin-import.validator';
+import {
+  extractBulletinArchive,
+  cleanupExtracted,
+} from '../services/event-bulletin-import/extract';
 import { detectAndParseFiles } from '../services/event-bulletin-import/detect';
 import { persistBulletinImport } from '../services/event-bulletin-import/persist';
 

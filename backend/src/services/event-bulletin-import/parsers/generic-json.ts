@@ -22,7 +22,9 @@ function extractPointsFromArray(arr: unknown[]): CanonicalTrackPoint[] {
     const obj = item as Record<string, unknown>;
     const lat = toNumber(obj.lat ?? obj.latitude ?? obj.y);
     const lon = toNumber(obj.lon ?? obj.lng ?? obj.longitude ?? obj.x);
-    const time = toIso(obj.time ?? obj.datetime ?? obj.date ?? obj.observedAt ?? obj.observed_at ?? obj.timestamp);
+    const time = toIso(
+      obj.time ?? obj.datetime ?? obj.date ?? obj.observedAt ?? obj.observed_at ?? obj.timestamp,
+    );
     if (lat === null || lon === null || !time) continue;
     if (Math.abs(lat) > 90 || Math.abs(lon) > 180) continue;
     const wind = toNumber(obj.windSpeedKmh ?? obj.wind_speed_kmh ?? obj.wind ?? obj.vmax);
@@ -32,7 +34,10 @@ function extractPointsFromArray(arr: unknown[]): CanonicalTrackPoint[] {
     const spd = toNumber(obj.movementSpeedKmh ?? obj.movement_speed_kmh ?? obj.speed);
     points.push({
       observedAt: time,
-      trackType: (String(obj.trackType ?? obj.track_type ?? 'OBSERVEE').toUpperCase() === 'PREVUE') ? 'PREVUE' : 'OBSERVEE',
+      trackType:
+        String(obj.trackType ?? obj.track_type ?? 'OBSERVEE').toUpperCase() === 'PREVUE'
+          ? 'PREVUE'
+          : 'OBSERVEE',
       lat,
       lon,
       windSpeedKmh: wind,

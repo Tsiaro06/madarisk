@@ -251,7 +251,7 @@ export const alertsService = {
     // publié une alerte active. On l'oblige à corriger l'échéance d'abord.
     if (existing.expiresAt && new Date(existing.expiresAt).getTime() <= Date.now()) {
       throw AppError.badRequest(
-        "Cette alerte est déjà expirée : modifiez sa date de fin de validité avant de la publier",
+        'Cette alerte est déjà expirée : modifiez sa date de fin de validité avant de la publier',
       );
     }
 
@@ -291,7 +291,7 @@ export const alertsService = {
     }
 
     if (existing.isHistorique) {
-      throw AppError.badRequest("Une alerte historique ne peut pas être archivée manuellement");
+      throw AppError.badRequest('Une alerte historique ne peut pas être archivée manuellement');
     }
 
     // `manual: true` : l'archivage est une décision de l'ADMIN, la génération

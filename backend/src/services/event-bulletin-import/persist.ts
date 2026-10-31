@@ -33,7 +33,11 @@ export async function persistBulletinImport(params: {
   actor: { id: string; role: UserRole };
   req: RequestContext;
 }): Promise<{ eventId: string; eventCode: string; tracksInserted: number; created: boolean }> {
-  if (params.actor.role !== 'ADMIN' && params.actor.role !== 'SUPER_ADMIN' && params.actor.role !== 'ANALYSTE_SIG') {
+  if (
+    params.actor.role !== 'ADMIN' &&
+    params.actor.role !== 'SUPER_ADMIN' &&
+    params.actor.role !== 'ANALYSTE_SIG'
+  ) {
     throw AppError.forbidden('Permissions insuffisantes pour importer un bulletin');
   }
   if (!params.points || params.points.length === 0) {
@@ -49,11 +53,17 @@ export async function persistBulletinImport(params: {
     let created = false;
 
     if (eventId) {
-      const ex = await client.query<{ event_code: string }>('SELECT event_code FROM hazard_events WHERE id = $1', [eventId]);
+      const ex = await client.query<{ event_code: string }>(
+        'SELECT event_code FROM hazard_events WHERE id = $1',
+        [eventId],
+      );
       if (ex.rows.length === 0) throw AppError.notFound('Événement introuvable');
       eventCode = ex.rows[0].event_code;
     } else if (eventCode) {
-      const ex = await client.query<{ id: string }>('SELECT id FROM hazard_events WHERE event_code = $1', [eventCode]);
+      const ex = await client.query<{ id: string }>(
+        'SELECT id FROM hazard_events WHERE event_code = $1',
+        [eventCode],
+      );
       if (ex.rows.length > 0) {
         eventId = ex.rows[0].id;
       } else if (params.createIfMissing) {
@@ -69,7 +79,9 @@ export async function persistBulletinImport(params: {
         eventCode = ins.rows[0].event_code;
         created = true;
       } else {
-        throw AppError.notFound("Événement avec cet eventCode introuvable et createIfMissing=false");
+        throw AppError.notFound(
+          'Événement avec cet eventCode introuvable et createIfMissing=false',
+        );
       }
     } else if (params.createIfMissing) {
       const now = new Date();
@@ -140,7 +152,12 @@ export async function persistBulletinImport(params: {
           action: 'EVENT_BULLETIN_IMPORTED',
           entityType: 'hazard_event',
           entityId: eventId,
-          newValue: { fileName: params.fileName, parser: params.parser, pointsCount: params.points.length, tracksInserted },
+          newValue: {
+            fileName: params.fileName,
+            parser: params.parser,
+            pointsCount: params.points.length,
+            tracksInserted,
+          },
           ipAddress: getIp(params.req),
         });
       } catch {

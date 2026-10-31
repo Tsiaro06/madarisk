@@ -53,7 +53,9 @@ export async function extractBulletinArchive(file: Express.Multer.File): Promise
     }
   } catch (err) {
     throw AppError.badRequest(
-      err instanceof Error ? `Impossible d'extraire l'archive : ${err.message}` : "Impossible d'extraire l'archive",
+      err instanceof Error
+        ? `Impossible d'extraire l'archive : ${err.message}`
+        : "Impossible d'extraire l'archive",
     );
   }
 

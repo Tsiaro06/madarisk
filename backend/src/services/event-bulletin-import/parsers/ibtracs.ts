@@ -20,13 +20,20 @@ export function parseIbtracsFile(filePath: string): CanonicalTrackPoint[] {
     const lat = Number(row.LAT ?? row.lat);
     const lon = Number(row.LON ?? row.lon ?? row.LON_WMO ?? row.lon_wmo);
     if (Number.isNaN(lat) || Number.isNaN(lon)) continue;
-    const windKt = Number(row.WMO_WIND ?? row.USA_WIND ?? row.wmo_wind ?? row.usa_wind ?? row.WIND ?? row.wind);
-    const pres = Number(row.WMO_PRES ?? row.USA_PRES ?? row.wmo_pres ?? row.usa_pres ?? row.PRES ?? row.pressure);
+    const windKt = Number(
+      row.WMO_WIND ?? row.USA_WIND ?? row.wmo_wind ?? row.usa_wind ?? row.WIND ?? row.wind,
+    );
+    const pres = Number(
+      row.WMO_PRES ?? row.USA_PRES ?? row.wmo_pres ?? row.usa_pres ?? row.PRES ?? row.pressure,
+    );
     const speedKt = Number(row.STORM_SPEED ?? row.storm_speed ?? row.MOV_SPEED ?? row.mov_speed);
     const dir = row.STORM_DR ?? row.storm_dr ?? row.MOV_DIR ?? row.mov_dir;
 
     points.push({
-      observedAt: isoTime.replace(' ', 'T').endsWith('Z') || isoTime.includes('+') ? isoTime.replace(' ', 'T') : `${isoTime.replace(' ', 'T')}Z`,
+      observedAt:
+        isoTime.replace(' ', 'T').endsWith('Z') || isoTime.includes('+')
+          ? isoTime.replace(' ', 'T')
+          : `${isoTime.replace(' ', 'T')}Z`,
       trackType: 'OBSERVEE',
       lat,
       lon,
@@ -52,5 +59,10 @@ export function isIbtracsLike(filePath: string, content?: string): boolean {
     }
   }
   const head = content.toLowerCase();
-  return head.includes('iso_time') && (head.includes('lat') && head.includes('lon')) && (head.includes('sid') || head.includes('wmo_wind') || head.includes('usa_wind'));
+  return (
+    head.includes('iso_time') &&
+    head.includes('lat') &&
+    head.includes('lon') &&
+    (head.includes('sid') || head.includes('wmo_wind') || head.includes('usa_wind'))
+  );
 }

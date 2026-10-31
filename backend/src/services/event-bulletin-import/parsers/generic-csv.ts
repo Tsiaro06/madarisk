@@ -5,8 +5,27 @@ import { CanonicalTrackPoint } from '../../../types/event-bulletin-import.types'
 
 const LAT_KEYS = ['lat', 'latitude', 'LAT', 'LATITUDE', 'y'];
 const LON_KEYS = ['lon', 'lng', 'longitude', 'LON', 'LNG', 'LONGITUDE', 'x'];
-const TIME_KEYS = ['time', 'datetime', 'date', 'observedat', 'observed_at', 'iso_time', 'timestamp', 'heure', 'date_heure'];
-const WIND_KEYS = ['wind', 'windspeed', 'wind_speed', 'wind_speed_kmh', 'wmo_wind', 'vmoy', 'vmax', 'vent'];
+const TIME_KEYS = [
+  'time',
+  'datetime',
+  'date',
+  'observedat',
+  'observed_at',
+  'iso_time',
+  'timestamp',
+  'heure',
+  'date_heure',
+];
+const WIND_KEYS = [
+  'wind',
+  'windspeed',
+  'wind_speed',
+  'wind_speed_kmh',
+  'wmo_wind',
+  'vmoy',
+  'vmax',
+  'vent',
+];
 const PRES_KEYS = ['pressure', 'pres', 'press', 'pressure_hpa', 'pmer'];
 const DIR_KEYS = ['dir', 'direction', 'movement_direction', 'dirdeg'];
 const SPD_KEYS = ['speed', 'movement_speed', 'movement_speed_kmh', 'vitesse'];
@@ -72,11 +91,17 @@ export function parseGenericCsv(filePath: string): CanonicalTrackPoint[] {
       trackType: 'OBSERVEE',
       lat,
       lon,
-      windSpeedKmh: wind !== null && wind < 400 ? (wind < 150 ? Math.round(wind * 1.852 * 100) / 100 : wind) : null,
+      windSpeedKmh:
+        wind !== null && wind < 400
+          ? wind < 150
+            ? Math.round(wind * 1.852 * 100) / 100
+            : wind
+          : null,
       gustSpeedKmh: null,
       pressureHpa: pres,
       movementDirection: dir ? String(dir) : null,
-      movementSpeedKmh: spd !== null && spd < 200 ? (spd < 80 ? Math.round(spd * 1.852 * 100) / 100 : spd) : null,
+      movementSpeedKmh:
+        spd !== null && spd < 200 ? (spd < 80 ? Math.round(spd * 1.852 * 100) / 100 : spd) : null,
       sourceRef: path.basename(filePath),
     });
   }

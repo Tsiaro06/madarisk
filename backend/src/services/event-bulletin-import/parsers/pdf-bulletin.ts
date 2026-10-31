@@ -4,7 +4,9 @@ import { CanonicalTrackPoint } from '../../../types/event-bulletin-import.types'
 
 function parseDateTime(text: string, yearHint?: number): Date | null {
   // DD/MM/YYYY HH:MM or DD-MM-YYYY HHhMM
-  let m = text.match(/(\d{1,2})[/.\\-](\d{1,2})[/.\\-](\d{2,4})\s+(\d{1,2})[h:\s](\d{2})(?:[:\s](\d{2}))?/i);
+  let m = text.match(
+    /(\d{1,2})[/.\\-](\d{1,2})[/.\\-](\d{2,4})\s+(\d{1,2})[h:\s](\d{2})(?:[:\s](\d{2}))?/i,
+  );
   if (m) {
     let year = Number(m[3]);
     if (year < 100) year += 2000;
@@ -16,10 +18,26 @@ function parseDateTime(text: string, yearHint?: number): Date | null {
     return new Date(Date.UTC(year, month, day, hour, min, sec));
   }
   // JJ mois YYYY HH:MM (fr)
-  m = text.match(/(\d{1,2})\s+(janvier|fevrier|février|mars|avril|mai|juin|juillet|aout|août|septembre|octobre|novembre|decembre|décembre)\s+(\d{4})\s+(\d{1,2})[h:](\d{2})/i);
+  m = text.match(
+    /(\d{1,2})\s+(janvier|fevrier|février|mars|avril|mai|juin|juillet|aout|août|septembre|octobre|novembre|decembre|décembre)\s+(\d{4})\s+(\d{1,2})[h:](\d{2})/i,
+  );
   if (m) {
     const months: Record<string, number> = {
-      janvier: 0, fevrier: 1, février: 1, mars: 2, avril: 3, mai: 4, juin: 5, juillet: 6, aout: 7, août: 7, septembre: 8, octobre: 9, novembre: 10, decembre: 11, décembre: 11,
+      janvier: 0,
+      fevrier: 1,
+      février: 1,
+      mars: 2,
+      avril: 3,
+      mai: 4,
+      juin: 5,
+      juillet: 6,
+      aout: 7,
+      août: 7,
+      septembre: 8,
+      octobre: 9,
+      novembre: 10,
+      decembre: 11,
+      décembre: 11,
     };
     const monthKey = m[2].toLowerCase().replace('é', 'e');
     const month = months[monthKey] ?? 0;
@@ -52,14 +70,18 @@ function parsePosition(text: string): { lat: number; lon: number } | null {
     return { lat, lon };
   }
   // 12°30'S 49°20'E
-  m = text.match(/(\d{1,2})[°d]\s*(\d{1,2})['’]\s*(S|sud)\s+(\d{1,2})[°d]\s*(\d{1,2})['’]\s*(E|est)/i);
+  m = text.match(
+    /(\d{1,2})[°d]\s*(\d{1,2})['’]\s*(S|sud)\s+(\d{1,2})[°d]\s*(\d{1,2})['’]\s*(E|est)/i,
+  );
   if (m) {
     const lat = -(Number(m[1]) + Number(m[2]) / 60);
     const lon = Number(m[4]) + Number(m[5]) / 60;
     return { lat, lon };
   }
   // lat/lon decimals
-  m = text.match(/latitude\s*:?\s*(-?\d+(?:\.\d+)?)\s*[°]?\s*(N|S)?[^0-9-]+longitude\s*:?\s*(-?\d+(?:\.\d+)?)\s*[°]?\s*(E|W)?/i);
+  m = text.match(
+    /latitude\s*:?\s*(-?\d+(?:\.\d+)?)\s*[°]?\s*(N|S)?[^0-9-]+longitude\s*:?\s*(-?\d+(?:\.\d+)?)\s*[°]?\s*(E|W)?/i,
+  );
   if (m) {
     let lat = Number(m[1]);
     let lon = Number(m[3]);
@@ -147,7 +169,9 @@ export async function parsePdfBulletin(filePath: string): Promise<CanonicalTrack
       return true;
     });
 
-    return unique.sort((a, b) => new Date(a.observedAt).getTime() - new Date(b.observedAt).getTime());
+    return unique.sort(
+      (a, b) => new Date(a.observedAt).getTime() - new Date(b.observedAt).getTime(),
+    );
   } catch {
     return [];
   }

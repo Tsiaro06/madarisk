@@ -5,7 +5,10 @@ import { authenticate } from '../middlewares/authenticate.middleware';
 import { authorize } from '../middlewares/authorize.middleware';
 import { validate } from '../middlewares/validate.middleware';
 import { uploadEventBulletinFile } from '../middlewares/upload.middleware';
-import { eventBulletinImportSchema, eventBulletinPreviewSchema } from '../validators/event-bulletin-import.validator';
+import {
+  eventBulletinImportSchema,
+  eventBulletinPreviewSchema,
+} from '../validators/event-bulletin-import.validator';
 
 const router = Router();
 

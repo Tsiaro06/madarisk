@@ -22,7 +22,16 @@ export interface DetectedBulletin {
   eventHint?: {
     code?: string;
     name?: string;
-    type?: 'CYCLONE' | 'INONDATION' | 'SECHERESSE' | 'FORTE_PLUIE' | 'VENT_VIOLENT' | 'GLISSEMENT_TERRAIN' | 'FEU_VEGETATION' | 'VAGUE_DE_CHALEUR' | 'AUTRE';
+    type?:
+      | 'CYCLONE'
+      | 'INONDATION'
+      | 'SECHERESSE'
+      | 'FORTE_PLUIE'
+      | 'VENT_VIOLENT'
+      | 'GLISSEMENT_TERRAIN'
+      | 'FEU_VEGETATION'
+      | 'VAGUE_DE_CHALEUR'
+      | 'AUTRE';
     startedAt?: string;
   };
   points: CanonicalTrackPoint[];
